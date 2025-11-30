@@ -1,12 +1,11 @@
 -- MainHub.lua
--- วางไฟล์นี้บน raw GitHub แล้วให้ MAINHUB_URL ชี้มาที่ไฟล์นี้
--- ต้อง return function(Exec, keydata, keycheck)
+-- Fixed library load
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     -- Guard: ต้องมาจาก Key UI เท่านั้น
     ----------------------------------------------------------------
-    if keycheck ~= "BxB.ware-universal-private-*&^%$#$*#%&@#" then
+    if keycheck ~= "success" then
         return
     end
 
@@ -133,13 +132,9 @@ return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 
-    local function getFromRepo(path)
-        return Exec.HttpGet(repo .. path)
-    end
-
-    local Library = loadstring(getFromRepo("Library.lua"))()
-    local ThemeManager = loadstring(getFromRepo("addons/ThemeManager.lua"))()
-    local SaveManager  = loadstring(getFromRepo("addons/SaveManager.lua"))()
+    local Library = loadstring(game:HttpGet(repo.."Library.lua"))()
+    local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
+    local SaveManager  = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
 
     if ThemeManager and type(ThemeManager.SetLibrary) == "function" then
         ThemeManager:SetLibrary(Library)
