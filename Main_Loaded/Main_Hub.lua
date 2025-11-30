@@ -1,12 +1,9 @@
 -- MainHub.lua
--- ต้อง return function(Exec, keydata, keycheck)
+-- Must return function(Exec, keydata, keycheck)
 
 return function(Exec, keydata, keycheck)
-    ----------------------------------------------------------------
-    -- Basic guards
-    ----------------------------------------------------------------
+    -- basic guard
     if keycheck ~= "success" then
-        -- กันคนโหลด MainHub ตรง ๆ โดยไม่ผ่าน Key UI
         return
     end
 
@@ -18,12 +15,12 @@ return function(Exec, keydata, keycheck)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
-    local StatsService = game:GetService("Stats")
+    local Stats = game:GetService("Stats")
 
     local LocalPlayer = Players.LocalPlayer
 
     ----------------------------------------------------------------
-    -- Helpers: character / humanoid / root
+    -- Helper: character / humanoid / root
     ----------------------------------------------------------------
     local function getCharacter()
         return LocalPlayer and LocalPlayer.Character or nil
@@ -34,32 +31,28 @@ return function(Exec, keydata, keycheck)
         if not char then
             return nil
         end
-
         return char:FindFirstChildOfClass("Humanoid")
     end
 
-    local function getRootPart()
+    local function getRoot()
         local char = getCharacter()
         if not char then
             return nil
         end
-
         return char:FindFirstChild("HumanoidRootPart")
     end
 
     ----------------------------------------------------------------
-    -- Config: URLs ของ Obsidian Library
+    -- Obsidian URLs (change to your repo)
     ----------------------------------------------------------------
-    local LIBRARY_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Loaded/UI_System/Library.lua",
-    local THEME_URL       = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Loaded/UI_System/addons/ThemeManager.lua",
-    local SAVE_URL        = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Loaded/UI_System/addons/SaveManager.lua",
 
     ----------------------------------------------------------------
-    -- Load Obsidian Library + ThemeManager + SaveManager
+    -- Load Obsidian
     ----------------------------------------------------------------
-    local Library = loadstring(Exec.HttpGet(LIBRARY_URL))()
-    local ThemeManager = loadstring(Exec.HttpGet(THEME_URL))()
-    local SaveManager  = loadstring(Exec.HttpGet(SAVE_URL))()
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
     if ThemeManager and type(ThemeManager.SetLibrary) == "function" then
         ThemeManager:SetLibrary(Library)
@@ -87,14 +80,14 @@ return function(Exec, keydata, keycheck)
     })
 
     local Tabs = {
-        Status = Window:AddTab("Status"),  -- Tab1
-        Player = Window:AddTab("Player"),  -- Tab2
-        ESP    = Window:AddTab("ESP"),     -- Tab3
-        UI     = Window:AddTab("UI")       -- Tab4
+        Status = Window:AddTab("Status"),
+        Player = Window:AddTab("Player"),
+        ESP    = Window:AddTab("ESP"),
+        UI     = Window:AddTab("UI")
     }
 
     ----------------------------------------------------------------
-    -- Helpers: label
+    -- Small helpers
     ----------------------------------------------------------------
     local function setRichLabel(label, text)
         if label and label.TextLabel then
@@ -106,11 +99,9 @@ return function(Exec, keydata, keycheck)
     local function maskKey(key)
         key = tostring(key or "")
         local len = #key
-
         if len <= 6 then
             return string.rep("*", len)
         end
-
         return key:sub(1, 3) .. string.rep("*", len - 6) .. key:sub(len - 2, len)
     end
 
@@ -123,13 +114,13 @@ return function(Exec, keydata, keycheck)
     end
 
     ----------------------------------------------------------------
-    -- TAB 1: Status (Key / Server / Credits)
+    -- TAB 1: Status
     ----------------------------------------------------------------
     local StatusKeyBox     = Tabs.Status:AddLeftGroupbox("Key & User")
     local StatusCreditsBox = Tabs.Status:AddLeftGroupbox("Credits")
     local StatusServerBox  = Tabs.Status:AddRightGroupbox("Server & Performance")
 
-    -- Key & User
+    -- Key & user info
     local keyMasked = maskKey(keydata.key or "N/A")
     local role = keydata.role or "N/A"
 
@@ -146,21 +137,21 @@ return function(Exec, keydata, keycheck)
     StatusKeyBox:AddDivider()
 
     -- Credits
-    local creditLines = {
+    local creditText = table.concat({
         "<b>Obsidian Universal Hub</b>",
         "Developer: <font color=\"#7dcfff\">YourName / Boom</font>",
         "Library: <font color=\"#b58cff\">Obsidian UI</font>",
         "Discord: <font color=\"#55ff99\">https://discord.gg/yourdiscord</font>",
         "",
         "<font color=\"#aaaaaa\">Please do not leak / resell.</font>"
-    }
+    }, "\n")
 
-    local creditLabel = StatusCreditsBox:AddLabel(table.concat(creditLines, "\n"), true)
+    local creditLabel = StatusCreditsBox:AddLabel(creditText, true)
     if creditLabel and creditLabel.TextLabel then
         creditLabel.TextLabel.RichText = true
     end
 
-    -- Server & Performance
+    -- Server & realtime stats
     local placeId = game.PlaceId
     local jobId   = game.JobId
 
@@ -169,6 +160,8 @@ return function(Exec, keydata, keycheck)
     local playerCountLabel = StatusServerBox:AddLabel("", true)
     local pingLabel        = StatusServerBox:AddLabel("", true)
     local fpsLabel         = StatusServerBox:AddLabel("", true)
+    local hpLabel          = StatusServerBox:AddLabel("", true)
+    local posLabel         = StatusServerBox:AddLabel("", true)
 
     setRichLabel(serverPlaceLabel, "<b>PlaceId</b>: " .. tostring(placeId))
     setRichLabel(serverJobLabel, "<b>JobId</b>: " .. tostring(jobId))
@@ -179,27 +172,27 @@ return function(Exec, keydata, keycheck)
     end
 
     updatePlayerCount()
-
     Players.PlayerAdded:Connect(updatePlayerCount)
     Players.PlayerRemoving:Connect(updatePlayerCount)
 
-    -- FPS / Ping update ทุก ~1 วิ
+    -- realtime ping/fps/hp/pos
     local frameCount = 0
     local timeAcc = 0
+    local statTimer = 0
 
     RunService.RenderStepped:Connect(function(dt)
-        frameCount = frameCount + 1
-        timeAcc = timeAcc + dt
+        frameCount += 1
+        timeAcc += dt
+        statTimer += dt
 
         if timeAcc >= 1 then
             local fps = math.floor(frameCount / timeAcc + 0.5)
             frameCount = 0
             timeAcc = 0
 
-            -- Ping
             local pingText = "N/A"
             local okPing, pingValue = pcall(function()
-                local pingStat = StatsService.Network.ServerStatsItem["Data Ping"]
+                local pingStat = Stats.Network.ServerStatsItem["Data Ping"]
                 if pingStat then
                     return pingStat:GetValue()
                 end
@@ -212,10 +205,34 @@ return function(Exec, keydata, keycheck)
             setRichLabel(pingLabel, "<b>Ping</b>: " .. pingText)
             setRichLabel(fpsLabel, "<b>FPS</b>: " .. tostring(fps))
         end
+
+        if statTimer >= 0.2 then
+            statTimer = 0
+
+            local hum = getHumanoid()
+            if hum then
+                local hp = math.floor(hum.Health + 0.5)
+                local maxHp = math.floor(hum.MaxHealth + 0.5)
+                setRichLabel(hpLabel, "<b>HP</b>: " .. hp .. " / " .. maxHp)
+            else
+                setRichLabel(hpLabel, "<b>HP</b>: N/A")
+            end
+
+            local root = getRoot()
+            if root then
+                local p = root.Position
+                setRichLabel(
+                    posLabel,
+                    string.format("<b>Position</b>: %.1f, %.1f, %.1f", p.X, p.Y, p.Z)
+                )
+            else
+                setRichLabel(posLabel, "<b>Position</b>: N/A")
+            end
+        end
     end)
 
     ----------------------------------------------------------------
-    -- TAB 2: Player (WalkSpeed / Jump / Fly / NoClip / Inf Jump)
+    -- TAB 2: Player
     ----------------------------------------------------------------
     local PlayerMoveBox  = Tabs.Player:AddLeftGroupbox("Movement")
     local PlayerExtraBox = Tabs.Player:AddRightGroupbox("Extra")
@@ -252,12 +269,12 @@ return function(Exec, keydata, keycheck)
                 DefaultValues.JumpHeight = hum.JumpHeight
             end)
             if not ok then
-                -- ignore errors
+                -- ignore
             end
         end
     end
 
-    -- NoClip tracking
+    -- NoClip
     local noclipParts = {}
 
     local function updateNoClip()
@@ -346,7 +363,7 @@ return function(Exec, keydata, keycheck)
             return
         end
 
-        local root = getRootPart()
+        local root = getRoot()
         local cam = workspace.CurrentCamera
         if not root or not cam then
             resetFlyBody()
@@ -395,19 +412,18 @@ return function(Exec, keydata, keycheck)
         flyBG.CFrame = cam.CFrame
     end
 
+    -- realtime apply movement
     RunService.Heartbeat:Connect(function()
         updateDefaultHumanoidValues()
 
         local hum = getHumanoid()
         if hum then
-            -- WalkSpeed
             if MovementState.WalkSpeedEnabled then
                 hum.WalkSpeed = MovementState.WalkSpeedValue
             elseif DefaultValues.WalkSpeed then
                 hum.WalkSpeed = DefaultValues.WalkSpeed
             end
 
-            -- JumpPower / JumpHeight
             local ok = pcall(function()
                 if hum.UseJumpPower ~= false then
                     if MovementState.JumpPowerEnabled then
@@ -424,18 +440,16 @@ return function(Exec, keydata, keycheck)
                 end
             end)
             if not ok then
-                -- ignore errors
+                -- ignore
             end
         end
 
-        -- NoClip
         if MovementState.NoClip then
             updateNoClip()
         else
             disableNoClip()
         end
 
-        -- Fly
         if MovementState.FlyEnabled then
             updateFly()
         else
@@ -443,23 +457,23 @@ return function(Exec, keydata, keycheck)
         end
     end)
 
-    -- Key input for Fly
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then
             return
         end
 
-        if input.KeyCode == Enum.KeyCode.W then
+        local kc = input.KeyCode
+        if kc == Enum.KeyCode.W then
             flyKeys.W = true
-        elseif input.KeyCode == Enum.KeyCode.A then
+        elseif kc == Enum.KeyCode.A then
             flyKeys.A = true
-        elseif input.KeyCode == Enum.KeyCode.S then
+        elseif kc == Enum.KeyCode.S then
             flyKeys.S = true
-        elseif input.KeyCode == Enum.KeyCode.D then
+        elseif kc == Enum.KeyCode.D then
             flyKeys.D = true
-        elseif input.KeyCode == Enum.KeyCode.Space then
+        elseif kc == Enum.KeyCode.Space then
             flyKeys.Space = true
-        elseif input.KeyCode == Enum.KeyCode.LeftShift then
+        elseif kc == Enum.KeyCode.LeftShift then
             flyKeys.LeftShift = true
         end
     end)
@@ -469,22 +483,23 @@ return function(Exec, keydata, keycheck)
             return
         end
 
-        if input.KeyCode == Enum.KeyCode.W then
+        local kc = input.KeyCode
+        if kc == Enum.KeyCode.W then
             flyKeys.W = false
-        elseif input.KeyCode == Enum.KeyCode.A then
+        elseif kc == Enum.KeyCode.A then
             flyKeys.A = false
-        elseif input.KeyCode == Enum.KeyCode.S then
+        elseif kc == Enum.KeyCode.S then
             flyKeys.S = false
-        elseif input.KeyCode == Enum.KeyCode.D then
+        elseif kc == Enum.KeyCode.D then
             flyKeys.D = false
-        elseif input.KeyCode == Enum.KeyCode.Space then
+        elseif kc == Enum.KeyCode.Space then
             flyKeys.Space = false
-        elseif input.KeyCode == Enum.KeyCode.LeftShift then
+        elseif kc == Enum.KeyCode.LeftShift then
             flyKeys.LeftShift = false
         end
     end)
 
-    -- UI controls for movement
+    -- UI for movement
     PlayerMoveBox:AddToggle("Move_WalkSpeed_Toggle", {
         Text = "WalkSpeed",
         Default = false,
@@ -569,7 +584,7 @@ return function(Exec, keydata, keycheck)
     })
 
     ----------------------------------------------------------------
-    -- TAB 3: ESP (Highlight ผู้เล่น)
+    -- TAB 3: ESP
     ----------------------------------------------------------------
     local ESPBox = Tabs.ESP:AddLeftGroupbox("Player ESP")
 
@@ -672,7 +687,6 @@ return function(Exec, keydata, keycheck)
         end
     end
 
-    -- Hook players
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
             plr.CharacterAdded:Connect(function()
@@ -715,7 +729,6 @@ return function(Exec, keydata, keycheck)
         removeESPForPlayer(plr)
     end)
 
-    -- UI controls for ESP
     ESPBox:AddToggle("ESP_Player_Toggle", {
         Text = "Enable Player ESP",
         Default = false,
@@ -781,3 +794,4 @@ return function(Exec, keydata, keycheck)
         SaveManager:LoadAutoloadConfig()
     end
 end
+
