@@ -16,16 +16,6 @@
           "Fixed Library.Options nil errors in some executors."
         ]
       }
-    },
-    {
-      "version": "1.0.2",
-      "date": "2025-11-25",
-      "tag": "beta",
-      "changes": {
-        "Added": [
-          "Initial Obsidian Key UI."
-        ]
-      }
     }
   ]
 }
