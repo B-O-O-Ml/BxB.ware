@@ -1,5 +1,4 @@
 -- MainHub.lua
--- วางไฟล์นี้บน raw GitHub แล้วชี้จาก MAINHUB_URL
 -- ต้อง return function(Exec, keydata, keycheck)
 
 return function(Exec, keydata, keycheck)
@@ -24,7 +23,7 @@ return function(Exec, keydata, keycheck)
     local LocalPlayer = Players.LocalPlayer
 
     ----------------------------------------------------------------
-    -- Safe helpers for character / humanoid
+    -- Helpers: character / humanoid / root
     ----------------------------------------------------------------
     local function getCharacter()
         return LocalPlayer and LocalPlayer.Character or nil
@@ -49,7 +48,7 @@ return function(Exec, keydata, keycheck)
     end
 
     ----------------------------------------------------------------
-    -- Config: URLs (ต้อง match กับ link.lua)
+    -- Config: URLs ของ Obsidian Library
     ----------------------------------------------------------------
     local LIBRARY_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Loaded/UI_System/Library.lua",
     local THEME_URL       = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Loaded/UI_System/addons/ThemeManager.lua",
@@ -88,14 +87,14 @@ return function(Exec, keydata, keycheck)
     })
 
     local Tabs = {
-        Status = Window:AddTab("Status"),
-        Player = Window:AddTab("Player"),
-        ESP    = Window:AddTab("ESP"),
-        UI     = Window:AddTab("UI")
+        Status = Window:AddTab("Status"),  -- Tab1
+        Player = Window:AddTab("Player"),  -- Tab2
+        ESP    = Window:AddTab("ESP"),     -- Tab3
+        UI     = Window:AddTab("UI")       -- Tab4
     }
 
     ----------------------------------------------------------------
-    -- Small helpers for labels
+    -- Helpers: label
     ----------------------------------------------------------------
     local function setRichLabel(label, text)
         if label and label.TextLabel then
@@ -216,7 +215,7 @@ return function(Exec, keydata, keycheck)
     end)
 
     ----------------------------------------------------------------
-    -- TAB 2: Player (WalkSpeed / JumpPower / Fly / NoClip / Inf Jump)
+    -- TAB 2: Player (WalkSpeed / Jump / Fly / NoClip / Inf Jump)
     ----------------------------------------------------------------
     local PlayerMoveBox  = Tabs.Player:AddLeftGroupbox("Movement")
     local PlayerExtraBox = Tabs.Player:AddRightGroupbox("Extra")
@@ -432,6 +431,8 @@ return function(Exec, keydata, keycheck)
         -- NoClip
         if MovementState.NoClip then
             updateNoClip()
+        else
+            disableNoClip()
         end
 
         -- Fly
@@ -483,7 +484,7 @@ return function(Exec, keydata, keycheck)
         end
     end)
 
-    -- UI สำหรับ movement
+    -- UI controls for movement
     PlayerMoveBox:AddToggle("Move_WalkSpeed_Toggle", {
         Text = "WalkSpeed",
         Default = false,
@@ -568,7 +569,7 @@ return function(Exec, keydata, keycheck)
     })
 
     ----------------------------------------------------------------
-    -- TAB 3: ESP (Player Highlight)
+    -- TAB 3: ESP (Highlight ผู้เล่น)
     ----------------------------------------------------------------
     local ESPBox = Tabs.ESP:AddLeftGroupbox("Player ESP")
 
@@ -714,7 +715,7 @@ return function(Exec, keydata, keycheck)
         removeESPForPlayer(plr)
     end)
 
-    -- UI controls
+    -- UI controls for ESP
     ESPBox:AddToggle("ESP_Player_Toggle", {
         Text = "Enable Player ESP",
         Default = false,
@@ -768,7 +769,6 @@ return function(Exec, keydata, keycheck)
 
     UIBoxLeft:AddLabel("If UI disappears, re-execute script.", true)
 
-    -- Theme / Config integration (defensive)
     if SaveManager and type(SaveManager.BuildConfigSection) == "function" then
         SaveManager:BuildConfigSection(Tabs.UI)
     end
