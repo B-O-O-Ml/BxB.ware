@@ -1,0 +1,17 @@
+{
+  "name": "Obsidian Universal Hub",
+  "version": "1.0.3",
+  "author": "Boom",
+  "description": "Universal hub for multiple games with key system and Obsidian UI.",
+  "discord": "https://discord.gg/yourdiscord",
+  "website": "https://your-website.com",
+  "executors": [
+    "Synapse X",
+    "Script-Ware",
+    "Fluxus",
+    "KRNL"
+  ],
+  "status": "stable",
+  "last_update": "2025-11-30",
+  "notice": "If something breaks after Roblox update, please wait for a patch."
+}
