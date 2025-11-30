@@ -1,5 +1,5 @@
 -- MainHub.lua
--- Fixed library load
+-- Rework UI
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
@@ -156,16 +156,23 @@ return function(Exec, keydata, keycheck)
     -- Window + Tabs
     ----------------------------------------------------------------
     local Window = Library:CreateWindow({
-        Title = "Obsidian | Universal Hub",
+        Title = "BxB.ware",
+            Footer = "BxB.ware | Universal | Premium",    
+                Icon = "Gem",
         Center = true,
-        AutoShow = true
+        AutoShow = true,
+
+        DisableSearch = false,              
+            SearchbarSize = UDim2.fromScale(0.5, 1), -- ขนาด searchbar (ใช้เมื่อ DisableSearch = false)
+        
+        Compact = true
     })
 
     local Tabs = {
-        Status = Window:AddTab("Status"),
-        Player = Window:AddTab("Player"),
-        ESP    = Window:AddTab("ESP"),
-        UI     = Window:AddTab("UI")
+        Status = Window:AddTab("","ChartNoAxesCombined"),
+        Player = Window:AddTab("","user"),
+        ESP    = Window:AddTab("","eye"),
+        UI     = Window:AddTab("","settings")
     }
 
     ----------------------------------------------------------------
