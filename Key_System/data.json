@@ -1,0 +1,22 @@
+{
+  "ABC-123-USER": {
+    "key": "ABC-123-USER",
+    "hwid_hash": "3BF35960-0AE1-4ED6-BB5A-40F4D37FF2B2",
+    "role": "user",
+    "timestamp": 1732600000,
+    "expires_at": 1735200000
+  },
+  "VIP-9999": {
+    "key": "VIP-9999",
+    "hwid_hash": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",
+    "role": "premium",
+    "timestamp": 1732600000,
+    "expires_at": 0
+  },
+  "STAFF-0001": {
+    "key": "STAFF-0001",
+    "hwid_hash": "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
+    "role": "staff",
+    "expires_at": 0
+  }
+}
