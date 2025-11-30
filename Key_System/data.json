@@ -3,21 +3,21 @@
     {
       "key": "ABC-123-USER",
       "hwid_hash": "3BF35960-0AE1-4ED6-BB5A-40F4D37FF2B2",
-      "timestamp": 1732924800,
+      "timestamp": 1767070800,
       "role": "user",
       "note": "Normal user key"
     },
     {
       "key": "VIP-999-PREM",
       "hwid_hash": "987654321",
-      "timestamp": 1732924800,
+      "timestamp": 1767070800,
       "role": "premium",
       "note": "Premium supporter"
     },
     {
       "key": "OWNER-000-STAFF",
-      "hwid_hash": "555555555",
-      "timestamp": 1732924800,
+      "hwid_hash": nil,
+      "timestamp": 1767070800,
       "role": "staff",
       "note": "Owner / staff key"
     }
