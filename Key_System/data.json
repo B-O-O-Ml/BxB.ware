@@ -2,10 +2,10 @@
   "keys": [
     {
       "key": "ABC-123-USER",
-      "hwid_hash": "633956663",
+      "hwid_hash": "2436e823dec95964ffaadcc44dc98e75",
       "timestamp": 1767070800,
-      "role": "user",
-      "note": "Normal user key"
+      "role": "owner",
+      "note": "BxB.ware | OWNER Permission"
     },
     {
       "key": "VIP-999-PREM",
