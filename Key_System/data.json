@@ -16,7 +16,7 @@
     },
     {
       "key": "OWNER-000-STAFF",
-      "hwid_hash": nil,
+      "hwid_hash": "",
       "timestamp": 1767070800,
       "role": "staff",
       "note": "Owner / staff key"
