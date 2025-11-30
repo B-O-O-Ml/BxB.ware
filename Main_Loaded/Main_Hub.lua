@@ -1,5 +1,6 @@
 -- MainHub.lua
--- Rework UI
+-- วางไฟล์นี้บน raw GitHub แล้วให้ MAINHUB_URL ชี้มาที่ไฟล์นี้
+-- ต้อง return function(Exec, keydata, keycheck)
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
@@ -49,43 +50,62 @@ return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     -- Helpers: Time / Date (ใช้ DateTime, ไม่ใช้ os.*)
     ----------------------------------------------------------------
-    local function formatDateTime(dt)
-        -- dt = Roblox DateTime
-        local d = dt.Day
-        local m = dt.Month
-        local y = dt.Year % 100
-        local h = dt.Hour
-        local mi = dt.Minute
-        local s = dt.Second
+local function formatDateTime(dt)
+    -- DateTime:ToLocalTime() คืนค่า table ที่มี Year/Month/Day/... (ไม่ใช่ DateTime โดยตรง)
+    local ok, info = pcall(function()
+        return dt:ToLocalTime()
+    end)
 
-        return string.format("%02d/%02d/%02d - %02d:%02d:%02d", d, m, y, h, mi, s)
-    end
-
-    local function formatUnixTimestamp(ts)
-        if type(ts) ~= "number" then
+    if not ok or type(info) ~= "table" then
+        -- fallback ลอง UTC เผื่อบาง executor แปลก ๆ
+        local ok2, info2 = pcall(function()
+            return dt:ToUniversalTime()
+        end)
+        if not ok2 or type(info2) ~= "table" then
             return "N/A"
         end
+        info = info2
+    end
 
-        if typeof(DateTime) == "table" or typeof(DateTime) == "userdata" then
-            local ok, dt = pcall(DateTime.fromUnixTimestamp, ts)
-            if ok and dt then
-                return formatDateTime(dt)
-            end
-        end
+    local d  = info.Day
+    local m  = info.Month
+    local y  = info.Year % 100
+    local h  = info.Hour
+    local mi = info.Minute
+    local s  = info.Second
 
+    return string.format("%02d/%02d/%02d - %02d:%02d:%02d", d, m, y, h, mi, s)
+end
+
+local function formatUnixTimestamp(ts)
+    if type(ts) ~= "number" then
+        return "N/A"
+    end
+
+    local ok, dt = pcall(function()
+        return DateTime.fromUnixTimestamp(ts)
+    end)
+
+    if not ok or not dt then
         return tostring(ts)
     end
 
-    local function getNowString()
-        if typeof(DateTime) == "table" or typeof(DateTime) == "userdata" then
-            local ok, dt = pcall(DateTime.now, DateTime)
-            if ok and dt then
-                return formatDateTime(dt)
-            end
-        end
+    return formatDateTime(dt)
+end
 
+
+local function getNowString()
+    local ok, dt = pcall(function()
+        return DateTime.now()
+    end)
+
+    if not ok or not dt then
         return "N/A"
     end
+
+    return formatDateTime(dt)
+end
+
 
     local function formatDuration(sec)
         if type(sec) ~= "number" then
@@ -155,21 +175,21 @@ return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     -- Window + Tabs
     ----------------------------------------------------------------
-    local Window = Library:CreateWindow({
+ local Window = Library:CreateWindow({
         Title = "BxB.ware",
             Footer = "BxB.ware | Universal | Premium",    
-                Icon = "Gem",
+                Icon = "sparkle",
         Center = true,
         AutoShow = true,
 
         DisableSearch = false,              
-            SearchbarSize = UDim2.fromScale(0.5, 1), -- ขนาด searchbar (ใช้เมื่อ DisableSearch = false)
+            SearchbarSize = UDim2.fromScale(1, 1), -- ขนาด searchbar (ใช้เมื่อ DisableSearch = false)
         
         Compact = true
     })
 
     local Tabs = {
-        Status = Window:AddTab("","ChartNoAxesCombined"),
+        Status = Window:AddTab("","shield-check"),
         Player = Window:AddTab("","user"),
         ESP    = Window:AddTab("","eye"),
         UI     = Window:AddTab("","settings")
@@ -315,23 +335,27 @@ return function(Exec, keydata, keycheck)
 
             setRichLabel(pingLabel, "<b>Ping</b>: " .. pingText)
             setRichLabel(fpsLabel, "<b>FPS</b>: " .. tostring(fps))
+-- เวลา ณ ตอนนี้
+setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
 
-            -- เวลา ณ ตอนนี้
-            setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
+-- Time left (ถ้ามี expireTs)
+if expireTs then
+    local okNow, dtNow = pcall(function()
+        return DateTime.now()
+    end)
 
-            -- Time left (ถ้ามี expireTs)
-            if expireTs and (typeof(DateTime) == "table" or typeof(DateTime) == "userdata") then
-                local okNow, dtNow = pcall(DateTime.now, DateTime)
-                if okNow and dtNow then
-                    local nowTs = dtNow.UnixTimestamp
-                    local remain = expireTs - nowTs
-                    if remain <= 0 then
-                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: <font color=\"#ff5555\">Expired</font>")
-                    else
-                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: " .. formatDuration(remain))
-                    end
-                end
-            end
+    if okNow and dtNow then
+        local nowTs = dtNow.UnixTimestamp
+        local remain = expireTs - nowTs
+
+        if remain <= 0 then
+            setRichLabel(leftTimeLabel, "<b>Time Left</b>: <font color=\"#ff5555\">Expired</font>")
+        else
+            setRichLabel(leftTimeLabel, "<b>Time Left</b>: " .. formatDuration(remain))
+        end
+    end
+end
+
         end
     end)
 
