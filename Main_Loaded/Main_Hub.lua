@@ -1,9 +1,12 @@
 -- MainHub.lua
--- Must return function(Exec, keydata, keycheck)
+-- วางไฟล์นี้บน raw GitHub แล้วให้ MAINHUB_URL ชี้มาที่ไฟล์นี้
+-- ต้อง return function(Exec, keydata, keycheck)
 
 return function(Exec, keydata, keycheck)
-    -- basic guard
-    if keycheck ~= "success" then
+    ----------------------------------------------------------------
+    -- Guard: ต้องมาจาก Key UI เท่านั้น
+    ----------------------------------------------------------------
+    if keycheck ~= "BxB.ware-universal-private-*&^%$#$*#%&@#" then
         return
     end
 
@@ -15,12 +18,12 @@ return function(Exec, keydata, keycheck)
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
-    local Stats = game:GetService("Stats")
+    local StatsService = game:GetService("Stats")
 
     local LocalPlayer = Players.LocalPlayer
 
     ----------------------------------------------------------------
-    -- Helper: character / humanoid / root
+    -- Helpers: Character / Humanoid / Root
     ----------------------------------------------------------------
     local function getCharacter()
         return LocalPlayer and LocalPlayer.Character or nil
@@ -31,28 +34,112 @@ return function(Exec, keydata, keycheck)
         if not char then
             return nil
         end
+
         return char:FindFirstChildOfClass("Humanoid")
     end
 
-    local function getRoot()
+    local function getRootPart()
         local char = getCharacter()
         if not char then
             return nil
         end
+
         return char:FindFirstChild("HumanoidRootPart")
     end
 
     ----------------------------------------------------------------
-    -- Obsidian URLs (change to your repo)
+    -- Helpers: Time / Date (ใช้ DateTime, ไม่ใช้ os.*)
     ----------------------------------------------------------------
+    local function formatDateTime(dt)
+        -- dt = Roblox DateTime
+        local d = dt.Day
+        local m = dt.Month
+        local y = dt.Year % 100
+        local h = dt.Hour
+        local mi = dt.Minute
+        local s = dt.Second
+
+        return string.format("%02d/%02d/%02d - %02d:%02d:%02d", d, m, y, h, mi, s)
+    end
+
+    local function formatUnixTimestamp(ts)
+        if type(ts) ~= "number" then
+            return "N/A"
+        end
+
+        if typeof(DateTime) == "table" or typeof(DateTime) == "userdata" then
+            local ok, dt = pcall(DateTime.fromUnixTimestamp, ts)
+            if ok and dt then
+                return formatDateTime(dt)
+            end
+        end
+
+        return tostring(ts)
+    end
+
+    local function getNowString()
+        if typeof(DateTime) == "table" or typeof(DateTime) == "userdata" then
+            local ok, dt = pcall(DateTime.now, DateTime)
+            if ok and dt then
+                return formatDateTime(dt)
+            end
+        end
+
+        return "N/A"
+    end
+
+    local function formatDuration(sec)
+        if type(sec) ~= "number" then
+            return "N/A"
+        end
+
+        sec = math.floor(sec)
+        if sec <= 0 then
+            return "0s"
+        end
+
+        local days = math.floor(sec / 86400)
+        sec = sec % 86400
+
+        local hours = math.floor(sec / 3600)
+        sec = sec % 3600
+
+        local minutes = math.floor(sec / 60)
+        sec = sec % 60
+
+        local parts = {}
+
+        if days > 0 then
+            table.insert(parts, tostring(days) .. "d")
+        end
+
+        if hours > 0 then
+            table.insert(parts, tostring(hours) .. "h")
+        end
+
+        if minutes > 0 then
+            table.insert(parts, tostring(minutes) .. "m")
+        end
+
+        if sec > 0 or #parts == 0 then
+            table.insert(parts, tostring(sec) .. "s")
+        end
+
+        return table.concat(parts, " ")
+    end
 
     ----------------------------------------------------------------
-    -- Load Obsidian
+    -- โหลด Obsidian Library ผ่าน Exec.HttpGet (ใช้ repo เดียวกับที่คุณใช้)
     ----------------------------------------------------------------
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+    local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+
+    local function getFromRepo(path)
+        return Exec.HttpGet(repo .. path)
+    end
+
+    local Library = loadstring(getFromRepo("Library.lua"))()
+    local ThemeManager = loadstring(getFromRepo("addons/ThemeManager.lua"))()
+    local SaveManager  = loadstring(getFromRepo("addons/SaveManager.lua"))()
 
     if ThemeManager and type(ThemeManager.SetLibrary) == "function" then
         ThemeManager:SetLibrary(Library)
@@ -87,7 +174,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
     }
 
     ----------------------------------------------------------------
-    -- Small helpers
+    -- Helpers: RichText Label
     ----------------------------------------------------------------
     local function setRichLabel(label, text)
         if label and label.TextLabel then
@@ -99,9 +186,11 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
     local function maskKey(key)
         key = tostring(key or "")
         local len = #key
+
         if len <= 6 then
             return string.rep("*", len)
         end
+
         return key:sub(1, 3) .. string.rep("*", len - 6) .. key:sub(len - 2, len)
     end
 
@@ -114,44 +203,66 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
     end
 
     ----------------------------------------------------------------
-    -- TAB 1: Status
+    -- TAB 1: Status (Key / Server / Credits / Key Time)
     ----------------------------------------------------------------
     local StatusKeyBox     = Tabs.Status:AddLeftGroupbox("Key & User")
     local StatusCreditsBox = Tabs.Status:AddLeftGroupbox("Credits")
     local StatusServerBox  = Tabs.Status:AddRightGroupbox("Server & Performance")
 
-    -- Key & user info
+    -- Key & User
     local keyMasked = maskKey(keydata.key or "N/A")
     local role = keydata.role or "N/A"
+    local keyTimestamp = tonumber(keydata.timestamp)
+    local expireTs = tonumber(keydata.expire or keydata.expire_at or keydata.expire_unix)
 
     local keyLabel      = StatusKeyBox:AddLabel("", true)
     local roleLabel     = StatusKeyBox:AddLabel("", true)
     local hwidLabel     = StatusKeyBox:AddLabel("", true)
     local userLabel     = StatusKeyBox:AddLabel("", true)
+    local keyTimeLabel  = StatusKeyBox:AddLabel("", true)
+    local nowTimeLabel  = StatusKeyBox:AddLabel("", true)
+    local expireLabel   = StatusKeyBox:AddLabel("", true)
+    local leftTimeLabel = StatusKeyBox:AddLabel("", true)
 
     setRichLabel(keyLabel, "<b>Key</b>: " .. keyMasked)
     setRichLabel(roleLabel, "<b>Role</b>: " .. role)
     setRichLabel(hwidLabel, "<b>HWID Hash</b>: " .. shortHash(keydata.hwid_hash))
     setRichLabel(userLabel, "<b>User</b>: " .. (LocalPlayer and LocalPlayer.Name or "N/A"))
 
+    if keyTimestamp then
+        setRichLabel(keyTimeLabel, "<b>Key Time</b>: " .. formatUnixTimestamp(keyTimestamp))
+    else
+        setRichLabel(keyTimeLabel, "<b>Key Time</b>: N/A")
+    end
+
+    setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
+
+    if expireTs then
+        setRichLabel(expireLabel, "<b>Expire At</b>: " .. formatUnixTimestamp(expireTs))
+    else
+        setRichLabel(expireLabel, "<b>Expire At</b>: N/A")
+    end
+
+    setRichLabel(leftTimeLabel, "<b>Time Left</b>: N/A")
+
     StatusKeyBox:AddDivider()
 
     -- Credits
-    local creditText = table.concat({
+    local creditLines = {
         "<b>Obsidian Universal Hub</b>",
-        "Developer: <font color=\"#7dcfff\">YourName / Boom</font>",
+        "Developer: <font color=\"#7dcfff\">YOUR_NAME_HERE</font>",
         "Library: <font color=\"#b58cff\">Obsidian UI</font>",
         "Discord: <font color=\"#55ff99\">https://discord.gg/yourdiscord</font>",
         "",
         "<font color=\"#aaaaaa\">Please do not leak / resell.</font>"
-    }, "\n")
+    }
 
-    local creditLabel = StatusCreditsBox:AddLabel(creditText, true)
+    local creditLabel = StatusCreditsBox:AddLabel(table.concat(creditLines, "\n"), true)
     if creditLabel and creditLabel.TextLabel then
         creditLabel.TextLabel.RichText = true
     end
 
-    -- Server & realtime stats
+    -- Server & Performance
     local placeId = game.PlaceId
     local jobId   = game.JobId
 
@@ -160,8 +271,6 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
     local playerCountLabel = StatusServerBox:AddLabel("", true)
     local pingLabel        = StatusServerBox:AddLabel("", true)
     local fpsLabel         = StatusServerBox:AddLabel("", true)
-    local hpLabel          = StatusServerBox:AddLabel("", true)
-    local posLabel         = StatusServerBox:AddLabel("", true)
 
     setRichLabel(serverPlaceLabel, "<b>PlaceId</b>: " .. tostring(placeId))
     setRichLabel(serverJobLabel, "<b>JobId</b>: " .. tostring(jobId))
@@ -172,27 +281,27 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
     end
 
     updatePlayerCount()
+
     Players.PlayerAdded:Connect(updatePlayerCount)
     Players.PlayerRemoving:Connect(updatePlayerCount)
 
-    -- realtime ping/fps/hp/pos
+    -- FPS / Ping / Time update ทุก ~1 วิ
     local frameCount = 0
     local timeAcc = 0
-    local statTimer = 0
 
     RunService.RenderStepped:Connect(function(dt)
-        frameCount += 1
-        timeAcc += dt
-        statTimer += dt
+        frameCount = frameCount + 1
+        timeAcc = timeAcc + dt
 
         if timeAcc >= 1 then
             local fps = math.floor(frameCount / timeAcc + 0.5)
             frameCount = 0
             timeAcc = 0
 
+            -- Ping
             local pingText = "N/A"
             local okPing, pingValue = pcall(function()
-                local pingStat = Stats.Network.ServerStatsItem["Data Ping"]
+                local pingStat = StatsService.Network.ServerStatsItem["Data Ping"]
                 if pingStat then
                     return pingStat:GetValue()
                 end
@@ -204,35 +313,28 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
             setRichLabel(pingLabel, "<b>Ping</b>: " .. pingText)
             setRichLabel(fpsLabel, "<b>FPS</b>: " .. tostring(fps))
-        end
 
-        if statTimer >= 0.2 then
-            statTimer = 0
+            -- เวลา ณ ตอนนี้
+            setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
 
-            local hum = getHumanoid()
-            if hum then
-                local hp = math.floor(hum.Health + 0.5)
-                local maxHp = math.floor(hum.MaxHealth + 0.5)
-                setRichLabel(hpLabel, "<b>HP</b>: " .. hp .. " / " .. maxHp)
-            else
-                setRichLabel(hpLabel, "<b>HP</b>: N/A")
-            end
-
-            local root = getRoot()
-            if root then
-                local p = root.Position
-                setRichLabel(
-                    posLabel,
-                    string.format("<b>Position</b>: %.1f, %.1f, %.1f", p.X, p.Y, p.Z)
-                )
-            else
-                setRichLabel(posLabel, "<b>Position</b>: N/A")
+            -- Time left (ถ้ามี expireTs)
+            if expireTs and (typeof(DateTime) == "table" or typeof(DateTime) == "userdata") then
+                local okNow, dtNow = pcall(DateTime.now, DateTime)
+                if okNow and dtNow then
+                    local nowTs = dtNow.UnixTimestamp
+                    local remain = expireTs - nowTs
+                    if remain <= 0 then
+                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: <font color=\"#ff5555\">Expired</font>")
+                    else
+                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: " .. formatDuration(remain))
+                    end
+                end
             end
         end
     end)
 
     ----------------------------------------------------------------
-    -- TAB 2: Player
+    -- TAB 2: Player (WalkSpeed / Jump / Fly / NoClip / Inf Jump)
     ----------------------------------------------------------------
     local PlayerMoveBox  = Tabs.Player:AddLeftGroupbox("Movement")
     local PlayerExtraBox = Tabs.Player:AddRightGroupbox("Extra")
@@ -274,7 +376,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         end
     end
 
-    -- NoClip
+    -- NoClip tracking
     local noclipParts = {}
 
     local function updateNoClip()
@@ -363,7 +465,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
             return
         end
 
-        local root = getRoot()
+        local root = getRootPart()
         local cam = workspace.CurrentCamera
         if not root or not cam then
             resetFlyBody()
@@ -412,18 +514,19 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         flyBG.CFrame = cam.CFrame
     end
 
-    -- realtime apply movement
     RunService.Heartbeat:Connect(function()
         updateDefaultHumanoidValues()
 
         local hum = getHumanoid()
         if hum then
+            -- WalkSpeed
             if MovementState.WalkSpeedEnabled then
                 hum.WalkSpeed = MovementState.WalkSpeedValue
             elseif DefaultValues.WalkSpeed then
                 hum.WalkSpeed = DefaultValues.WalkSpeed
             end
 
+            -- JumpPower / JumpHeight
             local ok = pcall(function()
                 if hum.UseJumpPower ~= false then
                     if MovementState.JumpPowerEnabled then
@@ -444,12 +547,12 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
             end
         end
 
+        -- NoClip
         if MovementState.NoClip then
             updateNoClip()
-        else
-            disableNoClip()
         end
 
+        -- Fly
         if MovementState.FlyEnabled then
             updateFly()
         else
@@ -457,23 +560,23 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         end
     end)
 
+    -- Key input for Fly
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then
             return
         end
 
-        local kc = input.KeyCode
-        if kc == Enum.KeyCode.W then
+        if input.KeyCode == Enum.KeyCode.W then
             flyKeys.W = true
-        elseif kc == Enum.KeyCode.A then
+        elseif input.KeyCode == Enum.KeyCode.A then
             flyKeys.A = true
-        elseif kc == Enum.KeyCode.S then
+        elseif input.KeyCode == Enum.KeyCode.S then
             flyKeys.S = true
-        elseif kc == Enum.KeyCode.D then
+        elseif input.KeyCode == Enum.KeyCode.D then
             flyKeys.D = true
-        elseif kc == Enum.KeyCode.Space then
+        elseif input.KeyCode == Enum.KeyCode.Space then
             flyKeys.Space = true
-        elseif kc == Enum.KeyCode.LeftShift then
+        elseif input.KeyCode == Enum.KeyCode.LeftShift then
             flyKeys.LeftShift = true
         end
     end)
@@ -483,23 +586,22 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
             return
         end
 
-        local kc = input.KeyCode
-        if kc == Enum.KeyCode.W then
+        if input.KeyCode == Enum.KeyCode.W then
             flyKeys.W = false
-        elseif kc == Enum.KeyCode.A then
+        elseif input.KeyCode == Enum.KeyCode.A then
             flyKeys.A = false
-        elseif kc == Enum.KeyCode.S then
+        elseif input.KeyCode == Enum.KeyCode.S then
             flyKeys.S = false
-        elseif kc == Enum.KeyCode.D then
+        elseif input.KeyCode == Enum.KeyCode.D then
             flyKeys.D = false
-        elseif kc == Enum.KeyCode.Space then
+        elseif input.KeyCode == Enum.KeyCode.Space then
             flyKeys.Space = false
-        elseif kc == Enum.KeyCode.LeftShift then
+        elseif input.KeyCode == Enum.KeyCode.LeftShift then
             flyKeys.LeftShift = false
         end
     end)
 
-    -- UI for movement
+    -- UI Controls สำหรับ movement
     PlayerMoveBox:AddToggle("Move_WalkSpeed_Toggle", {
         Text = "WalkSpeed",
         Default = false,
@@ -584,22 +686,12 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
     })
 
     ----------------------------------------------------------------
-    -- TAB 3: ESP
+    -- TAB 3: ESP (Highlight + Drawing: Box / Corner / Tracer / Name)
     ----------------------------------------------------------------
-    local ESPBox = Tabs.ESP:AddLeftGroupbox("Player ESP")
+    local ESPBoxLeft  = Tabs.ESP:AddLeftGroupbox("Highlight ESP (3D)")
+    local ESPBoxRight = Tabs.ESP:AddRightGroupbox("2D ESP (Drawing)")
 
-    local ESPState = {
-        Enabled = false,
-        TeamCheck = true,
-        FillTransparency = 0.75
-    }
-
-    local espFolder = Instance.new("Folder")
-    espFolder.Name = "Obsidian_ESP"
-    espFolder.Parent = workspace
-
-    local playerESP = {}
-
+    -- Helper ใช้ร่วมกัน
     local function getESPColorForPlayer(plr)
         if plr.TeamColor then
             local color = plr.TeamColor.Color
@@ -614,23 +706,23 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         if plr == LocalPlayer then
             return false
         end
-        if ESPState.TeamCheck and LocalPlayer and LocalPlayer.Team ~= nil then
-            if plr.Team == LocalPlayer.Team then
-                return false
-            end
-        end
         return true
     end
 
-    local function removeESPForPlayer(plr)
-        local h = playerESP[plr]
-        if h then
-            playerESP[plr] = nil
-            if h.Parent then
-                h:Destroy()
-            end
-        end
-    end
+    ------------------------------------------------------------
+    -- Highlight ESP
+    ------------------------------------------------------------
+    local HighlightState = {
+        Enabled = false,
+        TeamCheck = true,
+        FillTransparency = 0.75
+    }
+
+    local highlightFolder = Instance.new("Folder")
+    highlightFolder.Name = "Obsidian_HighlightESP"
+    highlightFolder.Parent = workspace
+
+    local playerHighlight = {}
 
     local function updateHighlightSettings(h, plr)
         if not h then
@@ -638,20 +730,42 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         end
         h.FillColor = getESPColorForPlayer(plr)
         h.OutlineColor = Color3.fromRGB(0, 0, 0)
-        h.FillTransparency = ESPState.FillTransparency
+        h.FillTransparency = HighlightState.FillTransparency
         h.OutlineTransparency = 0
         h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     end
 
-    local function createESPForPlayer(plr)
-        if not ESPState.Enabled then
+    local function highlightShouldDraw(plr)
+        if plr == LocalPlayer then
+            return false
+        end
+        if HighlightState.TeamCheck and LocalPlayer and LocalPlayer.Team ~= nil then
+            if plr.Team == LocalPlayer.Team then
+                return false
+            end
+        end
+        return true
+    end
+
+    local function removeHighlightForPlayer(plr)
+        local h = playerHighlight[plr]
+        if h then
+            playerHighlight[plr] = nil
+            if h.Parent then
+                h:Destroy()
+            end
+        end
+    end
+
+    local function createHighlightForPlayer(plr)
+        if not HighlightState.Enabled then
             return
         end
-        if not shouldHighlight(plr) then
-            removeESPForPlayer(plr)
+        if not highlightShouldDraw(plr) then
+            removeHighlightForPlayer(plr)
             return
         end
-        if playerESP[plr] then
+        if playerHighlight[plr] then
             return
         end
 
@@ -660,44 +774,45 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
             return
         end
 
-        local highlight = Instance.new("Highlight")
-        highlight.Adornee = char
-        highlight.Parent = espFolder
+        local h = Instance.new("Highlight")
+        h.Adornee = char
+        h.Parent = highlightFolder
 
-        updateHighlightSettings(highlight, plr)
+        updateHighlightSettings(h, plr)
 
-        playerESP[plr] = highlight
+        playerHighlight[plr] = h
     end
 
-    local function refreshAllESP()
-        if not ESPState.Enabled then
-            for plr, h in pairs(playerESP) do
+    local function refreshAllHighlights()
+        if not HighlightState.Enabled then
+            for plr, h in pairs(playerHighlight) do
                 if h.Parent then
                     h:Destroy()
                 end
-                playerESP[plr] = nil
+                playerHighlight[plr] = nil
             end
             return
         end
 
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer then
-                createESPForPlayer(plr)
+                createHighlightForPlayer(plr)
             end
         end
     end
 
+    -- Hooks
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
             plr.CharacterAdded:Connect(function()
-                if ESPState.Enabled then
+                if HighlightState.Enabled then
                     task.wait(0.2)
-                    createESPForPlayer(plr)
+                    createHighlightForPlayer(plr)
                 end
             end)
 
             plr:GetPropertyChangedSignal("TeamColor"):Connect(function()
-                local h = playerESP[plr]
+                local h = playerHighlight[plr]
                 if h then
                     updateHighlightSettings(h, plr)
                 end
@@ -711,14 +826,14 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         end
 
         plr.CharacterAdded:Connect(function()
-            if ESPState.Enabled then
+            if HighlightState.Enabled then
                 task.wait(0.2)
-                createESPForPlayer(plr)
+                createHighlightForPlayer(plr)
             end
         end)
 
         plr:GetPropertyChangedSignal("TeamColor"):Connect(function()
-            local h = playerESP[plr]
+            local h = playerHighlight[plr]
             if h then
                 updateHighlightSettings(h, plr)
             end
@@ -726,28 +841,29 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
     end)
 
     Players.PlayerRemoving:Connect(function(plr)
-        removeESPForPlayer(plr)
+        removeHighlightForPlayer(plr)
     end)
 
-    ESPBox:AddToggle("ESP_Player_Toggle", {
-        Text = "Enable Player ESP",
+    -- UI สำหรับ Highlight ESP
+    ESPBoxLeft:AddToggle("ESP_Highlight_Toggle", {
+        Text = "Enable Highlight ESP",
         Default = false,
         Callback = function(value)
-            ESPState.Enabled = value
-            refreshAllESP()
+            HighlightState.Enabled = value
+            refreshAllHighlights()
         end
     })
 
-    ESPBox:AddToggle("ESP_TeamCheck_Toggle", {
+    ESPBoxLeft:AddToggle("ESP_Highlight_TeamCheck", {
         Text = "Team Check",
         Default = true,
         Callback = function(value)
-            ESPState.TeamCheck = value
-            refreshAllESP()
+            HighlightState.TeamCheck = value
+            refreshAllHighlights()
         end
     })
 
-    ESPBox:AddSlider("ESP_FillTransparency", {
+    ESPBoxLeft:AddSlider("ESP_Highlight_FillTransparency", {
         Text = "Fill Transparency",
         Default = 75,
         Min = 0,
@@ -755,12 +871,300 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         Rounding = 0,
         Compact = false,
         Callback = function(value)
-            ESPState.FillTransparency = math.clamp(value / 100, 0, 1)
-            for plr, h in pairs(playerESP) do
+            HighlightState.FillTransparency = math.clamp(value / 100, 0, 1)
+            for plr, h in pairs(playerHighlight) do
                 updateHighlightSettings(h, plr)
             end
         end
     })
+
+    ------------------------------------------------------------
+    -- 2D ESP (Drawing): Box / Corner / Tracer / Name
+    ------------------------------------------------------------
+    local drawingNew
+    pcall(function()
+        if type(Drawing) == "table" and type(Drawing.new) == "function" then
+            drawingNew = Drawing.new
+        elseif type(Drawing) == "function" then
+            drawingNew = Drawing
+        end
+    end)
+
+    local drawingAvailable = drawingNew ~= nil
+
+    local DrawingState = {
+        Enabled = false,
+        ShowBox = true,
+        ShowCorner = false,
+        ShowTracer = true,
+        ShowName = true
+    }
+
+    local drawingESP = {} -- [player] = { Box, Tracer, Name, Corners = {Line1..Line8} }
+
+    local function removeDrawingForPlayer(plr)
+        local holder = drawingESP[plr]
+        if holder then
+            drawingESP[plr] = nil
+            for _, obj in pairs(holder) do
+                if typeof(obj) == "table" and obj.Remove then
+                    pcall(function() obj:Remove() end)
+                end
+            end
+        end
+    end
+
+    local function getOrCreateDrawingForPlayer(plr)
+        if not drawingAvailable then
+            return nil
+        end
+
+        local holder = drawingESP[plr]
+        if holder then
+            return holder
+        end
+
+        holder = {}
+
+        holder.Box = drawingNew("Square")
+        holder.Box.Thickness = 1
+        holder.Box.Filled = false
+        holder.Box.Visible = false
+
+        holder.Tracer = drawingNew("Line")
+        holder.Tracer.Thickness = 1
+        holder.Tracer.Visible = false
+
+        holder.Name = drawingNew("Text")
+        holder.Name.Size = 13
+        holder.Name.Center = true
+        holder.Name.Outline = true
+        holder.Name.Visible = false
+
+        holder.Corners = {}
+        for i = 1, 8 do
+            local line = drawingNew("Line")
+            line.Thickness = 1
+            line.Visible = false
+            holder.Corners[i] = line
+        end
+
+        drawingESP[plr] = holder
+        return holder
+    end
+
+    local function hideAllDrawing()
+        for _, holder in pairs(drawingESP) do
+            if holder.Box then
+                holder.Box.Visible = false
+            end
+            if holder.Tracer then
+                holder.Tracer.Visible = false
+            end
+            if holder.Name then
+                holder.Name.Visible = false
+            end
+            if holder.Corners then
+                for _, line in ipairs(holder.Corners) do
+                    line.Visible = false
+                end
+            end
+        end
+    end
+
+    if not drawingAvailable then
+        ESPBoxRight:AddLabel("Drawing API not available\nBox/Corner/Tracer ESP disabled", true)
+    else
+        ESPBoxRight:AddToggle("ESP2D_Enable", {
+            Text = "Enable 2D ESP (Drawing)",
+            Default = false,
+            Callback = function(value)
+                DrawingState.Enabled = value
+                if not value then
+                    hideAllDrawing()
+                end
+            end
+        })
+
+        ESPBoxRight:AddToggle("ESP2D_Box", {
+            Text = "Box",
+            Default = true,
+            Callback = function(value)
+                DrawingState.ShowBox = value
+            end
+        })
+
+        ESPBoxRight:AddToggle("ESP2D_Corner", {
+            Text = "Corner",
+            Default = false,
+            Callback = function(value)
+                DrawingState.ShowCorner = value
+            end
+        })
+
+        ESPBoxRight:AddToggle("ESP2D_Tracer", {
+            Text = "Tracer",
+            Default = true,
+            Callback = function(value)
+                DrawingState.ShowTracer = value
+            end
+        })
+
+        ESPBoxRight:AddToggle("ESP2D_Name", {
+            Text = "Name",
+            Default = true,
+            Callback = function(value)
+                DrawingState.ShowName = value
+            end
+        })
+    end
+
+    -- Update 2D ESP ทุกเฟรม
+    if drawingAvailable then
+        RunService.RenderStepped:Connect(function()
+            if not DrawingState.Enabled then
+                hideAllDrawing()
+                return
+            end
+
+            local cam = workspace.CurrentCamera
+            if not cam then
+                hideAllDrawing()
+                return
+            end
+
+            local viewport = cam.ViewportSize
+            local screenCenter = Vector2.new(viewport.X / 2, viewport.Y)
+
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and shouldHighlight(plr) then
+                    local char = plr.Character
+                    local root = char and char:FindFirstChild("HumanoidRootPart")
+
+                    if char and root then
+                        local pos, onScreen = cam:WorldToViewportPoint(root.Position)
+                        if onScreen and pos.Z > 0 then
+                            local holder = getOrCreateDrawingForPlayer(plr)
+                            if not holder then
+                                continue
+                            end
+
+                            local distance = (root.Position - cam.CFrame.Position).Magnitude
+                            local sizeFactor = math.clamp(2000 / distance, 30, 250)
+                            local boxW = sizeFactor * 0.6
+                            local boxH = sizeFactor
+
+                            local boxX = pos.X - boxW / 2
+                            local boxY = pos.Y - boxH / 2
+
+                            local color = getESPColorForPlayer(plr)
+
+                            -- Box
+                            if DrawingState.ShowBox then
+                                holder.Box.Color = color
+                                holder.Box.Size = Vector2.new(boxW, boxH)
+                                holder.Box.Position = Vector2.new(boxX, boxY)
+                                holder.Box.Visible = true
+                            else
+                                holder.Box.Visible = false
+                            end
+
+                            -- Tracer
+                            if DrawingState.ShowTracer then
+                                holder.Tracer.Color = color
+                                holder.Tracer.From = screenCenter
+                                holder.Tracer.To = Vector2.new(pos.X, pos.Y + boxH / 2)
+                                holder.Tracer.Visible = true
+                            else
+                                holder.Tracer.Visible = false
+                            end
+
+                            -- Name
+                            if DrawingState.ShowName then
+                                holder.Name.Color = color
+                                holder.Name.Text = plr.Name
+                                holder.Name.Position = Vector2.new(pos.X, boxY - 14)
+                                holder.Name.Visible = true
+                            else
+                                holder.Name.Visible = false
+                            end
+
+                            -- Corner
+                            if DrawingState.ShowCorner then
+                                local cornerLen = math.floor(boxH / 4)
+
+                                local corners = holder.Corners
+                                local lt = Vector2.new(boxX, boxY)
+                                local rt = Vector2.new(boxX + boxW, boxY)
+                                local lb = Vector2.new(boxX, boxY + boxH)
+                                local rb = Vector2.new(boxX + boxW, boxY + boxH)
+
+                                -- top-left
+                                corners[1].Color = color
+                                corners[1].From = lt
+                                corners[1].To = Vector2.new(lt.X + cornerLen, lt.Y)
+                                corners[1].Visible = true
+
+                                corners[2].Color = color
+                                corners[2].From = lt
+                                corners[2].To = Vector2.new(lt.X, lt.Y + cornerLen)
+                                corners[2].Visible = true
+
+                                -- top-right
+                                corners[3].Color = color
+                                corners[3].From = rt
+                                corners[3].To = Vector2.new(rt.X - cornerLen, rt.Y)
+                                corners[3].Visible = true
+
+                                corners[4].Color = color
+                                corners[4].From = rt
+                                corners[4].To = Vector2.new(rt.X, rt.Y + cornerLen)
+                                corners[4].Visible = true
+
+                                -- bottom-left
+                                corners[5].Color = color
+                                corners[5].From = lb
+                                corners[5].To = Vector2.new(lb.X + cornerLen, lb.Y)
+                                corners[5].Visible = true
+
+                                corners[6].Color = color
+                                corners[6].From = lb
+                                corners[6].To = Vector2.new(lb.X, lb.Y - cornerLen)
+                                corners[6].Visible = true
+
+                                -- bottom-right
+                                corners[7].Color = color
+                                corners[7].From = rb
+                                corners[7].To = Vector2.new(rb.X - cornerLen, rb.Y)
+                                corners[7].Visible = true
+
+                                corners[8].Color = color
+                                corners[8].From = rb
+                                corners[8].To = Vector2.new(rb.X, rb.Y - cornerLen)
+                                corners[8].Visible = true
+                            else
+                                -- hide all corners
+                                local corners = drawingESP[plr] and drawingESP[plr].Corners
+                                if corners then
+                                    for _, line in ipairs(corners) do
+                                        line.Visible = false
+                                    end
+                                end
+                            end
+                        else
+                            -- ไม่ onScreen หรือระยะไม่โอเค -> ซ่อน
+                            removeDrawingForPlayer(plr)
+                        end
+                    else
+                        -- ไม่มี character -> ลบ obj
+                        removeDrawingForPlayer(plr)
+                    end
+                else
+                    removeDrawingForPlayer(plr)
+                end
+            end
+        end)
+    end
 
     ----------------------------------------------------------------
     -- TAB 4: UI / Theme / Config
@@ -782,6 +1186,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
     UIBoxLeft:AddLabel("If UI disappears, re-execute script.", true)
 
+    -- Theme / Config integration (defensive)
     if SaveManager and type(SaveManager.BuildConfigSection) == "function" then
         SaveManager:BuildConfigSection(Tabs.UI)
     end
@@ -794,4 +1199,3 @@ local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
         SaveManager:LoadAutoloadConfig()
     end
 end
-
