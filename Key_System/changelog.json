@@ -1,0 +1,31 @@
+{
+  "entries": [
+    {
+      "version": "1.0.3",
+      "date": "2025-11-30",
+      "tag": "stable",
+      "changes": {
+        "Added": [
+          "Added Key UI status monitor.",
+          "Added scriptinfo.json and changelog.json support."
+        ],
+        "Changed": [
+          "Improved Exec.HttpGet fallback."
+        ],
+        "Fixed": [
+          "Fixed Library.Options nil errors in some executors."
+        ]
+      }
+    },
+    {
+      "version": "1.0.2",
+      "date": "2025-11-25",
+      "tag": "beta",
+      "changes": {
+        "Added": [
+          "Initial Obsidian Key UI."
+        ]
+      }
+    }
+  ]
+}
