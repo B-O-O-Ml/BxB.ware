@@ -5,7 +5,7 @@ return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     -- Guard: ต้องมาจาก Key UI เท่านั้น
     ----------------------------------------------------------------
-    if keycheck ~= "success" then
+    if keycheck ~= "BxB.ware-universal-private-*&^%$#$*#%&@#" then
         return
     end
 
