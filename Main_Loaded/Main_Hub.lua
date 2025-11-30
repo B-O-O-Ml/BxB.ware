@@ -1,16 +1,52 @@
+
+        
 -- MainHub.lua
--- วางไฟล์นี้บน raw GitHub แล้วให้ MAINHUB_URL ชี้มาที่ไฟล์นี้
--- ต้อง return function(Exec, keydata, keycheck)
+-- ต้องถูกเรียกผ่าน Key UI: startMainHub(keydata, Library) -> loadstring(HttpGet(MAINHUB_URL))()(Exec, keydata, "success")
+-- return function(Exec, keydata, keycheck)
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
-    -- Guard: ต้องมาจาก Key UI เท่านั้น
+    -- Guard ชั้นที่ 1: keycheck
     ----------------------------------------------------------------
     if keycheck ~= "BxB.ware-universal-private-*&^%$#$*#%&@#" then
         return
     end
 
     keydata = keydata or {}
+
+    ----------------------------------------------------------------
+    -- Guard ชั้นที่ 2: เช็คหมดอายุจาก keydata (ป้องกัน loader ถูกแก้)
+    ----------------------------------------------------------------
+    local function getUnixNow()
+        local ok, dt = pcall(DateTime.now)
+        if ok and dt then
+            return dt.UnixTimestamp
+        end
+        return nil
+    end
+
+    local function isKeydataExpired(kd)
+        if type(kd) ~= "table" then
+            return false
+        end
+
+        local expireTs = tonumber(kd.expire or kd.expire_at or kd.expire_unix or kd.expires_at)
+        if not expireTs then
+            return false
+        end
+
+        local nowTs = getUnixNow()
+        if not nowTs then
+            return false
+        end
+
+        return nowTs >= expireTs
+    end
+
+    if isKeydataExpired(keydata) then
+        warn("[Obsidian] Key expired (MainHub second layer).")
+        return
+    end
 
     ----------------------------------------------------------------
     -- Services
@@ -48,64 +84,39 @@ return function(Exec, keydata, keycheck)
     end
 
     ----------------------------------------------------------------
-    -- Helpers: Time / Date (ใช้ DateTime, ไม่ใช้ os.*)
+    -- Helpers: Time / Date
     ----------------------------------------------------------------
-local function formatDateTime(dt)
-    -- DateTime:ToLocalTime() คืนค่า table ที่มี Year/Month/Day/... (ไม่ใช่ DateTime โดยตรง)
-    local ok, info = pcall(function()
-        return dt:ToLocalTime()
-    end)
+    local function formatDateTime(dt)
+        local d = dt.Day
+        local m = dt.Month
+        local y = dt.Year % 100
+        local h = dt.Hour
+        local mi = dt.Minute
+        local s = dt.Second
 
-    if not ok or type(info) ~= "table" then
-        -- fallback ลอง UTC เผื่อบาง executor แปลก ๆ
-        local ok2, info2 = pcall(function()
-            return dt:ToUniversalTime()
-        end)
-        if not ok2 or type(info2) ~= "table" then
+        return string.format("%02d/%02d/%02d - %02d:%02d:%02d", d, m, y, h, mi, s)
+    end
+
+    local function formatUnixTimestamp(ts)
+        if type(ts) ~= "number" then
             return "N/A"
         end
-        info = info2
-    end
 
-    local d  = info.Day
-    local m  = info.Month
-    local y  = info.Year % 100
-    local h  = info.Hour
-    local mi = info.Minute
-    local s  = info.Second
+        local ok, dt = pcall(DateTime.fromUnixTimestamp, ts)
+        if ok and dt then
+            return formatDateTime(dt)
+        end
 
-    return string.format("%02d/%02d/%02d - %02d:%02d:%02d", d, m, y, h, mi, s)
-end
-
-local function formatUnixTimestamp(ts)
-    if type(ts) ~= "number" then
-        return "N/A"
-    end
-
-    local ok, dt = pcall(function()
-        return DateTime.fromUnixTimestamp(ts)
-    end)
-
-    if not ok or not dt then
         return tostring(ts)
     end
 
-    return formatDateTime(dt)
-end
-
-
-local function getNowString()
-    local ok, dt = pcall(function()
-        return DateTime.now()
-    end)
-
-    if not ok or not dt then
+    local function getNowString()
+        local ok, dt = pcall(DateTime.now)
+        if ok and dt then
+            return formatDateTime(dt)
+        end
         return "N/A"
     end
-
-    return formatDateTime(dt)
-end
-
 
     local function formatDuration(sec)
         if type(sec) ~= "number" then
@@ -148,13 +159,13 @@ end
     end
 
     ----------------------------------------------------------------
-    -- โหลด Obsidian Library ผ่าน Exec.HttpGet (ใช้ repo เดียวกับที่คุณใช้)
+    -- โหลด Obsidian Library จาก repo ที่คุณใช้ (ไม่ผ่าน Exec)
     ----------------------------------------------------------------
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 
-    local Library = loadstring(game:HttpGet(repo.."Library.lua"))()
-    local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
-    local SaveManager  = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
+    local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+    local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+    local SaveManager  = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
     if ThemeManager and type(ThemeManager.SetLibrary) == "function" then
         ThemeManager:SetLibrary(Library)
@@ -175,28 +186,21 @@ end
     ----------------------------------------------------------------
     -- Window + Tabs
     ----------------------------------------------------------------
- local Window = Library:CreateWindow({
-        Title = "BxB.ware",
-            Footer = "BxB.ware | Universal | Premium",    
-                Icon = "sparkle",
+    local Window = Library:CreateWindow({
+        Title = "Obsidian | Universal Hub",
         Center = true,
-        AutoShow = true,
-
-        DisableSearch = false,              
-            SearchbarSize = UDim2.fromScale(1, 1), -- ขนาด searchbar (ใช้เมื่อ DisableSearch = false)
-        
-        Compact = true
+        AutoShow = true
     })
 
     local Tabs = {
-        Status = Window:AddTab("","shield-check"),
-        Player = Window:AddTab("","user"),
-        ESP    = Window:AddTab("","eye"),
-        UI     = Window:AddTab("","settings")
+        Status = Window:AddTab("Status"),
+        Player = Window:AddTab("Player"),
+        ESP    = Window:AddTab("ESP"),
+        UI     = Window:AddTab("UI")
     }
 
     ----------------------------------------------------------------
-    -- Helpers: RichText Label
+    -- Helpers: RichText / masking
     ----------------------------------------------------------------
     local function setRichLabel(label, text)
         if label and label.TextLabel then
@@ -225,13 +229,12 @@ end
     end
 
     ----------------------------------------------------------------
-    -- TAB 1: Status (Key / Server / Credits / Key Time)
+    -- TAB 1: Status
     ----------------------------------------------------------------
     local StatusKeyBox     = Tabs.Status:AddLeftGroupbox("Key & User")
     local StatusCreditsBox = Tabs.Status:AddLeftGroupbox("Credits")
     local StatusServerBox  = Tabs.Status:AddRightGroupbox("Server & Performance")
 
-    -- Key & User
     local keyMasked = maskKey(keydata.key or "N/A")
     local role = keydata.role or "N/A"
     local keyTimestamp = tonumber(keydata.timestamp)
@@ -269,7 +272,6 @@ end
 
     StatusKeyBox:AddDivider()
 
-    -- Credits
     local creditLines = {
         "<b>Obsidian Universal Hub</b>",
         "Developer: <font color=\"#7dcfff\">YOUR_NAME_HERE</font>",
@@ -284,7 +286,6 @@ end
         creditLabel.TextLabel.RichText = true
     end
 
-    -- Server & Performance
     local placeId = game.PlaceId
     local jobId   = game.JobId
 
@@ -303,11 +304,9 @@ end
     end
 
     updatePlayerCount()
-
     Players.PlayerAdded:Connect(updatePlayerCount)
     Players.PlayerRemoving:Connect(updatePlayerCount)
 
-    -- FPS / Ping / Time update ทุก ~1 วิ
     local frameCount = 0
     local timeAcc = 0
 
@@ -320,7 +319,6 @@ end
             frameCount = 0
             timeAcc = 0
 
-            -- Ping
             local pingText = "N/A"
             local okPing, pingValue = pcall(function()
                 local pingStat = StatsService.Network.ServerStatsItem["Data Ping"]
@@ -335,32 +333,25 @@ end
 
             setRichLabel(pingLabel, "<b>Ping</b>: " .. pingText)
             setRichLabel(fpsLabel, "<b>FPS</b>: " .. tostring(fps))
--- เวลา ณ ตอนนี้
-setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
 
--- Time left (ถ้ามี expireTs)
-if expireTs then
-    local okNow, dtNow = pcall(function()
-        return DateTime.now()
-    end)
+            setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
 
-    if okNow and dtNow then
-        local nowTs = dtNow.UnixTimestamp
-        local remain = expireTs - nowTs
-
-        if remain <= 0 then
-            setRichLabel(leftTimeLabel, "<b>Time Left</b>: <font color=\"#ff5555\">Expired</font>")
-        else
-            setRichLabel(leftTimeLabel, "<b>Time Left</b>: " .. formatDuration(remain))
-        end
-    end
-end
-
+            if expireTs then
+                local nowTs = getUnixNow()
+                if nowTs then
+                    local remain = expireTs - nowTs
+                    if remain <= 0 then
+                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: <font color=\"#ff5555\">Expired</font>")
+                    else
+                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: " .. formatDuration(remain))
+                    end
+                end
+            end
         end
     end)
 
     ----------------------------------------------------------------
-    -- TAB 2: Player (WalkSpeed / Jump / Fly / NoClip / Inf Jump)
+    -- TAB 2: Player (Movement)
     ----------------------------------------------------------------
     local PlayerMoveBox  = Tabs.Player:AddLeftGroupbox("Movement")
     local PlayerExtraBox = Tabs.Player:AddRightGroupbox("Extra")
@@ -396,13 +387,10 @@ end
                 DefaultValues.JumpPower = hum.JumpPower
                 DefaultValues.JumpHeight = hum.JumpHeight
             end)
-            if not ok then
-                -- ignore
-            end
+            if not ok then end
         end
     end
 
-    -- NoClip tracking
     local noclipParts = {}
 
     local function updateNoClip()
@@ -434,7 +422,6 @@ end
         noclipParts = {}
     end
 
-    -- Infinite Jump
     local infJumpConnection
 
     local function setInfiniteJump(enabled)
@@ -457,7 +444,6 @@ end
         end
     end
 
-    -- Fly
     local FlyState = {
         Speed = MovementState.FlySpeed
     }
@@ -545,14 +531,12 @@ end
 
         local hum = getHumanoid()
         if hum then
-            -- WalkSpeed
             if MovementState.WalkSpeedEnabled then
                 hum.WalkSpeed = MovementState.WalkSpeedValue
             elseif DefaultValues.WalkSpeed then
                 hum.WalkSpeed = DefaultValues.WalkSpeed
             end
 
-            -- JumpPower / JumpHeight
             local ok = pcall(function()
                 if hum.UseJumpPower ~= false then
                     if MovementState.JumpPowerEnabled then
@@ -568,17 +552,13 @@ end
                     end
                 end
             end)
-            if not ok then
-                -- ignore
-            end
+            if not ok then end
         end
 
-        -- NoClip
         if MovementState.NoClip then
             updateNoClip()
         end
 
-        -- Fly
         if MovementState.FlyEnabled then
             updateFly()
         else
@@ -586,7 +566,6 @@ end
         end
     end)
 
-    -- Key input for Fly
     UserInputService.InputBegan:Connect(function(input, gp)
         if gp then
             return
@@ -627,7 +606,6 @@ end
         end
     end)
 
-    -- UI Controls สำหรับ movement
     PlayerMoveBox:AddToggle("Move_WalkSpeed_Toggle", {
         Text = "WalkSpeed",
         Default = false,
@@ -712,12 +690,11 @@ end
     })
 
     ----------------------------------------------------------------
-    -- TAB 3: ESP (Highlight + Drawing: Box / Corner / Tracer / Name)
+    -- TAB 3: ESP (Highlight + 2D Drawing)
     ----------------------------------------------------------------
     local ESPBoxLeft  = Tabs.ESP:AddLeftGroupbox("Highlight ESP (3D)")
     local ESPBoxRight = Tabs.ESP:AddRightGroupbox("2D ESP (Drawing)")
 
-    -- Helper ใช้ร่วมกัน
     local function getESPColorForPlayer(plr)
         if plr.TeamColor then
             local color = plr.TeamColor.Color
@@ -735,9 +712,7 @@ end
         return true
     end
 
-    ------------------------------------------------------------
     -- Highlight ESP
-    ------------------------------------------------------------
     local HighlightState = {
         Enabled = false,
         TeamCheck = true,
@@ -827,7 +802,6 @@ end
         end
     end
 
-    -- Hooks
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
             plr.CharacterAdded:Connect(function()
@@ -870,7 +844,6 @@ end
         removeHighlightForPlayer(plr)
     end)
 
-    -- UI สำหรับ Highlight ESP
     ESPBoxLeft:AddToggle("ESP_Highlight_Toggle", {
         Text = "Enable Highlight ESP",
         Default = false,
@@ -904,9 +877,7 @@ end
         end
     })
 
-    ------------------------------------------------------------
-    -- 2D ESP (Drawing): Box / Corner / Tracer / Name
-    ------------------------------------------------------------
+    -- 2D ESP (Drawing)
     local drawingNew
     pcall(function()
         if type(Drawing) == "table" and type(Drawing.new) == "function" then
@@ -926,7 +897,7 @@ end
         ShowName = true
     }
 
-    local drawingESP = {} -- [player] = { Box, Tracer, Name, Corners = {Line1..Line8} }
+    local drawingESP = {}
 
     local function removeDrawingForPlayer(plr)
         local holder = drawingESP[plr]
@@ -981,15 +952,9 @@ end
 
     local function hideAllDrawing()
         for _, holder in pairs(drawingESP) do
-            if holder.Box then
-                holder.Box.Visible = false
-            end
-            if holder.Tracer then
-                holder.Tracer.Visible = false
-            end
-            if holder.Name then
-                holder.Name.Visible = false
-            end
+            if holder.Box then holder.Box.Visible = false end
+            if holder.Tracer then holder.Tracer.Visible = false end
+            if holder.Name then holder.Name.Visible = false end
             if holder.Corners then
                 for _, line in ipairs(holder.Corners) do
                     line.Visible = false
@@ -1045,7 +1010,6 @@ end
         })
     end
 
-    -- Update 2D ESP ทุกเฟรม
     if drawingAvailable then
         RunService.RenderStepped:Connect(function()
             if not DrawingState.Enabled then
@@ -1085,7 +1049,6 @@ end
 
                             local color = getESPColorForPlayer(plr)
 
-                            -- Box
                             if DrawingState.ShowBox then
                                 holder.Box.Color = color
                                 holder.Box.Size = Vector2.new(boxW, boxH)
@@ -1095,7 +1058,6 @@ end
                                 holder.Box.Visible = false
                             end
 
-                            -- Tracer
                             if DrawingState.ShowTracer then
                                 holder.Tracer.Color = color
                                 holder.Tracer.From = screenCenter
@@ -1105,7 +1067,6 @@ end
                                 holder.Tracer.Visible = false
                             end
 
-                            -- Name
                             if DrawingState.ShowName then
                                 holder.Name.Color = color
                                 holder.Name.Text = plr.Name
@@ -1115,7 +1076,6 @@ end
                                 holder.Name.Visible = false
                             end
 
-                            -- Corner
                             if DrawingState.ShowCorner then
                                 local cornerLen = math.floor(boxH / 4)
 
@@ -1125,7 +1085,6 @@ end
                                 local lb = Vector2.new(boxX, boxY + boxH)
                                 local rb = Vector2.new(boxX + boxW, boxY + boxH)
 
-                                -- top-left
                                 corners[1].Color = color
                                 corners[1].From = lt
                                 corners[1].To = Vector2.new(lt.X + cornerLen, lt.Y)
@@ -1136,7 +1095,6 @@ end
                                 corners[2].To = Vector2.new(lt.X, lt.Y + cornerLen)
                                 corners[2].Visible = true
 
-                                -- top-right
                                 corners[3].Color = color
                                 corners[3].From = rt
                                 corners[3].To = Vector2.new(rt.X - cornerLen, rt.Y)
@@ -1147,7 +1105,6 @@ end
                                 corners[4].To = Vector2.new(rt.X, rt.Y + cornerLen)
                                 corners[4].Visible = true
 
-                                -- bottom-left
                                 corners[5].Color = color
                                 corners[5].From = lb
                                 corners[5].To = Vector2.new(lb.X + cornerLen, lb.Y)
@@ -1158,7 +1115,6 @@ end
                                 corners[6].To = Vector2.new(lb.X, lb.Y - cornerLen)
                                 corners[6].Visible = true
 
-                                -- bottom-right
                                 corners[7].Color = color
                                 corners[7].From = rb
                                 corners[7].To = Vector2.new(rb.X - cornerLen, rb.Y)
@@ -1169,20 +1125,17 @@ end
                                 corners[8].To = Vector2.new(rb.X, rb.Y - cornerLen)
                                 corners[8].Visible = true
                             else
-                                -- hide all corners
-                                local corners = drawingESP[plr] and drawingESP[plr].Corners
-                                if corners then
-                                    for _, line in ipairs(corners) do
+                                local holder = drawingESP[plr]
+                                if holder and holder.Corners then
+                                    for _, line in ipairs(holder.Corners) do
                                         line.Visible = false
                                     end
                                 end
                             end
                         else
-                            -- ไม่ onScreen หรือระยะไม่โอเค -> ซ่อน
                             removeDrawingForPlayer(plr)
                         end
                     else
-                        -- ไม่มี character -> ลบ obj
                         removeDrawingForPlayer(plr)
                     end
                 else
@@ -1212,7 +1165,6 @@ end
 
     UIBoxLeft:AddLabel("If UI disappears, re-execute script.", true)
 
-    -- Theme / Config integration (defensive)
     if SaveManager and type(SaveManager.BuildConfigSection) == "function" then
         SaveManager:BuildConfigSection(Tabs.UI)
     end
