@@ -3,14 +3,16 @@
     {
       "key": "BxB.ware",
       "hwid_hash": "2436e823dec95964ffaadcc44dc98e75",
-      "timestamp": 1767070800,
+      "timestamp": 1764471600,
+      "expire": 1735520400,
       "role": "owner",
       "note": "BxB.ware | OWNER Permission"
     },
     {
-      "key": "VIP-999-PREM",
-      "hwid_hash": "987654321",
-      "timestamp": 1767070800,
+      "key": "VV",
+      "hwid_hash": "2436e823dec95964ffaadcc44dc98e75",
+      "timestamp": 1764471600,
+      "expire": 1735520400,
       "role": "premium",
       "note": "Premium supporter"
     },
@@ -18,6 +20,7 @@
       "key": "OWNER-000-STAFF",
       "hwid_hash": "",
       "timestamp": 1767070800,
+      "expire": 1735520400,
       "role": "staff",
       "note": "Owner / staff key"
     }
