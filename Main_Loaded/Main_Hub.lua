@@ -1,172 +1,53 @@
+-- STATUS:online
+-- STATUS_MSG:Main hub is live and ready
 
-        
 -- MainHub.lua
--- ต้องถูกเรียกผ่าน Key UI: startMainHub(keydata, Library) -> loadstring(HttpGet(MAINHUB_URL))()(Exec, keydata, "success")
--- return function(Exec, keydata, keycheck)
+-- ต้องถูกโหลดผ่าน Key_Loaded.lua เท่านั้น
+-- ห้ามเรียกตรง ๆ จาก executor โดยไม่มี keycheck
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
-    -- Guard ชั้นที่ 1: keycheck
+    -- ชั้นที่สอง: ตรวจ keycheck + keydata
     ----------------------------------------------------------------
-    if keycheck ~= "BxB.ware-universal-private-*&^%$#$*#%&@#" then
+    local EXPECTED_KEYCHECK = "BxB.ware-universal-private-*&^%$#$*#%&@#" -- ต้องตรงกับ Config.KEYCHECK_TOKEN ใน Key_Loaded.lua
+
+    if keycheck ~= EXPECTED_KEYCHECK then
+        -- ถ้าใครพยายาม load MainHub โดยตรง หรือ token ไม่ตรง -> ไม่ทำอะไรเลย
         return
     end
 
-    keydata = keydata or {}
-
-    ----------------------------------------------------------------
-    -- Guard ชั้นที่ 2: เช็คหมดอายุจาก keydata (ป้องกัน loader ถูกแก้)
-    ----------------------------------------------------------------
-    local function getUnixNow()
-        local ok, dt = pcall(DateTime.now)
-        if ok and dt then
-            return dt.UnixTimestamp
-        end
-        return nil
-    end
-
-    local function isKeydataExpired(kd)
-        if type(kd) ~= "table" then
-            return false
-        end
-
-        local expireTs = tonumber(kd.expire or kd.expire_at or kd.expire_unix or kd.expires_at)
-        if not expireTs then
-            return false
-        end
-
-        local nowTs = getUnixNow()
-        if not nowTs then
-            return false
-        end
-
-        return nowTs >= expireTs
-    end
-
-    if isKeydataExpired(keydata) then
-        warn("[Obsidian] Key expired (MainHub second layer).")
+    if type(keydata) ~= "table" or type(keydata.key) ~= "string" then
         return
     end
 
     ----------------------------------------------------------------
-    -- Services
+    -- Roblox services / locals
     ----------------------------------------------------------------
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
-    local StatsService = game:GetService("Stats")
+    local Stats = game:GetService("Stats")
+    local HttpService = game:GetService("HttpService")
 
     local LocalPlayer = Players.LocalPlayer
 
-    ----------------------------------------------------------------
-    -- Helpers: Character / Humanoid / Root
-    ----------------------------------------------------------------
-    local function getCharacter()
-        return LocalPlayer and LocalPlayer.Character or nil
-    end
-
-    local function getHumanoid()
-        local char = getCharacter()
-        if not char then
-            return nil
-        end
-
-        return char:FindFirstChildOfClass("Humanoid")
-    end
-
-    local function getRootPart()
-        local char = getCharacter()
-        if not char then
-            return nil
-        end
-
-        return char:FindFirstChild("HumanoidRootPart")
+    if not LocalPlayer then
+        return
     end
 
     ----------------------------------------------------------------
-    -- Helpers: Time / Date
-    ----------------------------------------------------------------
-    local function formatDateTime(dt)
-        local d = dt.Day
-        local m = dt.Month
-        local y = dt.Year % 100
-        local h = dt.Hour
-        local mi = dt.Minute
-        local s = dt.Second
-
-        return string.format("%02d/%02d/%02d - %02d:%02d:%02d", d, m, y, h, mi, s)
-    end
-
-    local function formatUnixTimestamp(ts)
-        if type(ts) ~= "number" then
-            return "N/A"
-        end
-
-        local ok, dt = pcall(DateTime.fromUnixTimestamp, ts)
-        if ok and dt then
-            return formatDateTime(dt)
-        end
-
-        return tostring(ts)
-    end
-
-    local function getNowString()
-        local ok, dt = pcall(DateTime.now)
-        if ok and dt then
-            return formatDateTime(dt)
-        end
-        return "N/A"
-    end
-
-    local function formatDuration(sec)
-        if type(sec) ~= "number" then
-            return "N/A"
-        end
-
-        sec = math.floor(sec)
-        if sec <= 0 then
-            return "0s"
-        end
-
-        local days = math.floor(sec / 86400)
-        sec = sec % 86400
-
-        local hours = math.floor(sec / 3600)
-        sec = sec % 3600
-
-        local minutes = math.floor(sec / 60)
-        sec = sec % 60
-
-        local parts = {}
-
-        if days > 0 then
-            table.insert(parts, tostring(days) .. "d")
-        end
-
-        if hours > 0 then
-            table.insert(parts, tostring(hours) .. "h")
-        end
-
-        if minutes > 0 then
-            table.insert(parts, tostring(minutes) .. "m")
-        end
-
-        if sec > 0 or #parts == 0 then
-            table.insert(parts, tostring(sec) .. "s")
-        end
-
-        return table.concat(parts, " ")
-    end
-
-    ----------------------------------------------------------------
-    -- โหลด Obsidian Library จาก repo ที่คุณใช้ (ไม่ผ่าน Exec)
+    -- โหลด Obsidian Library + ThemeManager + SaveManager
+    -- รูปแบบ load ตามที่คุณเคยใช้ (สำคัญ)
     ----------------------------------------------------------------
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 
     local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
     local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-    local SaveManager  = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+    local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
+    ----------------------------------------------------------------
+    -- ตั้งค่า Theme / Save อย่างระมัดระวัง (เช็คฟังก์ชันก่อนเรียก)
+    ----------------------------------------------------------------
     if ThemeManager and type(ThemeManager.SetLibrary) == "function" then
         ThemeManager:SetLibrary(Library)
     end
@@ -175,1005 +56,850 @@ return function(Exec, keydata, keycheck)
         SaveManager:SetLibrary(Library)
     end
 
-    if ThemeManager and type(ThemeManager.SetFolder) == "function" then
-        ThemeManager:SetFolder("ObsidianHub")
+    if SaveManager and type(SaveManager.IgnoreThemeSettings) == "function" then
+        SaveManager:IgnoreThemeSettings()
     end
 
     if SaveManager and type(SaveManager.SetFolder) == "function" then
-        SaveManager:SetFolder("ObsidianHub")
+        SaveManager:SetFolder("ObsidianUniversalHub")
     end
 
     ----------------------------------------------------------------
-    -- Window + Tabs
+    -- Helper: connection management (เพื่อ cleanup เวลา Unload)
     ----------------------------------------------------------------
-    local Window = Library:CreateWindow({
-        Title = "Obsidian | Universal Hub",
-        Center = true,
-        AutoShow = true
-    })
+    local Connections = {}
 
-    local Tabs = {
-        Status = Window:AddTab("Status"),
-        Player = Window:AddTab("Player"),
-        ESP    = Window:AddTab("ESP"),
-        UI     = Window:AddTab("UI")
-    }
-
-    ----------------------------------------------------------------
-    -- Helpers: RichText / masking
-    ----------------------------------------------------------------
-    local function setRichLabel(label, text)
-        if label and label.TextLabel then
-            label.TextLabel.RichText = true
-            label.TextLabel.Text = text
+    local function AddConnection(conn)
+        if typeof(conn) == "RBXScriptConnection" then
+            table.insert(Connections, conn)
         end
     end
 
-    local function maskKey(key)
-        key = tostring(key or "")
-        local len = #key
-
-        if len <= 6 then
-            return string.rep("*", len)
-        end
-
-        return key:sub(1, 3) .. string.rep("*", len - 6) .. key:sub(len - 2, len)
-    end
-
-    local function shortHash(hash)
-        hash = tostring(hash or "")
-        if #hash <= 8 then
-            return hash
-        end
-        return hash:sub(1, 4) .. "..." .. hash:sub(#hash - 3, #hash)
-    end
-
-    ----------------------------------------------------------------
-    -- TAB 1: Status
-    ----------------------------------------------------------------
-    local StatusKeyBox     = Tabs.Status:AddLeftGroupbox("Key & User")
-    local StatusCreditsBox = Tabs.Status:AddLeftGroupbox("Credits")
-    local StatusServerBox  = Tabs.Status:AddRightGroupbox("Server & Performance")
-
-    local keyMasked = maskKey(keydata.key or "N/A")
-    local role = keydata.role or "N/A"
-    local keyTimestamp = tonumber(keydata.timestamp)
-    local expireTs = tonumber(keydata.expire or keydata.expire_at or keydata.expire_unix)
-
-    local keyLabel      = StatusKeyBox:AddLabel("", true)
-    local roleLabel     = StatusKeyBox:AddLabel("", true)
-    local hwidLabel     = StatusKeyBox:AddLabel("", true)
-    local userLabel     = StatusKeyBox:AddLabel("", true)
-    local keyTimeLabel  = StatusKeyBox:AddLabel("", true)
-    local nowTimeLabel  = StatusKeyBox:AddLabel("", true)
-    local expireLabel   = StatusKeyBox:AddLabel("", true)
-    local leftTimeLabel = StatusKeyBox:AddLabel("", true)
-
-    setRichLabel(keyLabel, "<b>Key</b>: " .. keyMasked)
-    setRichLabel(roleLabel, "<b>Role</b>: " .. role)
-    setRichLabel(hwidLabel, "<b>HWID Hash</b>: " .. shortHash(keydata.hwid_hash))
-    setRichLabel(userLabel, "<b>User</b>: " .. (LocalPlayer and LocalPlayer.Name or "N/A"))
-
-    if keyTimestamp then
-        setRichLabel(keyTimeLabel, "<b>Key Time</b>: " .. formatUnixTimestamp(keyTimestamp))
-    else
-        setRichLabel(keyTimeLabel, "<b>Key Time</b>: N/A")
-    end
-
-    setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
-
-    if expireTs then
-        setRichLabel(expireLabel, "<b>Expire At</b>: " .. formatUnixTimestamp(expireTs))
-    else
-        setRichLabel(expireLabel, "<b>Expire At</b>: N/A")
-    end
-
-    setRichLabel(leftTimeLabel, "<b>Time Left</b>: N/A")
-
-    StatusKeyBox:AddDivider()
-
-    local creditLines = {
-        "<b>Obsidian Universal Hub</b>",
-        "Developer: <font color=\"#7dcfff\">YOUR_NAME_HERE</font>",
-        "Library: <font color=\"#b58cff\">Obsidian UI</font>",
-        "Discord: <font color=\"#55ff99\">https://discord.gg/yourdiscord</font>",
-        "",
-        "<font color=\"#aaaaaa\">Please do not leak / resell.</font>"
-    }
-
-    local creditLabel = StatusCreditsBox:AddLabel(table.concat(creditLines, "\n"), true)
-    if creditLabel and creditLabel.TextLabel then
-        creditLabel.TextLabel.RichText = true
-    end
-
-    local placeId = game.PlaceId
-    local jobId   = game.JobId
-
-    local serverPlaceLabel = StatusServerBox:AddLabel("", true)
-    local serverJobLabel   = StatusServerBox:AddLabel("", true)
-    local playerCountLabel = StatusServerBox:AddLabel("", true)
-    local pingLabel        = StatusServerBox:AddLabel("", true)
-    local fpsLabel         = StatusServerBox:AddLabel("", true)
-
-    setRichLabel(serverPlaceLabel, "<b>PlaceId</b>: " .. tostring(placeId))
-    setRichLabel(serverJobLabel, "<b>JobId</b>: " .. tostring(jobId))
-
-    local function updatePlayerCount()
-        local count = #Players:GetPlayers()
-        setRichLabel(playerCountLabel, "<b>Players</b>: " .. tostring(count))
-    end
-
-    updatePlayerCount()
-    Players.PlayerAdded:Connect(updatePlayerCount)
-    Players.PlayerRemoving:Connect(updatePlayerCount)
-
-    local frameCount = 0
-    local timeAcc = 0
-
-    RunService.RenderStepped:Connect(function(dt)
-        frameCount = frameCount + 1
-        timeAcc = timeAcc + dt
-
-        if timeAcc >= 1 then
-            local fps = math.floor(frameCount / timeAcc + 0.5)
-            frameCount = 0
-            timeAcc = 0
-
-            local pingText = "N/A"
-            local okPing, pingValue = pcall(function()
-                local pingStat = StatsService.Network.ServerStatsItem["Data Ping"]
-                if pingStat then
-                    return pingStat:GetValue()
-                end
-                return nil
-            end)
-            if okPing and pingValue then
-                pingText = tostring(math.floor(pingValue + 0.5)) .. " ms"
-            end
-
-            setRichLabel(pingLabel, "<b>Ping</b>: " .. pingText)
-            setRichLabel(fpsLabel, "<b>FPS</b>: " .. tostring(fps))
-
-            setRichLabel(nowTimeLabel, "<b>Current Time</b>: " .. getNowString())
-
-            if expireTs then
-                local nowTs = getUnixNow()
-                if nowTs then
-                    local remain = expireTs - nowTs
-                    if remain <= 0 then
-                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: <font color=\"#ff5555\">Expired</font>")
-                    else
-                        setRichLabel(leftTimeLabel, "<b>Time Left</b>: " .. formatDuration(remain))
-                    end
-                end
-            end
-        end
-    end)
-
-    ----------------------------------------------------------------
-    -- TAB 2: Player (Movement)
-    ----------------------------------------------------------------
-    local PlayerMoveBox  = Tabs.Player:AddLeftGroupbox("Movement")
-    local PlayerExtraBox = Tabs.Player:AddRightGroupbox("Extra")
-
-    local MovementState = {
-        WalkSpeedEnabled = false,
-        WalkSpeedValue = 16,
-        JumpPowerEnabled = false,
-        JumpPowerValue = 50,
-        NoClip = false,
-        FlyEnabled = false,
-        FlySpeed = 60
-    }
-
-    local DefaultValues = {
-        WalkSpeed = nil,
-        JumpPower = nil,
-        JumpHeight = nil
-    }
-
-    local function updateDefaultHumanoidValues()
-        local hum = getHumanoid()
-        if not hum then
-            return
-        end
-
-        if DefaultValues.WalkSpeed == nil then
-            DefaultValues.WalkSpeed = hum.WalkSpeed
-        end
-
-        if DefaultValues.JumpPower == nil or DefaultValues.JumpHeight == nil then
-            local ok = pcall(function()
-                DefaultValues.JumpPower = hum.JumpPower
-                DefaultValues.JumpHeight = hum.JumpHeight
-            end)
-            if not ok then end
-        end
-    end
-
-    local noclipParts = {}
-
-    local function updateNoClip()
-        if not MovementState.NoClip then
-            return
-        end
-
-        local char = getCharacter()
-        if not char then
-            return
-        end
-
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.CanCollide then
-                part.CanCollide = false
-                noclipParts[part] = true
-            end
-        end
-    end
-
-    local function disableNoClip()
-        for part in pairs(noclipParts) do
-            if part and part.Parent then
+    local function CleanupConnections()
+        for _, conn in ipairs(Connections) do
+            if typeof(conn) == "RBXScriptConnection" then
                 pcall(function()
-                    part.CanCollide = true
+                    conn:Disconnect()
                 end)
             end
         end
-        noclipParts = {}
+        table.clear(Connections)
     end
 
-    local infJumpConnection
-
-    local function setInfiniteJump(enabled)
-        if enabled then
-            if infJumpConnection then
-                return
-            end
-
-            infJumpConnection = UserInputService.JumpRequest:Connect(function()
-                local hum = getHumanoid()
-                if hum then
-                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                end
-            end)
-        else
-            if infJumpConnection then
-                infJumpConnection:Disconnect()
-                infJumpConnection = nil
-            end
-        end
+    ----------------------------------------------------------------
+    -- Helper: safe get humanoid / root
+    ----------------------------------------------------------------
+    local function GetCharacter()
+        return LocalPlayer.Character
     end
 
-    local FlyState = {
-        Speed = MovementState.FlySpeed
-    }
-
-    local flyKeys = {
-        W = false,
-        A = false,
-        S = false,
-        D = false,
-        Space = false,
-        LeftShift = false
-    }
-
-    local flyBV
-    local flyBG
-
-    local function resetFlyBody()
-        if flyBV then
-            flyBV:Destroy()
-            flyBV = nil
-        end
-        if flyBG then
-            flyBG:Destroy()
-            flyBG = nil
-        end
+    local function GetHumanoid()
+        local char = GetCharacter()
+        if not char then return nil end
+        return char:FindFirstChildOfClass("Humanoid")
     end
 
-    local function updateFly()
-        if not MovementState.FlyEnabled then
-            resetFlyBody()
-            return
-        end
-
-        local root = getRootPart()
-        local cam = workspace.CurrentCamera
-        if not root or not cam then
-            resetFlyBody()
-            return
-        end
-
-        if not flyBV then
-            flyBV = Instance.new("BodyVelocity")
-            flyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-            flyBV.Velocity = Vector3.new()
-            flyBV.Parent = root
-
-            flyBG = Instance.new("BodyGyro")
-            flyBG.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-            flyBG.CFrame = cam.CFrame
-            flyBG.Parent = root
-        end
-
-        local dir = Vector3.new()
-        local cf = cam.CFrame
-
-        if flyKeys.W then
-            dir = dir + cf.LookVector
-        end
-        if flyKeys.S then
-            dir = dir - cf.LookVector
-        end
-        if flyKeys.A then
-            dir = dir - cf.RightVector
-        end
-        if flyKeys.D then
-            dir = dir + cf.RightVector
-        end
-        if flyKeys.Space then
-            dir = dir + Vector3.new(0, 1, 0)
-        end
-        if flyKeys.LeftShift then
-            dir = dir - Vector3.new(0, 1, 0)
-        end
-
-        if dir.Magnitude > 0 then
-            dir = dir.Unit
-        end
-
-        flyBV.Velocity = dir * FlyState.Speed
-        flyBG.CFrame = cam.CFrame
+    local function GetRootPart()
+        local char = GetCharacter()
+        if not char then return nil end
+        local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso")
+        return root
     end
 
-    RunService.Heartbeat:Connect(function()
-        updateDefaultHumanoidValues()
-
-        local hum = getHumanoid()
+    AddConnection(LocalPlayer.CharacterAdded:Connect(function()
+        -- เวลา respawn ให้ reset ค่า default ต่าง ๆ
+        local hum = GetHumanoid()
         if hum then
-            if MovementState.WalkSpeedEnabled then
-                hum.WalkSpeed = MovementState.WalkSpeedValue
-            elseif DefaultValues.WalkSpeed then
-                hum.WalkSpeed = DefaultValues.WalkSpeed
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+        end
+    end))
+
+    ----------------------------------------------------------------
+    -- Helper: time / key formatting
+    ----------------------------------------------------------------
+    local function unixNow()
+        local ok, dt = pcall(DateTime.now)
+        if ok and dt then
+            return dt.UnixTimestamp
+        end
+        return os.time()
+    end
+
+    local function formatUnix(ts)
+        ts = tonumber(ts)
+        if not ts then
+            return "N/A"
+        end
+        local ok, dt = pcall(DateTime.fromUnixTimestamp, ts)
+        if not ok then
+            return "N/A"
+        end
+        local y, m, d = dt:ToUniversalTime().Year, dt:ToUniversalTime().Month, dt:ToUniversalTime().Day
+        local hour, min, sec = dt:ToUniversalTime().Hour, dt:ToUniversalTime().Minute, dt:ToUniversalTime().Second
+
+        local function pad(n)
+            if n < 10 then
+                return "0" .. tostring(n)
             end
-
-            local ok = pcall(function()
-                if hum.UseJumpPower ~= false then
-                    if MovementState.JumpPowerEnabled then
-                        hum.JumpPower = MovementState.JumpPowerValue
-                    elseif DefaultValues.JumpPower then
-                        hum.JumpPower = DefaultValues.JumpPower
-                    end
-                else
-                    if MovementState.JumpPowerEnabled then
-                        hum.JumpHeight = MovementState.JumpPowerValue / 3
-                    elseif DefaultValues.JumpHeight then
-                        hum.JumpHeight = DefaultValues.JumpHeight
-                    end
-                end
-            end)
-            if not ok then end
+            return tostring(n)
         end
 
-        if MovementState.NoClip then
-            updateNoClip()
+        return string.format("%s/%s/%s - %s:%s:%s",
+            pad(d), pad(m), string.sub(tostring(y), 3, 4),
+            pad(hour), pad(min), pad(sec)
+        )
+    end
+
+    local function formatTimeLeft(expireTs)
+        expireTs = tonumber(expireTs)
+        if not expireTs then
+            return "Lifetime"
         end
 
-        if MovementState.FlyEnabled then
-            updateFly()
-        else
-            resetFlyBody()
-        end
-    end)
+        local now = unixNow()
+        local diff = expireTs - now
 
-    UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then
+        if diff <= 0 then
+            return "Expired"
+        end
+
+        local days = math.floor(diff / 86400)
+        local hours = math.floor((diff % 86400) / 3600)
+        local mins = math.floor((diff % 3600) / 60)
+        local secs = diff % 60
+
+        local parts = {}
+
+        if days > 0 then
+            table.insert(parts, tostring(days) .. "d")
+        end
+        if hours > 0 then
+            table.insert(parts, tostring(hours) .. "h")
+        end
+        if mins > 0 then
+            table.insert(parts, tostring(mins) .. "m")
+        end
+        if secs > 0 and #parts == 0 then
+            table.insert(parts, tostring(secs) .. "s")
+        end
+
+        return table.concat(parts, " ")
+    end
+
+    local function shortKey(k)
+        k = tostring(k or "")
+        if #k <= 8 then
+            return k
+        end
+        return string.sub(k, 1, 4) .. "..." .. string.sub(k, -4)
+    end
+
+    ----------------------------------------------------------------
+    -- Helper: FPS / Ping / Memory
+    ----------------------------------------------------------------
+    local FPS = 0
+    local lastTime = tick()
+    local frameCount = 0
+
+    AddConnection(RunService.RenderStepped:Connect(function()
+        frameCount = frameCount + 1
+        local now = tick()
+        if now - lastTime >= 1 then
+            FPS = frameCount / (now - lastTime)
+            frameCount = 0
+            lastTime = now
+        end
+    end))
+
+    local function getPing()
+        local netStats = Stats:FindFirstChild("Network")
+        if not netStats then
+            return 0
+        end
+
+        local serverStatsItem = netStats:FindFirstChild("ServerStatsItem")
+        if not serverStatsItem then
+            return 0
+        end
+
+        local data = serverStatsItem:FindFirstChild("Data Ping")
+        if not data then
+            return 0
+        end
+
+        local ok, value = pcall(function()
+            return data:GetValue()
+        end)
+
+        if ok and type(value) == "number" then
+            return math.floor(value * 1000)
+        end
+
+        return 0
+    end
+
+    local function getMemoryMB()
+        local memStats = Stats:FindFirstChild("PerformanceStats")
+        if not memStats then
+            return 0
+        end
+
+        local mem = memStats:FindFirstChild("MemoryUsageMb")
+        if not mem then
+            return 0
+        end
+
+        local ok, value = pcall(function()
+            return mem:GetValue()
+        end)
+
+        if ok and type(value) == "number" then
+            return math.floor(value)
+        end
+
+        return 0
+    end
+
+    ----------------------------------------------------------------
+    -- ตรวจ Drawing API สำหรับ ESP 2D
+    ----------------------------------------------------------------
+    local hasDrawing = false
+    do
+        local ok, result = pcall(function()
+            return Drawing and typeof(Drawing.new) == "function"
+        end)
+        hasDrawing = ok and result == true
+    end
+
+    ----------------------------------------------------------------
+    -- สร้าง Window + Tabs
+    ----------------------------------------------------------------
+    local Window = Library:CreateWindow({
+        Title = "BxB.ware",
+            Footer = "BxB.ware | Universal | Premium",    
+                Icon = "sparkle",
+        Center = true,
+        AutoShow = true,
+
+        DisableSearch = false,              
+            SearchbarSize = UDim2.fromScale(1, 1), -- ขนาด searchbar (ใช้เมื่อ DisableSearch = false)
+        
+        Compact = true
+    })
+
+    local Tabs = {
+        Status = Window:AddTab("","shield-check"),
+        Player = Window:AddTab("","user"),
+        ESP    = Window:AddTab("","eye"),
+        UI     = Window:AddTab("","settings")
+    }
+
+    local Options = Library.Options
+
+    ----------------------------------------------------------------
+    -- Tab 1: Status (Key + System)
+    ----------------------------------------------------------------
+    local KeyBoxLeft = Tabs.Status:AddLeftGroupbox("Key Status")
+    local SysBoxRight = Tabs.Status:AddRightGroupbox("System Info")
+
+    KeyBoxLeft:AddLabel("<b>Key Information</b>", true)
+    KeyBoxLeft:AddDivider()
+
+    local keyRole   = tostring(keydata.role or "user")
+    local keyStatus = tostring(keydata.status or "active")
+    local keyNote   = tostring(keydata.note or "")
+    local keyStamp  = tonumber(keydata.timestamp)
+    local keyExpire = tonumber(keydata.expire)
+
+    local keyCreatedAt = keyStamp and formatUnix(keyStamp) or "N/A"
+    local keyExpireAt  = keyExpire and formatUnix(keyExpire) or "Lifetime"
+
+    local KeyLabels = {}
+
+    local function addKeyLabel(id, text)
+        local lbl = KeyBoxLeft:AddLabel(text, true)
+        if lbl and lbl.TextLabel then
+            lbl.TextLabel.RichText = true
+        end
+        KeyLabels[id] = lbl
+        return lbl
+    end
+
+    addKeyLabel("KeyID", string.format("<b>Key</b>: %s", shortKey(keydata.key)))
+    addKeyLabel("Role", string.format("<b>Role</b>: %s", keyRole))
+    addKeyLabel("Status", string.format("<b>Status</b>: %s", keyStatus))
+    addKeyLabel("Note", string.format("<b>Note</b>: %s", (keyNote ~= "" and keyNote or "N/A")))
+    addKeyLabel("Created", string.format("<b>Created at</b>: %s", keyCreatedAt))
+    addKeyLabel("Expire", string.format("<b>Expire at</b>: %s", keyExpireAt))
+    local timeLeftLbl = addKeyLabel("TimeLeft", string.format("<b>Time left</b>: %s", formatTimeLeft(keyExpire)))
+
+    KeyBoxLeft:AddDivider()
+    KeyBoxLeft:AddLabel('<font color="#ffcc66">Key is bound to your HWID (device). Sharing key may result in ban.</font>', true)
+
+    -- อัปเดต TimeLeft แบบเบา ๆ ทุก ~1 วินาที
+    AddConnection(RunService.Heartbeat:Connect(function()
+        if not timeLeftLbl or not timeLeftLbl.TextLabel then
             return
         end
 
-        if input.KeyCode == Enum.KeyCode.W then
-            flyKeys.W = true
-        elseif input.KeyCode == Enum.KeyCode.A then
-            flyKeys.A = true
-        elseif input.KeyCode == Enum.KeyCode.S then
-            flyKeys.S = true
-        elseif input.KeyCode == Enum.KeyCode.D then
-            flyKeys.D = true
-        elseif input.KeyCode == Enum.KeyCode.Space then
-            flyKeys.Space = true
-        elseif input.KeyCode == Enum.KeyCode.LeftShift then
-            flyKeys.LeftShift = true
-        end
-    end)
+        local text = formatTimeLeft(keyExpire)
+        timeLeftLbl.TextLabel.Text = string.format("<b>Time left</b>: %s", text)
+        timeLeftLbl.TextLabel.RichText = true
+    end))
 
-    UserInputService.InputEnded:Connect(function(input, gp)
-        if gp then
-            return
+    SysBoxRight:AddLabel("<b>System / Game / Player</b>", true)
+    SysBoxRight:AddDivider()
+
+    local function addSysLabel(text)
+        local lbl = SysBoxRight:AddLabel(text, true)
+        if lbl and lbl.TextLabel then
+            lbl.TextLabel.RichText = true
+        end
+        return lbl
+    end
+
+    local placeId = game.PlaceId
+    local jobId = game.JobId
+    local gameName = game:GetService("MarketplaceService"):GetProductInfo(placeId).Name
+
+    local sysLabels = {
+        Game      = addSysLabel(string.format("<b>Game</b>: %s (PlaceId: %d)", gameName, placeId)),
+        Server    = addSysLabel(string.format("<b>JobId</b>: %s", jobId)),
+        Player    = addSysLabel(string.format("<b>Player</b>: %s (%d)", LocalPlayer.Name, LocalPlayer.UserId)),
+        FPS       = addSysLabel("<b>FPS</b>: ..."),
+        Ping      = addSysLabel("<b>Ping</b>: ..."),
+        Memory    = addSysLabel("<b>Memory</b>: ... MB")
+    }
+
+    AddConnection(RunService.Heartbeat:Connect(function()
+        if sysLabels.FPS and sysLabels.FPS.TextLabel then
+            sysLabels.FPS.TextLabel.RichText = true
+            sysLabels.FPS.TextLabel.Text = string.format("<b>FPS</b>: %d", math.floor(FPS))
         end
 
-        if input.KeyCode == Enum.KeyCode.W then
-            flyKeys.W = false
-        elseif input.KeyCode == Enum.KeyCode.A then
-            flyKeys.A = false
-        elseif input.KeyCode == Enum.KeyCode.S then
-            flyKeys.S = false
-        elseif input.KeyCode == Enum.KeyCode.D then
-            flyKeys.D = false
-        elseif input.KeyCode == Enum.KeyCode.Space then
-            flyKeys.Space = false
-        elseif input.KeyCode == Enum.KeyCode.LeftShift then
-            flyKeys.LeftShift = false
+        if sysLabels.Ping and sysLabels.Ping.TextLabel then
+            sysLabels.Ping.TextLabel.RichText = true
+            sysLabels.Ping.TextLabel.Text = string.format("<b>Ping</b>: %d ms", getPing())
         end
-    end)
 
-    PlayerMoveBox:AddToggle("Move_WalkSpeed_Toggle", {
-        Text = "WalkSpeed",
+        if sysLabels.Memory and sysLabels.Memory.TextLabel then
+            sysLabels.Memory.TextLabel.RichText = true
+            sysLabels.Memory.TextLabel.Text = string.format("<b>Memory</b>: %d MB", getMemoryMB())
+        end
+    end))
+
+    SysBoxRight:AddDivider()
+    SysBoxRight:AddLabel("<b>Credits</b>", true)
+    SysBoxRight:AddLabel("Owner: YOUR_NAME_HERE", true)
+    SysBoxRight:AddLabel("UI: Obsidian UI Library", true)
+    SysBoxRight:AddLabel("Discord: yourdiscord", true)
+
+    ----------------------------------------------------------------
+    -- Tab 2: Player (Movement & Misc)
+    ----------------------------------------------------------------
+    local MoveLeft = Tabs.Player:AddLeftGroupbox("Movement")
+    local MoveRight = Tabs.Player:AddRightGroupbox("Misc / Safety")
+
+    local MovementState = {
+        WalkSpeedEnabled = false,
+        WalkSpeedValue   = 16,
+        JumpEnabled      = false,
+        JumpValue        = 50,
+        InfiniteJump     = false,
+        Fly              = false,
+        NoClip           = false
+    }
+
+    local DefaultWalkSpeed = 16
+    local DefaultJumpPower = 50
+
+    do
+        local hum = GetHumanoid()
+        if hum then
+            DefaultWalkSpeed = hum.WalkSpeed
+            DefaultJumpPower = hum.JumpPower
+        end
+    end
+
+    MoveLeft:AddToggle("Move_WalkSpeed_Toggle", {
+        Text = "Custom WalkSpeed",
         Default = false,
         Callback = function(value)
             MovementState.WalkSpeedEnabled = value
+            local hum = GetHumanoid()
+            if hum then
+                hum.WalkSpeed = value and MovementState.WalkSpeedValue or DefaultWalkSpeed
+            end
         end
     })
 
-    PlayerMoveBox:AddSlider("Move_WalkSpeed_Value", {
-        Text = "WalkSpeed Value",
+    MoveLeft:AddSlider("Move_WalkSpeed_Slider", {
+        Text = "WalkSpeed",
         Default = 16,
-        Min = 8,
+        Min = 5,
         Max = 100,
         Rounding = 0,
         Compact = false,
         Callback = function(value)
             MovementState.WalkSpeedValue = value
-        end
-    })
-
-    PlayerMoveBox:AddToggle("Move_JumpPower_Toggle", {
-        Text = "Jump Power / Height",
-        Default = false,
-        Callback = function(value)
-            MovementState.JumpPowerEnabled = value
-        end
-    })
-
-    PlayerMoveBox:AddSlider("Move_JumpPower_Value", {
-        Text = "Jump Power Value",
-        Default = 50,
-        Min = 25,
-        Max = 200,
-        Rounding = 0,
-        Compact = false,
-        Callback = function(value)
-            MovementState.JumpPowerValue = value
-        end
-    })
-
-    PlayerMoveBox:AddToggle("Move_Fly_Toggle", {
-        Text = "Fly (WASD + Space/Shift)",
-        Default = false,
-        Callback = function(value)
-            MovementState.FlyEnabled = value
-            if not value then
-                resetFlyBody()
+            if MovementState.WalkSpeedEnabled then
+                local hum = GetHumanoid()
+                if hum then
+                    hum.WalkSpeed = value
+                end
             end
         end
     })
 
-    PlayerMoveBox:AddSlider("Move_Fly_Speed", {
-        Text = "Fly Speed",
-        Default = 60,
-        Min = 20,
-        Max = 200,
-        Rounding = 0,
-        Compact = false,
+    MoveLeft:AddDivider()
+
+    MoveLeft:AddToggle("Move_Jump_Toggle", {
+        Text = "Custom JumpPower",
+        Default = false,
         Callback = function(value)
-            MovementState.FlySpeed = value
-            FlyState.Speed = value
+            MovementState.JumpEnabled = value
+            local hum = GetHumanoid()
+            if hum then
+                hum.JumpPower = value and MovementState.JumpValue or DefaultJumpPower
+            end
         end
     })
 
-    PlayerExtraBox:AddToggle("Move_NoClip_Toggle", {
+    MoveLeft:AddSlider("Move_Jump_Slider", {
+        Text = "JumpPower",
+        Default = 50,
+        Min = 20,
+        Max = 150,
+        Rounding = 0,
+        Compact = false,
+        Callback = function(value)
+            MovementState.JumpValue = value
+            if MovementState.JumpEnabled then
+                local hum = GetHumanoid()
+                if hum then
+                    hum.JumpPower = value
+                end
+            end
+        end
+    })
+
+    MoveLeft:AddDivider()
+
+    MoveLeft:AddToggle("Move_InfiniteJump_Toggle", {
+        Text = "Infinite Jump",
+        Default = false,
+        Callback = function(value)
+            MovementState.InfiniteJump = value
+        end
+    })
+
+    MoveLeft:AddToggle("Move_Fly_Toggle", {
+        Text = "Fly (simple)",
+        Default = false,
+        Callback = function(value)
+            MovementState.Fly = value
+        end
+    })
+
+    MoveLeft:AddToggle("Move_NoClip_Toggle", {
         Text = "NoClip",
         Default = false,
         Callback = function(value)
             MovementState.NoClip = value
-            if not value then
-                disableNoClip()
-            end
         end
     })
 
-    PlayerExtraBox:AddToggle("Move_InfJump_Toggle", {
-        Text = "Infinite Jump",
-        Default = false,
-        Callback = function(value)
-            setInfiniteJump(value)
-        end
-    })
-
-    ----------------------------------------------------------------
-    -- TAB 3: ESP (Highlight + 2D Drawing)
-    ----------------------------------------------------------------
-    local ESPBoxLeft  = Tabs.ESP:AddLeftGroupbox("Highlight ESP (3D)")
-    local ESPBoxRight = Tabs.ESP:AddRightGroupbox("2D ESP (Drawing)")
-
-    local function getESPColorForPlayer(plr)
-        if plr.TeamColor then
-            local color = plr.TeamColor.Color
-            if typeof(color) == "Color3" then
-                return color
-            end
-        end
-        return Color3.fromRGB(255, 255, 255)
-    end
-
-    local function shouldHighlight(plr)
-        if plr == LocalPlayer then
-            return false
-        end
-        return true
-    end
-
-    -- Highlight ESP
-    local HighlightState = {
-        Enabled = false,
-        TeamCheck = true,
-        FillTransparency = 0.75
-    }
-
-    local highlightFolder = Instance.new("Folder")
-    highlightFolder.Name = "Obsidian_HighlightESP"
-    highlightFolder.Parent = workspace
-
-    local playerHighlight = {}
-
-    local function updateHighlightSettings(h, plr)
-        if not h then
-            return
-        end
-        h.FillColor = getESPColorForPlayer(plr)
-        h.OutlineColor = Color3.fromRGB(0, 0, 0)
-        h.FillTransparency = HighlightState.FillTransparency
-        h.OutlineTransparency = 0
-        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    end
-
-    local function highlightShouldDraw(plr)
-        if plr == LocalPlayer then
-            return false
-        end
-        if HighlightState.TeamCheck and LocalPlayer and LocalPlayer.Team ~= nil then
-            if plr.Team == LocalPlayer.Team then
-                return false
-            end
-        end
-        return true
-    end
-
-    local function removeHighlightForPlayer(plr)
-        local h = playerHighlight[plr]
-        if h then
-            playerHighlight[plr] = nil
-            if h.Parent then
-                h:Destroy()
-            end
-        end
-    end
-
-    local function createHighlightForPlayer(plr)
-        if not HighlightState.Enabled then
-            return
-        end
-        if not highlightShouldDraw(plr) then
-            removeHighlightForPlayer(plr)
-            return
-        end
-        if playerHighlight[plr] then
+    -- Infinite Jump handler (เบามาก)
+    AddConnection(UserInputService.JumpRequest:Connect(function()
+        if not MovementState.InfiniteJump then
             return
         end
 
-        local char = plr.Character
+        local hum = GetHumanoid()
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end))
+
+    -- Fly + NoClip loop (RenderStepped)
+    AddConnection(RunService.RenderStepped:Connect(function()
+        local char = GetCharacter()
         if not char then
             return
         end
 
-        local h = Instance.new("Highlight")
-        h.Adornee = char
-        h.Parent = highlightFolder
+        local hum = GetHumanoid()
+        local root = GetRootPart()
 
-        updateHighlightSettings(h, plr)
+        if MovementState.Fly and root then
+            local cam = workspace.CurrentCamera
+            local moveVector = Vector3.new()
 
-        playerHighlight[plr] = h
-    end
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                moveVector = moveVector + cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                moveVector = moveVector - cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                moveVector = moveVector - cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                moveVector = moveVector + cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                moveVector = moveVector + Vector3.new(0, 1, 0)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                moveVector = moveVector - Vector3.new(0, 1, 0)
+            end
 
-    local function refreshAllHighlights()
-        if not HighlightState.Enabled then
-            for plr, h in pairs(playerHighlight) do
-                if h.Parent then
-                    h:Destroy()
+            if moveVector.Magnitude > 0 then
+                moveVector = moveVector.Unit * 50
+            end
+
+            root.Velocity = moveVector
+            if hum then
+                hum.PlatformStand = true
+            end
+        else
+            if hum then
+                hum.PlatformStand = false
+            end
+        end
+
+        if MovementState.NoClip and char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
                 end
-                playerHighlight[plr] = nil
-            end
-            return
-        end
-
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then
-                createHighlightForPlayer(plr)
             end
         end
-    end
+    end))
 
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            plr.CharacterAdded:Connect(function()
-                if HighlightState.Enabled then
-                    task.wait(0.2)
-                    createHighlightForPlayer(plr)
-                end
-            end)
+    MoveRight:AddLabel("<b>Safety</b>", true)
+    MoveRight:AddDivider()
 
-            plr:GetPropertyChangedSignal("TeamColor"):Connect(function()
-                local h = playerHighlight[plr]
-                if h then
-                    updateHighlightSettings(h, plr)
-                end
-            end)
-        end
-    end
+    MoveRight:AddButton("Reset movement to default", function()
+        MovementState.WalkSpeedEnabled = false
+        MovementState.JumpEnabled = false
+        MovementState.InfiniteJump = false
+        MovementState.Fly = false
+        MovementState.NoClip = false
 
-    Players.PlayerAdded:Connect(function(plr)
-        if plr == LocalPlayer then
-            return
+        local hum = GetHumanoid()
+        if hum then
+            hum.WalkSpeed = DefaultWalkSpeed
+            hum.JumpPower = DefaultJumpPower
+            hum.PlatformStand = false
         end
 
-        plr.CharacterAdded:Connect(function()
-            if HighlightState.Enabled then
-                task.wait(0.2)
-                createHighlightForPlayer(plr)
-            end
-        end)
-
-        plr:GetPropertyChangedSignal("TeamColor"):Connect(function()
-            local h = playerHighlight[plr]
-            if h then
-                updateHighlightSettings(h, plr)
-            end
-        end)
+        Library:Notify("Movement reset to default", 3)
     end)
 
-    Players.PlayerRemoving:Connect(function(plr)
-        removeHighlightForPlayer(plr)
+    MoveRight:AddButton("Panic (Unload Hub)", function()
+        CleanupConnections()
+        Library:Notify("Unloading hub...", 2)
+        Library:Unload()
     end)
 
-    ESPBoxLeft:AddToggle("ESP_Highlight_Toggle", {
-        Text = "Enable Highlight ESP",
+    ----------------------------------------------------------------
+    -- Tab 3: ESP
+    ----------------------------------------------------------------
+    local ESPLeft  = Tabs.ESP:AddLeftGroupbox("Player ESP (3D Highlight)")
+    local ESPRight = Tabs.ESP:AddRightGroupbox("Player ESP (2D Drawing)")
+
+    ----------------------------------------------------------------
+    -- 3D Highlight ESP
+    ----------------------------------------------------------------
+    local HighlightFolder = Instance.new("Folder")
+    HighlightFolder.Name = "Obsidian_Highlights"
+    HighlightFolder.Parent = game.CoreGui
+
+    local HighlightState = {
+        Enabled = false,
+        TeamCheck = true
+    }
+
+    local function getHighlightForCharacter(char)
+        if not char then return nil end
+        local tagName = "Obsidian_Highlight_Tag"
+        local existing = char:FindFirstChild(tagName)
+        if existing and existing:IsA("Highlight") then
+            return existing
+        end
+
+        local hl = Instance.new("Highlight")
+        hl.Name = tagName
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.FillTransparency = 0.7
+        hl.OutlineTransparency = 0
+        hl.FillColor = Color3.fromRGB(255, 255, 255)
+        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+        hl.Adornee = char
+        hl.Parent = HighlightFolder
+
+        return hl
+    end
+
+    local function removeHighlightForCharacter(char)
+        if not char then return end
+        local tagName = "Obsidian_Highlight_Tag"
+        local existing = char:FindFirstChild(tagName)
+        if existing and existing:IsA("Highlight") then
+            existing:Destroy()
+        end
+    end
+
+    ESPLeft:AddToggle("ESP_3D_Enabled", {
+        Text = "Enable 3D Highlight ESP",
         Default = false,
         Callback = function(value)
             HighlightState.Enabled = value
-            refreshAllHighlights()
+            if not value then
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    removeHighlightForCharacter(plr.Character)
+                end
+            end
         end
     })
 
-    ESPBoxLeft:AddToggle("ESP_Highlight_TeamCheck", {
-        Text = "Team Check",
+    ESPLeft:AddToggle("ESP_3D_TeamCheck", {
+        Text = "Team check",
         Default = true,
         Callback = function(value)
             HighlightState.TeamCheck = value
-            refreshAllHighlights()
         end
     })
 
-    ESPBoxLeft:AddSlider("ESP_Highlight_FillTransparency", {
-        Text = "Fill Transparency",
-        Default = 75,
-        Min = 0,
-        Max = 100,
-        Rounding = 0,
-        Compact = false,
-        Callback = function(value)
-            HighlightState.FillTransparency = math.clamp(value / 100, 0, 1)
-            for plr, h in pairs(playerHighlight) do
-                updateHighlightSettings(h, plr)
+    ESPLeft:AddLabel("Highlight ESP uses Roblox Highlight instances.\nSafer and lighter than full 2D ESP.", true)
+
+    AddConnection(Players.PlayerAdded:Connect(function(plr)
+        AddConnection(plr.CharacterAdded:Connect(function(char)
+            if not HighlightState.Enabled then
+                return
+            end
+            getHighlightForCharacter(char)
+        end))
+    end))
+
+    AddConnection(Players.PlayerRemoving:Connect(function(plr)
+        if plr.Character then
+            removeHighlightForCharacter(plr.Character)
+        end
+    end))
+
+    AddConnection(RunService.Heartbeat:Connect(function()
+        if not HighlightState.Enabled then
+            return
+        end
+
+        local myTeam = LocalPlayer.Team
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then
+                local char = plr.Character
+                if char then
+                    local sameTeam = (myTeam and plr.Team == myTeam) or false
+                    if HighlightState.TeamCheck and sameTeam then
+                        removeHighlightForCharacter(char)
+                    else
+                        local hl = getHighlightForCharacter(char)
+                        if hl then
+                            if sameTeam then
+                                hl.FillColor = Color3.fromRGB(85, 170, 255)
+                                hl.OutlineColor = Color3.fromRGB(85, 170, 255)
+                            else
+                                hl.FillColor = Color3.fromRGB(255, 85, 85)
+                                hl.OutlineColor = Color3.fromRGB(255, 85, 85)
+                            end
+                        end
+                    end
+                end
             end
         end
-    })
+    end))
 
-    -- 2D ESP (Drawing)
-    local drawingNew
-    pcall(function()
-        if type(Drawing) == "table" and type(Drawing.new) == "function" then
-            drawingNew = Drawing.new
-        elseif type(Drawing) == "function" then
-            drawingNew = Drawing
-        end
-    end)
-
-    local drawingAvailable = drawingNew ~= nil
-
+    ----------------------------------------------------------------
+    -- 2D ESP (Drawing) – optional
+    ----------------------------------------------------------------
     local DrawingState = {
         Enabled = false,
-        ShowBox = true,
-        ShowCorner = false,
-        ShowTracer = true,
-        ShowName = true
+        Mode = "Box", -- Box / Corner / Tracer
+        TracerFrom = "Bottom" -- Bottom / Center
     }
 
-    local drawingESP = {}
-
-    local function removeDrawingForPlayer(plr)
-        local holder = drawingESP[plr]
-        if holder then
-            drawingESP[plr] = nil
-            for _, obj in pairs(holder) do
-                if typeof(obj) == "table" and obj.Remove then
-                    pcall(function() obj:Remove() end)
-                end
-            end
-        end
-    end
-
-    local function getOrCreateDrawingForPlayer(plr)
-        if not drawingAvailable then
-            return nil
-        end
-
-        local holder = drawingESP[plr]
-        if holder then
-            return holder
-        end
-
-        holder = {}
-
-        holder.Box = drawingNew("Square")
-        holder.Box.Thickness = 1
-        holder.Box.Filled = false
-        holder.Box.Visible = false
-
-        holder.Tracer = drawingNew("Line")
-        holder.Tracer.Thickness = 1
-        holder.Tracer.Visible = false
-
-        holder.Name = drawingNew("Text")
-        holder.Name.Size = 13
-        holder.Name.Center = true
-        holder.Name.Outline = true
-        holder.Name.Visible = false
-
-        holder.Corners = {}
-        for i = 1, 8 do
-            local line = drawingNew("Line")
-            line.Thickness = 1
-            line.Visible = false
-            holder.Corners[i] = line
-        end
-
-        drawingESP[plr] = holder
-        return holder
-    end
-
-    local function hideAllDrawing()
-        for _, holder in pairs(drawingESP) do
-            if holder.Box then holder.Box.Visible = false end
-            if holder.Tracer then holder.Tracer.Visible = false end
-            if holder.Name then holder.Name.Visible = false end
-            if holder.Corners then
-                for _, line in ipairs(holder.Corners) do
-                    line.Visible = false
-                end
-            end
-        end
-    end
-
-    if not drawingAvailable then
-        ESPBoxRight:AddLabel("Drawing API not available\nBox/Corner/Tracer ESP disabled", true)
+    if not hasDrawing then
+        ESPRight:AddLabel("<b>Drawing API not available.</b>\nYour executor does not support 2D ESP.", true)
     else
-        ESPBoxRight:AddToggle("ESP2D_Enable", {
-            Text = "Enable 2D ESP (Drawing)",
+        ESPRight:AddToggle("ESP_2D_Enabled", {
+            Text = "Enable 2D ESP",
             Default = false,
             Callback = function(value)
                 DrawingState.Enabled = value
-                if not value then
-                    hideAllDrawing()
-                end
             end
         })
 
-        ESPBoxRight:AddToggle("ESP2D_Box", {
-            Text = "Box",
-            Default = true,
+        ESPRight:AddDropdown("ESP_2D_Mode", {
+            Text = "ESP Mode",
+            Default = "Box",
+            Values = { "Box", "Corner", "Tracer" },
             Callback = function(value)
-                DrawingState.ShowBox = value
+                DrawingState.Mode = value
             end
         })
 
-        ESPBoxRight:AddToggle("ESP2D_Corner", {
-            Text = "Corner",
-            Default = false,
+        ESPRight:AddDropdown("ESP_2D_TracerFrom", {
+            Text = "Tracer origin",
+            Default = "Bottom",
+            Values = { "Bottom", "Center" },
             Callback = function(value)
-                DrawingState.ShowCorner = value
+                DrawingState.TracerFrom = value
             end
         })
 
-        ESPBoxRight:AddToggle("ESP2D_Tracer", {
-            Text = "Tracer",
-            Default = true,
-            Callback = function(value)
-                DrawingState.ShowTracer = value
-            end
-        })
+        ESPRight:AddLabel("2D ESP is experimental.\nUse carefully on low-end / mobile devices.", true)
 
-        ESPBoxRight:AddToggle("ESP2D_Name", {
-            Text = "Name",
-            Default = true,
-            Callback = function(value)
-                DrawingState.ShowName = value
-            end
-        })
-    end
+        local Tracers = {}
 
-    if drawingAvailable then
-        RunService.RenderStepped:Connect(function()
-            if not DrawingState.Enabled then
-                hideAllDrawing()
+        local function getTracerForPlayer(plr)
+            local existing = Tracers[plr]
+            if existing then
+                return existing
+            end
+
+            local line = Drawing.new("Line")
+            line.Thickness = 1
+            line.Visible = false
+            line.Color = Color3.new(1, 1, 1)
+
+            local box = Drawing.new("Square")
+            box.Thickness = 1
+            box.Filled = false
+            box.Visible = false
+            box.Color = Color3.new(1, 1, 1)
+
+            Tracers[plr] = { line = line, box = box }
+            return Tracers[plr]
+        end
+
+        local function hideAll2D()
+            for _, objs in pairs(Tracers) do
+                if objs.line then objs.line.Visible = false end
+                if objs.box then objs.box.Visible = false end
+            end
+        end
+
+        AddConnection(RunService.RenderStepped:Connect(function()
+            if not DrawingState.Enabled or not hasDrawing then
+                hideAll2D()
                 return
             end
 
             local cam = workspace.CurrentCamera
             if not cam then
-                hideAllDrawing()
+                hideAll2D()
                 return
             end
 
-            local viewport = cam.ViewportSize
-            local screenCenter = Vector2.new(viewport.X / 2, viewport.Y)
-
             for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and shouldHighlight(plr) then
+                if plr ~= LocalPlayer then
                     local char = plr.Character
                     local root = char and char:FindFirstChild("HumanoidRootPart")
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-                    if char and root then
-                        local pos, onScreen = cam:WorldToViewportPoint(root.Position)
-                        if onScreen and pos.Z > 0 then
-                            local holder = getOrCreateDrawingForPlayer(plr)
-                            if not holder then
-                                continue
-                            end
-
-                            local distance = (root.Position - cam.CFrame.Position).Magnitude
-                            local sizeFactor = math.clamp(2000 / distance, 30, 250)
-                            local boxW = sizeFactor * 0.6
-                            local boxH = sizeFactor
-
-                            local boxX = pos.X - boxW / 2
-                            local boxY = pos.Y - boxH / 2
-
-                            local color = getESPColorForPlayer(plr)
-
-                            if DrawingState.ShowBox then
-                                holder.Box.Color = color
-                                holder.Box.Size = Vector2.new(boxW, boxH)
-                                holder.Box.Position = Vector2.new(boxX, boxY)
-                                holder.Box.Visible = true
-                            else
-                                holder.Box.Visible = false
-                            end
-
-                            if DrawingState.ShowTracer then
-                                holder.Tracer.Color = color
-                                holder.Tracer.From = screenCenter
-                                holder.Tracer.To = Vector2.new(pos.X, pos.Y + boxH / 2)
-                                holder.Tracer.Visible = true
-                            else
-                                holder.Tracer.Visible = false
-                            end
-
-                            if DrawingState.ShowName then
-                                holder.Name.Color = color
-                                holder.Name.Text = plr.Name
-                                holder.Name.Position = Vector2.new(pos.X, boxY - 14)
-                                holder.Name.Visible = true
-                            else
-                                holder.Name.Visible = false
-                            end
-
-                            if DrawingState.ShowCorner then
-                                local cornerLen = math.floor(boxH / 4)
-
-                                local corners = holder.Corners
-                                local lt = Vector2.new(boxX, boxY)
-                                local rt = Vector2.new(boxX + boxW, boxY)
-                                local lb = Vector2.new(boxX, boxY + boxH)
-                                local rb = Vector2.new(boxX + boxW, boxY + boxH)
-
-                                corners[1].Color = color
-                                corners[1].From = lt
-                                corners[1].To = Vector2.new(lt.X + cornerLen, lt.Y)
-                                corners[1].Visible = true
-
-                                corners[2].Color = color
-                                corners[2].From = lt
-                                corners[2].To = Vector2.new(lt.X, lt.Y + cornerLen)
-                                corners[2].Visible = true
-
-                                corners[3].Color = color
-                                corners[3].From = rt
-                                corners[3].To = Vector2.new(rt.X - cornerLen, rt.Y)
-                                corners[3].Visible = true
-
-                                corners[4].Color = color
-                                corners[4].From = rt
-                                corners[4].To = Vector2.new(rt.X, rt.Y + cornerLen)
-                                corners[4].Visible = true
-
-                                corners[5].Color = color
-                                corners[5].From = lb
-                                corners[5].To = Vector2.new(lb.X + cornerLen, lb.Y)
-                                corners[5].Visible = true
-
-                                corners[6].Color = color
-                                corners[6].From = lb
-                                corners[6].To = Vector2.new(lb.X, lb.Y - cornerLen)
-                                corners[6].Visible = true
-
-                                corners[7].Color = color
-                                corners[7].From = rb
-                                corners[7].To = Vector2.new(rb.X - cornerLen, rb.Y)
-                                corners[7].Visible = true
-
-                                corners[8].Color = color
-                                corners[8].From = rb
-                                corners[8].To = Vector2.new(rb.X, rb.Y - cornerLen)
-                                corners[8].Visible = true
-                            else
-                                local holder = drawingESP[plr]
-                                if holder and holder.Corners then
-                                    for _, line in ipairs(holder.Corners) do
-                                        line.Visible = false
-                                    end
-                                end
-                            end
-                        else
-                            removeDrawingForPlayer(plr)
+                    local objs = getTracerForPlayer(plr)
+                    if not objs or not root or not hum or hum.Health <= 0 then
+                        if objs then
+                            objs.line.Visible = false
+                            objs.box.Visible = false
                         end
                     else
-                        removeDrawingForPlayer(plr)
+                        local pos, onScreen = cam:WorldToViewportPoint(root.Position)
+                        if not onScreen then
+                            objs.line.Visible = false
+                            objs.box.Visible = false
+                        else
+                            local screenPos = Vector2.new(pos.X, pos.Y)
+
+                            local origin
+                            if DrawingState.TracerFrom == "Center" then
+                                origin = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+                            else
+                                origin = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+                            end
+
+                            if DrawingState.Mode == "Tracer" then
+                                objs.box.Visible = false
+
+                                objs.line.Visible = true
+                                objs.line.From = origin
+                                objs.line.To = screenPos
+                            else
+                                objs.line.Visible = false
+
+                                local scale = 2
+                                local size = Vector2.new(50, 80) * (cam.CFrame.Position - root.Position).Magnitude / 100
+                                size = Vector2.new(math.clamp(size.X, 20, 120), math.clamp(size.Y, 40, 180))
+
+                                objs.box.Visible = true
+                                objs.box.Position = screenPos - size / 2
+                                objs.box.Size = size
+
+                                if DrawingState.Mode == "Corner" then
+                                    -- สำหรับ simplicity: ยังใช้ box ปกติ (แต่คุณจะต่อยอดให้เป็น corner แยกเองได้)
+                                end
+                            end
+                        end
                     end
-                else
-                    removeDrawingForPlayer(plr)
                 end
             end
-        end)
+        end))
     end
 
     ----------------------------------------------------------------
-    -- TAB 4: UI / Theme / Config
+    -- Tab 4: UI / Theme / Config
     ----------------------------------------------------------------
-    local UIBoxLeft  = Tabs.UI:AddLeftGroupbox("UI Controls")
-    local UIBoxRight = Tabs.UI:AddRightGroupbox("Theme / Config")
+    local UILeft  = Tabs.UI:AddLeftGroupbox("UI / Theme")
+    local UIRight = Tabs.UI:AddRightGroupbox("Config / Misc")
 
-    UIBoxLeft:AddButton("Toggle UI", function()
-        if Library and type(Library.Toggle) == "function" then
-            Library:Toggle()
-        end
-    end)
-
-    UIBoxLeft:AddButton("Unload UI (close hub)", function()
-        if Library and type(Library.Unload) == "function" then
-            Library:Unload()
-        end
-    end)
-
-    UIBoxLeft:AddLabel("If UI disappears, re-execute script.", true)
-
-    if SaveManager and type(SaveManager.BuildConfigSection) == "function" then
-        SaveManager:BuildConfigSection(Tabs.UI)
-    end
+    UILeft:AddLabel("<b>Theme</b>", true)
+    UILeft:AddDivider()
 
     if ThemeManager and type(ThemeManager.ApplyToTab) == "function" then
         ThemeManager:ApplyToTab(Tabs.UI)
     end
 
-    if SaveManager and type(SaveManager.LoadAutoloadConfig) == "function" then
-        SaveManager:LoadAutoloadConfig()
+    if ThemeManager and type(ThemeManager.BuildThemeSection) == "function" then
+        ThemeManager:BuildThemeSection(UILeft)
+    else
+        UILeft:AddLabel("ThemeManager not fully available.", true)
     end
+
+    UIRight:AddLabel("<b>Config</b>", true)
+    UIRight:AddDivider()
+
+    if SaveManager and type(SaveManager.BuildConfigSection) == "function" then
+        SaveManager:BuildConfigSection(UIRight)
+    else
+        UIRight:AddLabel("SaveManager not fully available.", true)
+    end
+
+    UIRight:AddDivider()
+    UIRight:AddButton("Unload Hub", function()
+        CleanupConnections()
+        Library:Notify("Unloading hub...", 2)
+        Library:Unload()
+    end)
+
+    UIRight:AddButton("Copy Discord", function()
+        local ok, err = Exec.SetClipboard("https://discord.gg/yourdiscord")
+        if ok then
+            Library:Notify("Copied Discord link", 3)
+        else
+            Library:Notify("Clipboard not available: " .. tostring(err), 3)
+        end
+    end)
+
+    -- จบ function: Library จะรัน UI Loop ของมันเอง
 end
