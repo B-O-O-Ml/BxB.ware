@@ -1,19 +1,74 @@
 {
+  "status": "online",
+  "status_message": "Changelog synced and up-to-date",
   "entries": [
     {
-      "version": "1.0.3",
-      "date": "2025-11-30",
-      "tag": "stable",
+      "version": "v1.3.0",
+      "date": "2025-12-02",
+      "tag": "Stable",
       "changes": {
         "Added": [
-          "Added Key UI status monitor.",
-          "Added scriptinfo.json and changelog.json support."
+          "Role-based feature locks (user/premium/staff/owner)",
+          "Key status integration in Main Hub status tab",
+          "Online/offline status panel based on remote config in key UI"
         ],
         "Changed": [
-          "Improved Exec.HttpGet fallback."
+          "Improved HWID hashing with 128-bit mixer",
+          "Refined status UI layout for smaller screens"
         ],
         "Fixed": [
-          "Fixed Library.Options nil errors in some executors."
+          "Bug where MainHub could load when key already expired",
+          "Incorrect time-left display for lifetime keys"
+        ],
+        "Removed": [
+          "Legacy debug prints in output"
+        ]
+      }
+    },
+    {
+      "version": "v1.2.5",
+      "date": "2025-11-28",
+      "tag": "Hotfix",
+      "changes": {
+        "Added": [
+          "Optional panic key to quickly unload UI & features"
+        ],
+        "Changed": [
+          "Safer error handling when MainHub.lua fails to load"
+        ],
+        "Fixed": [
+          "Crash when HTTP request returns non-string body",
+          "Incorrect handling when changelog.json is empty"
+        ]
+      }
+    },
+    {
+      "version": "v1.2.0",
+      "date": "2025-11-20",
+      "tag": "Beta",
+      "changes": {
+        "Added": [
+          "Key UI built with Obsidian (2 tabs: Key / Info)",
+          "Script info & changelog panels in Info tab",
+          "Support for trial keys and basic role field"
+        ],
+        "Changed": [
+          "Cleaner default theme & spacing for mobile users"
+        ],
+        "Fixed": [
+          "Minor layout issues on small resolutions"
+        ]
+      }
+    },
+    {
+      "version": "v1.0.0",
+      "date": "2025-11-01",
+      "tag": "Initial",
+      "changes": {
+        "Added": [
+          "Initial universal hub core",
+          "Basic movement features (walkspeed, jumppower)",
+          "Basic 3D ESP using Highlight"
         ]
       }
     }
