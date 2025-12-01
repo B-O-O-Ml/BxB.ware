@@ -1,17 +1,26 @@
 {
+  "status": "online",
+  "status_message": "Universal hub is live",
   "name": "Obsidian Universal Hub",
-  "version": "1.0.3",
-  "author": "Boom",
-  "description": "Universal hub for multiple games with key system and Obsidian UI.",
-  "discord": "https://discord.gg/yourdiscord",
-  "website": "https://your-website.com",
+  "version": "1.3.0",
+  "author": "BxB.ware",
+  "last_update": "2025-12-02",
   "executors": [
-    "Synapse X",
-    "Script-Ware",
-    "Fluxus",
-    "KRNL"
+    "Wave",
+    "Potassium",
+    "Volt",
+    "Delta",
+    "Zenith"
   ],
-  "status": "stable",
-  "last_update": "2025-11-30",
-  "notice": "If something breaks after Roblox update, please wait for a patch."
+  "discord": "https://discord.gg/yourdiscord",
+  "website": "https://your-site.example.com",
+  "description": "Multi-game universal hub built on top of Obsidian UI Library.\n\nIncludes:\n- Movement: walk speed, jump power, fly, no-clip, infinite jump\n- ESP: 2D box/corner/tracer, 3D highlight, team-check, distance\n- Misc: UI theme manager, config system, key system integration.",
+  "notice": "Do not share your key with others.\nUsing in competitive or ranked games is at your own risk.",
+  "tags": [
+    "universal",
+    "obsidian",
+    "esp",
+    "movement",
+    "config"
+  ]
 }
