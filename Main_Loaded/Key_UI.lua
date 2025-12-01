@@ -536,7 +536,7 @@ local function createKeyUI(Library)
 
 
         local Window = Library:CreateWindow({
-            Title = "","GTTT",
+            Title = "",
             Center = true,
                 AutoShow = true,
                 Icon = "icon-rss",
@@ -554,15 +554,78 @@ local function createKeyUI(Library)
         }
 
         local KeyLeft   = Tabs.Key:AddLeftGroupbox("Key System", "key-round")
-        local KeyRight  = Tabs.Key:AddRightGroupbox("", "database-zap")
+        local KeyRight  = Tabs.Key:AddRightGroupbox("Data Base", "database-zap")
 
-        local InfoLeft  = Tabs.Info:AddLeftGroupbox("", "badge-info")
-        local InfoRight = Tabs.Info:AddRightGroupbox("", "rss")
+        local InfoLeft  = Tabs.Info:AddLeftGroupbox("Script Info", "badge-info")
+        local InfoRight = Tabs.Info:AddRightGroupbox("Changlog", "rss")
 
-        ----------------------------------------------------------------
-        -- Login cooldown guard
-        ----------------------------------------------------------------
-----------------------------------------------------------------
+    ----------------------------------------------------------------
+    -- WarningBox: Typewriter effect (ข้อความแนะนำ hub / support / credit)
+    ----------------------------------------------------------------
+
+    -- ตั้งค่ากล่อง WarningBox เริ่มต้น
+    Tabs.Key:UpdateWarningBox({
+        Title = "",
+        Text = "",
+        IsNormal = true,   -- true = warning style ปกติ, false = error style
+        Visible = true,
+        LockSize = true,   -- ล็อกขนาด, ไม่ขยายยุบตามข้อความ
+    })
+
+    -- ข้อความที่จะวนแสดง (แก้ชื่อเกม/เครดิตได้ตามจริง)
+    local WarningMessages = {
+        "BxB.ware | Multi-game script  ",
+        "Support Executor: \n[PC] Wave, Potassium, Volt, Seliware, Volcano, Xeno \n[MAC] Maxsploit \n[MB-AD] Delta, Codex  |  [MB-IOS] Delta",
+        "Support: (ตัวอย่าง) Blox Fruits, Anime, FPS",
+        "Credits: Hub by BXMQZ, UI by Obsidian",
+        "Discord: discord.gg/yourdiscord"
+    }
+
+    -- helper: อัปเดตข้อความใน WarningBox
+    local function setWarningText(text)
+        Tabs.Key:UpdateWarningBox({
+            Title = '<b><font color="#8370FF">BxB.ware</font> | Universal </b>',
+            Text = text,
+            IsNormal = true,
+            Visible = true,
+            LockSize = true,
+        })
+    end
+
+    -- effect: พิมพ์ทีละตัว
+    local function typeWrite(text, delayPerChar)
+        delayPerChar = delayPerChar or 0.04
+        for i = 1, #text do
+            local current = string.sub(text, 1, i)
+            setWarningText(current)
+            task.wait(delayPerChar)
+        end
+    end
+
+    -- effect: ลบทีละตัว (ย้อนกลับ)
+    local function typeDelete(text, delayPerChar)
+        delayPerChar = delayPerChar or 0.02
+        for i = #text, 0, -1 do
+            local current = string.sub(text, 1, i)
+            setWarningText(current)
+            task.wait(delayPerChar)
+        end
+    end
+
+    -- เริ่ม loop แบบเบา ๆ ใน thread แยก
+    task.spawn(function()
+        while true do
+            for _, msg in ipairs(WarningMessages) do
+                typeWrite(msg, 0.035)   -- พิมพ์ทีละตัว
+                task.wait(4)          -- ค้างข้อความเต็ม 1.5 วิ
+                typeDelete(msg, 0.02)   -- ลบทีละตัว
+                task.wait(0.4)          -- พักก่อนขึ้นข้อความถัดไป
+            end
+        end
+    end)
+
+
+    ----------------------------------------------------------------
     -- 1) Login Cooldown Guard
     ----------------------------------------------------------------
     local LoginGuard = {
@@ -596,20 +659,17 @@ local function createKeyUI(Library)
     ----------------------------------------------------------------
     -- 2) Tab "Key" ฝั่งซ้าย: Key System
     ----------------------------------------------------------------
-    KeyLeft:AddLabel("<b>Key System</b>", true)
-    KeyLeft:AddLabel('<font color="#ff6666">ห้ามแชร์คีย์ของคุณกับผู้อื่น</font>', true)
-    KeyLeft:AddDivider()
+    --KeyLeft:AddLabel("<b>Key System</b>", true)
+    KeyLeft:AddLabel('<font color="#ff6666">Do not share your key with others.</font>', true)
 
     -- Input กล่อง key (ตัวนี้คือจุดสำคัญที่ต้องอ่านจาก Library.Options)
     KeyLeft:AddInput("Obsidian_KeyInput", {
-        Text = "Key",
+        Text = "",
         Default = "",
         Placeholder = "Paste your key here",
         Numeric = false,
-        Finished = false,         -- ไม่จำเป็นต้องใช้ Finished
-        ClearTextOnFocus = false, -- ไม่ล้างอัตโนมัติ
     })
-
+KeyLeft:AddDivider()
     -- helper ใช้ Options ตาม pattern ของ Obsidian
     local function getKeyFromInput()
         local obj = Options and Options.Obsidian_KeyInput
@@ -631,37 +691,6 @@ local function createKeyUI(Library)
             obj:SetValue(tostring(text or ""))
         end
     end
-
-    -- ปุ่ม Get Key
-    KeyLeft:AddButton("Get Key", function()
-        local ok, err = Exec.SetClipboard("https://your-key-system-url-here/")
-        if ok then
-            notify("Copied key URL to clipboard", 3)
-        else
-            notify("Cannot access clipboard: " .. tostring(err), 4)
-        end
-    end)
-
-    -- ปุ่ม Paste from clipboard
-    KeyLeft:AddButton("Paste from clipboard", function()
-        local clip = select(1, Exec.GetClipboard())
-        if type(clip) == "string" and clip ~= "" then
-            setKeyInput(clip)
-            notify("Pasted key from clipboard", 3)
-        else
-            notify("Clipboard is empty / not available", 3)
-        end
-    end)
-
-    -- ปุ่ม Logout / เคลียร์ key ในไฟล์ (เก็บแค่ key ตามที่แก้ล่าสุด)
-    KeyLeft:AddButton("Logout / Clear Local Key", function()
-        local ok, err = Exec.WriteFile(Config.KEYDATA_FILE, "")
-        if ok then
-            notify("Cleared local key. You can enter a new key now.", 4)
-        else
-            notify("Failed to clear local key: " .. tostring(err), 4)
-        end
-    end)
 
     -- ปุ่ม Login
     KeyLeft:AddButton("Login / Check Key", function()
@@ -694,9 +723,40 @@ local function createKeyUI(Library)
         startMainHub(result, Library)
     end)
 
+    -- ปุ่ม Get Key
+    KeyLeft:AddButton("Get Key", function()
+        local ok, err = Exec.SetClipboard("https://your-key-system-url-here/")
+        if ok then
+            notify("Copied key URL to clipboard", 3)
+        else
+            notify("Cannot access clipboard: " .. tostring(err), 4)
+        end
+    end)
+--[[
+    -- ปุ่ม Paste from clipboard
+    KeyLeft:AddButton("Paste from clipboard", function()
+        local clip = select(1, Exec.GetClipboard())
+        if type(clip) == "string" and clip ~= "" then
+            setKeyInput(clip)
+            notify("Pasted key from clipboard", 3)
+        else
+            notify("Clipboard is empty / not available", 3)
+        end
+    end)
+
+    -- ปุ่ม Logout / เคลียร์ key ในไฟล์ (เก็บแค่ key ตามที่แก้ล่าสุด)
+    KeyLeft:AddButton("Logout / Clear Local Key", function()
+        local ok, err = Exec.WriteFile(Config.KEYDATA_FILE, "")
+        if ok then
+            notify("Cleared local key. You can enter a new key now.", 4)
+        else
+            notify("Failed to clear local key: " .. tostring(err), 4)
+        end
+    end)
+]]
+
     ----------------------------------------------------------------
-    -- 3) Tab "Key" ฝั่งขวา: Status Monitor (อ่าน config จากไฟล์จริง)
-    --    แก้ให้ใช้ label สั้น ๆ แยกบรรทัด ไม่ใช้ label ยักษ์ทีเดียว
+    -- 3) Tab "Key": Status Monitor (สั้นแค่ "ชื่อ : สถานะ")
     ----------------------------------------------------------------
     KeyRight:AddLabel("<b>Remote Status</b>", true)
     KeyRight:AddDivider()
@@ -704,12 +764,19 @@ local function createKeyUI(Library)
     local StatusEntries = {}
     local StatusOrder = {}
 
+    -- สร้าง 1 Label ต่อ 1 แหล่ง (Keydata / MainHub / Script / Changelog)
     local function addStatusLine(name, url, kind)
-        -- label หนึ่งแถวสั้น ๆ (ไม่ใช้หลายบรรทัดแบบยาว)
         local label = KeyRight:AddLabel(
-            string.format("<b>%s</b>: <font color=\"#aaaaaa\">checking...</font>", name),
+            string.format("<b>%s</b>: <font color=\"#aaaaaa\">Unknown</font>", name),
             true
         )
+
+        if label and label.TextLabel then
+            label.TextLabel.RichText = true
+            label.TextLabel.TextWrapped = false
+            label.TextLabel.AutomaticSize = Enum.AutomaticSize.None
+            label.TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
 
         StatusEntries[name] = {
             Name  = name,
@@ -736,6 +803,7 @@ local function createKeyUI(Library)
         return "#aaaaaa"
     end
 
+    -- แสดงผลแบบ "Script : Online" สั้น ๆ
     local function setStatus(name, networkOk, statusFlag, statusMsg)
         local entry = StatusEntries[name]
         if not entry then
@@ -747,27 +815,27 @@ local function createKeyUI(Library)
             return
         end
 
-        local netColor = networkOk and "#55ff55" or "#ff5555"
-        local netText  = networkOk and "Online" or "HTTP error"
-
-        local statusText  = statusFlag or "unknown"
-        local statusColor = colorForStatusFlag(statusFlag)
-
-        -- แก้ให้ข้อความสั้น ๆ บรรทัดเดียว (max 2: status + msg)
-        local text = string.format(
-            "<b>%s</b>: <font color=\"%s\">%s</font> | Status: <font color=\"%s\">%s</font>",
-            name,
-            netColor,
-            netText,
-            statusColor,
-            statusText
-        )
-
-        if statusMsg and statusMsg ~= "" then
-            text = text .. string.format(" | <font color=\"#888888\">%s</font>", statusMsg)
+        -- ถ้าไฟล์ไม่มี status ให้ fallback = online/offline ตาม network
+        local flag = statusFlag
+        if not flag or flag == "" then
+            flag = networkOk and "online" or "offline"
         end
 
+        local color = colorForStatusFlag(flag)
+
+        -- ทำให้ตัวแรกเป็นตัวใหญ่ (Online / Offline / Maintenance)
+        local prettyFlag = tostring(flag)
+        prettyFlag = prettyFlag:sub(1, 1):upper() .. prettyFlag:sub(2):lower()
+
+        local text = string.format(
+            "<b>%s</b>: <font color=\"%s\">%s</font>",
+            name,
+            color,
+            prettyFlag
+        )
+
         lbl.TextLabel.RichText = true
+        lbl.TextLabel.TextWrapped = false
         lbl.TextLabel.Text = text
     end
 
@@ -801,11 +869,14 @@ local function createKeyUI(Library)
         return nil, nil
     end
 
-    -- เพิ่ม 4 รายการเหมือนเดิม
-    addStatusLine("Keydata",    Config.KEYDATA_URL,    "json")
-    addStatusLine("MainHub",    Config.MAINHUB_URL,    "lua")
-    addStatusLine("ScriptInfo", Config.SCRIPTINFO_URL, "json")
-    addStatusLine("Changelog",  Config.CHANGELOG_URL,  "json")
+    -- ชื่อที่จะแสดงใน UI (ซ้ายคือ label, ขวาคือ URL/ประเภท)
+    addStatusLine("Key",      Config.KEYDATA_URL,    "json")
+    addStatusLine("MainHub",  Config.MAINHUB_URL,    "lua")
+    addStatusLine("Script",   Config.SCRIPTINFO_URL, "json")
+    addStatusLine("Changelog",Config.CHANGELOG_URL,  "json")
+
+    -- ตั้งช่วง auto refresh (วินาที): 60–300 ได้ตามที่คุณชอบ
+    local STATUS_REFRESH_INTERVAL = 180 -- 3 นาที
 
     local function refreshStatus()
         for _, name in ipairs(StatusOrder) do
@@ -838,20 +909,26 @@ local function createKeyUI(Library)
                     end
                 end
 
-                if not statusFlag then
-                    statusFlag = "online"
-                end
-
+                -- statusMsg ไม่ถูกใช้ใน UI แล้ว แต่ยังส่งเข้ามาเผื่ออยากเอาไปใช้ทีหลัง
                 setStatus(name, networkOk, statusFlag, statusMsg)
             end)
         end
     end
-
+--[[
     KeyRight:AddButton("Refresh Status", function()
         refreshStatus()
     end)
+]]
+    -- เรียกครั้งแรก
+    refreshStatus()
 
-    refreshStatus() -- auto ครั้งแรก
+    -- Auto-refresh ทุก STATUS_REFRESH_INTERVAL วินาที
+    task.spawn(function()
+        while true do
+            task.wait(STATUS_REFRESH_INTERVAL)
+            refreshStatus()
+        end
+    end)
 
     ----------------------------------------------------------------
     -- 4) Tab "Info": ScriptInfo + Changelog
@@ -864,10 +941,10 @@ local function createKeyUI(Library)
         end
         return lbl
     end
-
+--[[
     addRichLabel(InfoLeft, "<i>Loading script info...</i>")
     addRichLabel(InfoRight, "<i>Loading changelog...</i>")
-
+]]
     local function fetchText(url)
         local ok, body = pcall(Exec.HttpGet, url)
         if not ok or type(body) ~= "string" then
