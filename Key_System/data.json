@@ -13,7 +13,7 @@
       "hwid_hash": "c0ffee0000aa11223344556677889900",
       "timestamp": 1733000000,
       "role": "user",
-      "expire": 1735600000,
+      "expire": 1767056400,
       "status": "active",
       "note": "Standard free user #1"
     },
@@ -22,13 +22,13 @@
       "hwid_hash": "2436e823dec95964ffaadcc44dc98e75",
       "timestamp": 1733000500,
       "role": "owner",
-      "expire": 1735520400,
+      "expire": 1767056400,
       "status": "active",
       "note": "BxB.ware | OWNER Permission"
     },
 
     {
-      "key": "TRIAL-3D-001",
+      "key": "VV1",
       "hwid_hash": "2436e823dec95964ffaadcc44dc98e75",
       "timestamp": 1732910000,
       "expire": 0,
