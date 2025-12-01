@@ -393,18 +393,21 @@ return function(Exec, keydata, keycheck)
     -- สร้าง Window + Tabs (ตั้ง Resizable = false แก้บั๊ก resize)
     ----------------------------------------------------------------
     local Window = Library:CreateWindow({
-        Title = "Obsidian | Universal Hub",
+        Title = "",
+        Icon = 84528813312016,
+        Size = UDim2.fromOffset(720, 600),  
         Center = true,
         AutoShow = true,
-        Resizable = false,   -- ปิดการยืด/หดหน้าต่าง เพื่อกัน layout พัง
+        Resizable = true,  
+        Compact = true
     })
 
     local Tabs = {
-        Status = Window:AddTab("Status"),
-        Player = Window:AddTab("Player"),
-        ESP    = Window:AddTab("ESP"),
-        Game   = Window:AddTab("Game"),
-        UI     = Window:AddTab("UI"),
+        Status = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "database", Description = "Key Status / Info"}),
+        Player = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "users", Description = "Player Tool"}),
+        ESP    = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "eye", Description = "ESP Client"}),
+        Game   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "joystick", Description = "Game Module"}),
+        UI     = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "settings", Description = "UI/UX Setings"}),
     }
 
     if isStaff then
