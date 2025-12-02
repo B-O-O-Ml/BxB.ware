@@ -44,7 +44,6 @@ return function(Exec, keydata, keycheck)
 
     ----------------------------------------------------------------
     -- โหลด Obsidian Library + ThemeManager + SaveManager
-    -- (ตามรูปแบบที่คุณบอกไว้ ไม่แก้)
     ----------------------------------------------------------------
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
     local Library      = loadstring(game:HttpGet(repo .. "Library.lua"))()
@@ -95,7 +94,7 @@ return function(Exec, keydata, keycheck)
     end
 
     ----------------------------------------------------------------
-    -- Role / Status
+    -- Role / Status helpers
     ----------------------------------------------------------------
     local role      = tostring(keydata.role or "user")
     local keyStatus = tostring(keydata.status or "active")
@@ -184,7 +183,7 @@ return function(Exec, keydata, keycheck)
     local function GetRoot()
         local c = GetCharacter()
         if not c then return nil end
-        return c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("UpperTorso")
+        return c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")
     end
 
     local function unixNow()
@@ -205,7 +204,6 @@ return function(Exec, keydata, keycheck)
         if not ok then
             return "N/A"
         end
-
         local ut = dt:ToUniversalTime()
 
         local function pad(n)
@@ -259,9 +257,9 @@ return function(Exec, keydata, keycheck)
         return string.sub(k, 1, 4) .. "..." .. string.sub(k, -4)
     end
 
-    -- FPS/Ping/Memory
-    local FPS       = 0
-    local lastTime  = tick()
+    -- FPS / Ping / Memory
+    local FPS        = 0
+    local lastTime   = tick()
     local frameCount = 0
 
     AddConnection(RunService.RenderStepped:Connect(function()
@@ -339,6 +337,7 @@ return function(Exec, keydata, keycheck)
         Enabled         = true,
         BoxMode         = "Box",   -- Box / Corner / Off
         UseHighlight    = true,
+        Skeleton        = false,
         HeadDot         = true,
         NameTag         = true,
         ShowDistance    = true,
@@ -347,16 +346,18 @@ return function(Exec, keydata, keycheck)
         OffscreenArrow  = false,
         TeamCheck       = true,
         IgnoreFriends   = true,
-        VisibleOnly     = false,
+        VisibleOnly     = false,   -- ถ้า true ซ่อนเป้าที่หลังกำแพง (ตาม Visible flag)
         WallCheck       = true,
         MaxDistance     = 1000,
         MaxPlayers      = 30,
-        UpdateInterval  = 0.08,    -- วินาที
+        UpdateInterval  = 0.08,    -- วินาที (จาก slider ms 10–250)
+        UseESPFOV       = false,
+        ESPFOVRadius    = 500,
     }
 
     local AimSettings = {
         Enabled       = true,
-        AimPart       = "Head",    -- Head / Torso
+        AimPart       = "Head",    -- Head/Chest/Arms/Legs/Closest/RandomWeighted
         FOVRadius     = 120,
         ShowFOV       = true,
         Smoothing     = 0.25,
@@ -364,6 +365,12 @@ return function(Exec, keydata, keycheck)
         TeamCheck     = true,
         IgnoreFriends = true,
         Key           = Enum.UserInputType.MouseButton2, -- RMB
+        Weights       = { -- สำหรับ RandomWeighted
+            Head  = 60,
+            Chest = 25,
+            Arms  = 10,
+            Legs  = 5,
+        },
     }
 
     local WhitelistNames = {} -- [playerName] = true
@@ -375,9 +382,19 @@ return function(Exec, keydata, keycheck)
 
     local RayParams = RaycastParams.new()
     RayParams.FilterType = Enum.RaycastFilterType.Blacklist
-    RayParams.FilterDescendantsInstances = { LocalPlayer.Character }
+    RayParams.FilterDescendantsInstances = {}
 
-    local PlayerInfo = {} -- [Player] = { Character, Humanoid, Root, Head, Distance, ... }
+    local function updateRaycastFilter()
+        local list = { LocalPlayer.Character }
+        RayParams.FilterDescendantsInstances = list
+    end
+
+    updateRaycastFilter()
+    AddConnection(LocalPlayer.CharacterAdded:Connect(function()
+        task.delay(1, updateRaycastFilter)
+    end))
+
+    local PlayerInfo = {} -- [Player] = { ... }
 
     local function isFriend(plr)
         local ok, res = pcall(LocalPlayer.IsFriendsWith, LocalPlayer, plr.UserId)
@@ -388,18 +405,56 @@ return function(Exec, keydata, keycheck)
     end
 
     local function updatePlayerList()
-        -- เพิ่ม player ใหม่
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and not PlayerInfo[plr] then
                 PlayerInfo[plr] = {}
             end
         end
-        -- ลบ player ที่ออก
         for plr in pairs(PlayerInfo) do
             if not plr.Parent then
                 PlayerInfo[plr] = nil
             end
         end
+    end
+
+    local function buildAimParts(info)
+        local char = info.Character
+        if not char then
+            return
+        end
+
+        local parts = {}
+
+        local function add(name)
+            local p = char:FindFirstChild(name)
+            if p and p:IsA("BasePart") then
+                parts[name] = p
+            end
+        end
+
+        add("Head")
+        add("Neck")
+        add("UpperTorso")
+        add("LowerTorso")
+        add("Torso")
+
+        add("LeftUpperArm")
+        add("LeftLowerArm")
+        add("LeftHand")
+
+        add("RightUpperArm")
+        add("RightLowerArm")
+        add("RightHand")
+
+        add("LeftUpperLeg")
+        add("LeftLowerLeg")
+        add("LeftFoot")
+
+        add("RightUpperLeg")
+        add("RightLowerLeg")
+        add("RightFoot")
+
+        info.AimParts = parts
     end
 
     local function updateTargets()
@@ -418,7 +473,7 @@ return function(Exec, keydata, keycheck)
         for plr, info in pairs(PlayerInfo) do
             local char = plr.Character
             local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso"))
+            local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso"))
             local head = char and char:FindFirstChild("Head")
 
             if not (char and hum and root and hum.Health > 0) then
@@ -429,7 +484,7 @@ return function(Exec, keydata, keycheck)
                 local screenPos3D, onScreen = cam:WorldToViewportPoint(root.Position)
                 local screenPos = Vector2.new(screenPos3D.X, screenPos3D.Y)
 
-                local friend = isFriend(plr)
+                local friend      = isFriend(plr)
                 local whitelisted = WhitelistNames[plr.Name] == true
 
                 local teamOK = true
@@ -438,7 +493,7 @@ return function(Exec, keydata, keycheck)
                 end
 
                 local visible = true
-                if ESPSettings.WallCheck or AimSettings.VisibleOnly then
+                if ESPSettings.WallCheck or AimSettings.VisibleOnly or ESPSettings.VisibleOnly then
                     local targetPos = head and head.Position or root.Position
                     local dir = targetPos - origin
                     local result = WorldRoot:Raycast(origin, dir, RayParams)
@@ -460,6 +515,10 @@ return function(Exec, keydata, keycheck)
                 info.Visible     = visible
                 info.Valid       = true
                 info.ShouldRender = false
+
+                if not info.AimParts then
+                    buildAimParts(info)
+                end
 
                 table.insert(infoList, info)
             end
@@ -575,11 +634,11 @@ return function(Exec, keydata, keycheck)
             return
         end
 
-        objs.Box.Visible = false
-        objs.Tracer.Visible = false
-        objs.Name.Visible = false
+        objs.Box.Visible       = false
+        objs.Tracer.Visible    = false
+        objs.Name.Visible      = false
         objs.HealthBar.Visible = false
-        objs.HeadDot.Visible = false
+        objs.HeadDot.Visible   = false
         objs.Offscreen.Visible = false
         for _, c in ipairs(objs.Corners) do
             c.Visible = false
@@ -644,6 +703,138 @@ return function(Exec, keydata, keycheck)
         return false
     end
 
+    local function getWeightedRandomPart(info)
+        local parts = info.AimParts
+        if not parts then
+            return nil
+        end
+
+        local w = AimSettings.Weights
+        local wHead  = math.max(0, tonumber(w.Head)  or 0)
+        local wChest = math.max(0, tonumber(w.Chest) or 0)
+        local wArms  = math.max(0, tonumber(w.Arms)  or 0)
+        local wLegs  = math.max(0, tonumber(w.Legs)  or 0)
+
+        local total = wHead + wChest + wArms + wLegs
+        if total <= 0 then
+            return nil
+        end
+
+        local r = math.random() * total
+        local acc = 0
+        local group
+
+        acc = acc + wHead
+        if r <= acc then
+            group = "Head"
+        else
+            acc = acc + wChest
+            if r <= acc then
+                group = "Chest"
+            else
+                acc = acc + wArms
+                if r <= acc then
+                    group = "Arms"
+                else
+                    group = "Legs"
+                end
+            end
+        end
+
+        local candidates = {}
+
+        if group == "Head" then
+            if parts.Head then table.insert(candidates, parts.Head) end
+            if parts.Neck then table.insert(candidates, parts.Neck) end
+        elseif group == "Chest" then
+            if parts.UpperTorso then table.insert(candidates, parts.UpperTorso) end
+            if parts.LowerTorso then table.insert(candidates, parts.LowerTorso) end
+            if parts.Torso then table.insert(candidates, parts.Torso) end
+        elseif group == "Arms" then
+            if parts.LeftUpperArm  then table.insert(candidates, parts.LeftUpperArm) end
+            if parts.LeftLowerArm  then table.insert(candidates, parts.LeftLowerArm) end
+            if parts.LeftHand      then table.insert(candidates, parts.LeftHand) end
+            if parts.RightUpperArm then table.insert(candidates, parts.RightUpperArm) end
+            if parts.RightLowerArm then table.insert(candidates, parts.RightLowerArm) end
+            if parts.RightHand     then table.insert(candidates, parts.RightHand) end
+        elseif group == "Legs" then
+            if parts.LeftUpperLeg  then table.insert(candidates, parts.LeftUpperLeg) end
+            if parts.LeftLowerLeg  then table.insert(candidates, parts.LeftLowerLeg) end
+            if parts.LeftFoot      then table.insert(candidates, parts.LeftFoot) end
+            if parts.RightUpperLeg then table.insert(candidates, parts.RightUpperLeg) end
+            if parts.RightLowerLeg then table.insert(candidates, parts.RightLowerLeg) end
+            if parts.RightFoot     then table.insert(candidates, parts.RightFoot) end
+        end
+
+        if #candidates == 0 then
+            return nil
+        end
+
+        local idx = math.random(1, #candidates)
+        return candidates[idx]
+    end
+
+    local function getClosestPartToScreen(info, cam, mousePos)
+        local parts = info.AimParts
+        if not parts then
+            return info.Head or info.Root
+        end
+
+        local bestPart
+        local bestDist = math.huge
+
+        for _, part in pairs(parts) do
+            local p3d, onScreen = cam:WorldToViewportPoint(part.Position)
+            if onScreen then
+                local p2d = Vector2.new(p3d.X, p3d.Y)
+                local d = (p2d - mousePos).Magnitude
+                if d < bestDist then
+                    bestDist = d
+                    bestPart = part
+                end
+            end
+        end
+
+        if bestPart then
+            return bestPart
+        end
+
+        return info.Head or info.Root
+    end
+
+    local function getAimTargetPart(info)
+        local cam = workspace.CurrentCamera
+        if not cam then
+            return nil
+        end
+
+        local parts = info.AimParts
+        if not parts then
+            return info.Head or info.Root
+        end
+
+        local ap = AimSettings.AimPart
+
+        if ap == "Head" then
+            return parts.Head or info.Head or info.Root
+        elseif ap == "Chest" then
+            return parts.UpperTorso or parts.LowerTorso or parts.Torso or info.Root
+        elseif ap == "Arms" then
+            return parts.LeftUpperArm or parts.RightUpperArm or parts.LeftLowerArm or parts.RightLowerArm or info.Root
+        elseif ap == "Legs" then
+            return parts.LeftUpperLeg or parts.RightUpperLeg or parts.LeftLowerLeg or parts.RightLowerLeg or info.Root
+        elseif ap == "Closest" then
+            local mousePos = UserInputService:GetMouseLocation()
+            return getClosestPartToScreen(info, cam, mousePos)
+        elseif ap == "RandomWeighted" then
+            local p = getWeightedRandomPart(info)
+            if p then return p end
+            return info.Head or info.Root
+        else
+            return info.Head or info.Root
+        end
+    end
+
     local function getBestTarget(cam)
         local mousePos = UserInputService:GetMouseLocation()
         local bestInfo = nil
@@ -664,8 +855,8 @@ return function(Exec, keydata, keycheck)
 
                     if not skip then
                         if (not AimSettings.VisibleOnly) or info.Visible then
-                            local targetPos2D = info.ScreenPos
-                            local delta = targetPos2D - mousePos
+                            local sp = info.ScreenPos
+                            local delta = sp - mousePos
                             local dist2D = delta.Magnitude
 
                             if dist2D <= AimSettings.FOVRadius and dist2D < bestScore then
@@ -702,10 +893,7 @@ return function(Exec, keydata, keycheck)
             return
         end
 
-        local targetPart = info.Root
-        if AimSettings.AimPart == "Head" and info.Head then
-            targetPart = info.Head
-        end
+        local targetPart = getAimTargetPart(info)
         if not targetPart then
             return
         end
@@ -730,7 +918,7 @@ return function(Exec, keydata, keycheck)
         local viewSize     = cam.ViewportSize
         local screenCenter = viewSize / 2
 
-        -- FOV circle
+        -- FOV circle (ของ Aimbot)
         if hasDrawing and FOVCircle then
             if AimSettings.Enabled and AimSettings.ShowFOV then
                 local mousePos = UserInputService:GetMouseLocation()
@@ -746,6 +934,9 @@ return function(Exec, keydata, keycheck)
             hideAllDraw()
         end
 
+        local visibleColor = Color3.fromRGB(0, 255, 0)   -- เห็นได้ = เขียว
+        local hiddenColor  = Color3.fromRGB(255, 0, 0)   -- หลังกำแพง = แดง
+
         for plr, info in pairs(PlayerInfo) do
             local objs = getDrawObjects(plr)
 
@@ -755,200 +946,225 @@ return function(Exec, keydata, keycheck)
                     removeHighlight(info.Character)
                 end
             else
-                -- สีตามทีม
-                local enemyColor = Color3.fromRGB(255, 85, 85)
-                local teamColor  = Color3.fromRGB(85, 170, 255)
-                local color      = enemyColor
-
-                if not info.TeamOK then
-                    color = teamColor
-                end
-
-                -- 3D highlight
-                if ESPSettings.UseHighlight then
-                    local hl = getHighlight(info.Character)
-                    if hl then
-                        hl.FillColor    = color
-                        hl.OutlineColor = color
+                -- ถ้าเปิด ESP VisibleOnly แล้วเป้าไม่ Visible → ไม่ render
+                if ESPSettings.VisibleOnly and not info.Visible then
+                    hideDrawFor(plr)
+                    if info.Character then
+                        removeHighlight(info.Character)
                     end
                 else
-                    removeHighlight(info.Character)
-                end
+                    local color = info.Visible and visibleColor or hiddenColor
 
-                -- 2D (Drawing)
-                if ESPSettings.Enabled and hasDrawing then
-                    local screenPos = info.ScreenPos
-                    local distance  = info.Distance
-
-                    local camPos = cam.CFrame.Position
-                    local distForScale = (camPos - info.Root.Position).Magnitude
-                    local sizeFactor = math.clamp(1200 / math.max(distForScale, 1), 0.4, 2.5)
-
-                    local boxSize = Vector2.new(40, 70) * sizeFactor
-                    boxSize = Vector2.new(
-                        math.clamp(boxSize.X, 20, 120),
-                        math.clamp(boxSize.Y, 40, 180)
-                    )
-
-                    local topLeft = screenPos - boxSize / 2
-
-                    -- offscreen arrow
-                    if ESPSettings.OffscreenArrow and not info.OnScreen then
-                        local dir = screenPos - screenCenter
-                        if dir.Magnitude > 0 then
-                            dir = dir.Unit
-                            local edgePos = screenCenter + dir * (math.min(viewSize.X, viewSize.Y) * 0.45)
-                            local perp    = Vector2.new(-dir.Y, dir.X) * 8
-
-                            local p1 = edgePos
-                            local p2 = edgePos - dir * 18 + perp
-                            local p3 = edgePos - dir * 18 - perp
-
-                            objs.Offscreen.Visible = true
-                            objs.Offscreen.PointA  = p1
-                            objs.Offscreen.PointB  = p2
-                            objs.Offscreen.PointC  = p3
-                            objs.Offscreen.Color   = color
+                    -- 3D highlight
+                    if ESPSettings.UseHighlight then
+                        local hl = getHighlight(info.Character)
+                        if hl then
+                            hl.FillColor    = color
+                            hl.OutlineColor = color
                         end
                     else
-                        objs.Offscreen.Visible = false
+                        removeHighlight(info.Character)
                     end
 
-                    -- ถ้าอยู่นอกจอ: ไม่วาด box / tracer / text ฯลฯ
-                    if not info.OnScreen then
-                        objs.Box.Visible       = false
-                        objs.Tracer.Visible    = false
-                        objs.Name.Visible      = false
-                        objs.HealthBar.Visible = false
-                        objs.HeadDot.Visible   = false
-                        for _, c in ipairs(objs.Corners) do
-                            c.Visible = false
+                    -- ESP FOV จำกัดพื้นที่แสดง (ถ้าใช้)
+                    local useFOV = ESPSettings.UseESPFOV
+                    if useFOV then
+                        local mousePos = UserInputService:GetMouseLocation()
+                        local delta = info.ScreenPos - mousePos
+                        if delta.Magnitude > ESPSettings.ESPFOVRadius then
+                            hideDrawFor(plr)
+                            goto continue_player
                         end
-                    else
-                        -- Box/Corner
-                        for _, c in ipairs(objs.Corners) do
-                            c.Visible = false
-                        end
-                        objs.Box.Visible = false
+                    end
 
-                        if ESPSettings.BoxMode == "Box" then
-                            objs.Box.Visible  = true
-                            objs.Box.Position = topLeft
-                            objs.Box.Size     = boxSize
-                            objs.Box.Color    = color
-                        elseif ESPSettings.BoxMode == "Corner" then
-                            local w, h = boxSize.X, boxSize.Y
-                            local tl   = topLeft
-                            local tr   = topLeft + Vector2.new(w, 0)
-                            local len  = math.max(4, math.floor(w * 0.2))
+                    if ESPSettings.Enabled and hasDrawing then
+                        local screenPos = info.ScreenPos
+                        local distance  = info.Distance
 
-                            local corners = objs.Corners
-                            if corners[1] then
-                                corners[1].Visible = true
-                                corners[1].From    = tl
-                                corners[1].To      = tl + Vector2.new(len, 0)
-                                corners[1].Color   = color
-                            end
-                            if corners[2] then
-                                corners[2].Visible = true
-                                corners[2].From    = tl
-                                corners[2].To      = tl + Vector2.new(0, len)
-                                corners[2].Color   = color
-                            end
-                            if corners[3] then
-                                corners[3].Visible = true
-                                corners[3].From    = tr
-                                corners[3].To      = tr + Vector2.new(-len, 0)
-                                corners[3].Color   = color
-                            end
-                            if corners[4] then
-                                corners[4].Visible = true
-                                corners[4].From    = tr
-                                corners[4].To      = tr + Vector2.new(0, len)
-                                corners[4].Color   = color
-                            end
+                        -- ปรับขนาด Box ตามระยะ (สูตรใหม่ ไม่ให้บวม)
+                        local baseSize = Vector2.new(30, 55)
+                        local distForScale = math.max(distance, 1)
+                        local scale = 600 / distForScale
+                        if scale < 0.6 then
+                            scale = 0.6
+                        elseif scale > 1.6 then
+                            scale = 1.6
                         end
 
-                        -- tracer (จากกึ่งกลางขอบล่างหน้าจอ)
-                        if ESPSettings.Tracer then
-                            local fromPos = Vector2.new(viewSize.X / 2, viewSize.Y)
-                            objs.Tracer.Visible = true
-                            objs.Tracer.From    = fromPos
-                            objs.Tracer.To      = screenPos
-                            objs.Tracer.Color   = color
+                        local boxSize = baseSize * scale
+                        boxSize = Vector2.new(
+                            math.clamp(boxSize.X, 18, 90),
+                            math.clamp(boxSize.Y, 40, 150)
+                        )
+
+                        local topLeft = screenPos - boxSize / 2
+
+                        -- Offscreen arrow
+                        if ESPSettings.OffscreenArrow and not info.OnScreen then
+                            local dir = info.ScreenPos - screenCenter
+                            if dir.Magnitude > 0 then
+                                dir = dir.Unit
+                                local radius = math.min(viewSize.X, viewSize.Y) * 0.45
+                                local edgePos = screenCenter + dir * radius
+                                local perp    = Vector2.new(-dir.Y, dir.X) * 8
+
+                                local p1 = edgePos
+                                local p2 = edgePos - dir * 18 + perp
+                                local p3 = edgePos - dir * 18 - perp
+
+                                objs.Offscreen.Visible = true
+                                objs.Offscreen.PointA  = p1
+                                objs.Offscreen.PointB  = p2
+                                objs.Offscreen.PointC  = p3
+                                objs.Offscreen.Color   = color
+                            end
                         else
-                            objs.Tracer.Visible = false
+                            objs.Offscreen.Visible = false
                         end
 
-                        -- name + distance
-                        if ESPSettings.NameTag or ESPSettings.ShowDistance then
-                            local textParts = {}
-
-                            if ESPSettings.NameTag then
-                                table.insert(textParts, plr.Name)
-                            end
-                            if ESPSettings.ShowDistance then
-                                table.insert(textParts, string.format("%dm", math.floor(distance)))
-                            end
-
-                            local text = table.concat(textParts, " | ")
-
-                            objs.Name.Visible   = true
-                            objs.Name.Text      = text
-                            objs.Name.Position  = Vector2.new(screenPos.X, topLeft.Y - 12)
-                            objs.Name.Color     = color
-                        else
-                            objs.Name.Visible = false
-                        end
-
-                        -- healthbar
-                        if ESPSettings.HealthBar and info.Humanoid then
-                            local hp  = info.Humanoid.Health
-                            local mhp = math.max(info.Humanoid.MaxHealth, 1)
-                            local r   = math.clamp(hp / mhp, 0, 1)
-
-                            local barHeight = boxSize.Y * r
-                            local x = topLeft.X - 4
-                            local y1 = topLeft.Y + boxSize.Y
-                            local y2 = y1 - barHeight
-
-                            objs.HealthBar.Visible = true
-                            objs.HealthBar.From    = Vector2.new(x, y1)
-                            objs.HealthBar.To      = Vector2.new(x, y2)
-                            objs.HealthBar.Color   = Color3.fromRGB(
-                                math.floor(255 * (1 - r)),
-                                math.floor(255 * r),
-                                0
-                            )
-                        else
+                        if not info.OnScreen then
+                            objs.Box.Visible       = false
+                            objs.Tracer.Visible    = false
+                            objs.Name.Visible      = false
                             objs.HealthBar.Visible = false
-                        end
+                            objs.HeadDot.Visible   = false
+                            for _, c in ipairs(objs.Corners) do
+                                c.Visible = false
+                            end
+                        else
+                            -- Box/Corner
+                            for _, c in ipairs(objs.Corners) do
+                                c.Visible = false
+                            end
+                            objs.Box.Visible = false
 
-                        -- head dot
-                        if ESPSettings.HeadDot and info.Head then
-                            local headPos3D = info.Head.Position
-                            local headPos3DView, onHeadScreen = cam:WorldToViewportPoint(headPos3D)
-                            if onHeadScreen then
-                                objs.HeadDot.Visible  = true
-                                objs.HeadDot.Position = Vector2.new(headPos3DView.X, headPos3DView.Y)
-                                objs.HeadDot.Radius   = 3
-                                objs.HeadDot.Color    = color
+                            if ESPSettings.BoxMode == "Box" then
+                                objs.Box.Visible  = true
+                                objs.Box.Position = topLeft
+                                objs.Box.Size     = boxSize
+                                objs.Box.Color    = color
+                            elseif ESPSettings.BoxMode == "Corner" then
+                                local w, h = boxSize.X, boxSize.Y
+                                local tl   = topLeft
+                                local tr   = topLeft + Vector2.new(w, 0)
+                                local len  = math.max(4, math.floor(w * 0.2))
+
+                                local corners = objs.Corners
+                                if corners[1] then
+                                    corners[1].Visible = true
+                                    corners[1].From    = tl
+                                    corners[1].To      = tl + Vector2.new(len, 0)
+                                    corners[1].Color   = color
+                                end
+                                if corners[2] then
+                                    corners[2].Visible = true
+                                    corners[2].From    = tl
+                                    corners[2].To      = tl + Vector2.new(0, len)
+                                    corners[2].Color   = color
+                                end
+                                if corners[3] then
+                                    corners[3].Visible = true
+                                    corners[3].From    = tr
+                                    corners[3].To      = tr + Vector2.new(-len, 0)
+                                    corners[3].Color   = color
+                                end
+                                if corners[4] then
+                                    corners[4].Visible = true
+                                    corners[4].From    = tr
+                                    corners[4].To      = tr + Vector2.new(0, len)
+                                    corners[4].Color   = color
+                                end
+                            end
+
+                            -- tracer
+                            if ESPSettings.Tracer then
+                                local fromPos = Vector2.new(viewSize.X / 2, viewSize.Y)
+                                objs.Tracer.Visible = true
+                                objs.Tracer.From    = fromPos
+                                objs.Tracer.To      = screenPos
+                                objs.Tracer.Color   = color
+                            else
+                                objs.Tracer.Visible = false
+                            end
+
+                            -- Name + distance
+                            if ESPSettings.NameTag or ESPSettings.ShowDistance then
+                                local parts = {}
+
+                                if ESPSettings.NameTag then
+                                    table.insert(parts, plr.Name)
+                                end
+                                if ESPSettings.ShowDistance then
+                                    table.insert(parts, string.format("%dm", math.floor(distance)))
+                                end
+
+                                local text = table.concat(parts, " | ")
+
+                                objs.Name.Visible   = true
+                                objs.Name.Text      = text
+                                objs.Name.Position  = Vector2.new(screenPos.X, topLeft.Y - 12)
+                                objs.Name.Color     = color
+                            else
+                                objs.Name.Visible = false
+                            end
+
+                            -- healthbar
+                            if ESPSettings.HealthBar and info.Humanoid then
+                                local hp  = info.Humanoid.Health
+                                local mhp = math.max(info.Humanoid.MaxHealth, 1)
+                                local r   = math.clamp(hp / mhp, 0, 1)
+
+                                local barHeight = boxSize.Y * r
+                                local x = topLeft.X - 4
+                                local y1 = topLeft.Y + boxSize.Y
+                                local y2 = y1 - barHeight
+
+                                objs.HealthBar.Visible = true
+                                objs.HealthBar.From    = Vector2.new(x, y1)
+                                objs.HealthBar.To      = Vector2.new(x, y2)
+                                objs.HealthBar.Color   = Color3.fromRGB(
+                                    math.floor(255 * (1 - r)),
+                                    math.floor(255 * r),
+                                    0
+                                )
+                            else
+                                objs.HealthBar.Visible = false
+                            end
+
+                            -- head dot
+                            if ESPSettings.HeadDot and info.Head then
+                                local headPos3D = info.Head.Position
+                                local headView, onHeadScreen = cam:WorldToViewportPoint(headPos3D)
+                                if onHeadScreen then
+                                    objs.HeadDot.Visible  = true
+                                    objs.HeadDot.Position = Vector2.new(headView.X, headView.Y)
+                                    objs.HeadDot.Radius   = 3
+                                    objs.HeadDot.Color    = color
+                                else
+                                    objs.HeadDot.Visible = false
+                                end
                             else
                                 objs.HeadDot.Visible = false
                             end
-                        else
-                            objs.HeadDot.Visible = false
+
+                            -- skeleton (simple R15/R6)
+                            if ESPSettings.Skeleton and info.AimParts then
+                                -- สำหรับความง่าย: ใช้ Head / UpperTorso/Torso / Legs/Arms
+                                -- (จะ implement ในรอบถัดไปได้ละเอียดกว่านี้ ถ้าต้องการ)
+                                -- ตอนนี้เน้น ESP main ก่อน
+                            end
                         end
                     end
                 end
             end
+            ::continue_player::
         end
     end
 
     ----------------------------------------------------------------
     -- Window + Tabs
     ----------------------------------------------------------------
-    local Window = Library:CreateWindow({
+local Window = Library:CreateWindow({
         Title = "",
         Icon = 84528813312016,
         Size = UDim2.fromOffset(720, 600),  
@@ -971,11 +1187,8 @@ return function(Exec, keydata, keycheck)
     local Options = Library.Options
 
     ----------------------------------------------------------------
-    -- Tab: Status
+    -- Helper: RichText label
     ----------------------------------------------------------------
-    local StatusKeyBox    = Tabs.Status:AddLeftGroupbox("Key / Role")
-    local StatusSystemBox = Tabs.Status:AddLeftGroupbox("System Info")
-
     local function addRichLabel(groupbox, text)
         local lbl = groupbox:AddLabel(text, true)
         if lbl and lbl.TextLabel then
@@ -983,6 +1196,12 @@ return function(Exec, keydata, keycheck)
         end
         return lbl
     end
+
+    ----------------------------------------------------------------
+    -- Tab: Status
+    ----------------------------------------------------------------
+    local StatusKeyBox    = Tabs.Status:AddLeftGroupbox("Key / Role")
+    local StatusSystemBox = Tabs.Status:AddRightGroupbox("System Info")
 
     local keyRole      = GetRoleLabel(keydata.role)
     local keyNote      = tostring(keydata.note or "")
@@ -1061,7 +1280,7 @@ return function(Exec, keydata, keycheck)
     -- Tab: Player
     ----------------------------------------------------------------
     local MoveBox = Tabs.Player:AddLeftGroupbox("Movement")
-    local QoLBox  = Tabs.Player:AddLeftGroupbox("Anti-AFK / Server / Safe")
+    local QoLBox  = Tabs.Player:AddRightGroupbox("Anti-AFK / Server / Safe")
 
     local MovementState = {
         WalkSpeedEnabled = false,
@@ -1146,7 +1365,6 @@ return function(Exec, keydata, keycheck)
     })
 
     MoveBox:AddDivider()
-
     MoveBox:AddToggle("Move_InfiniteJump_Toggle", {
         Text    = "Infinite Jump",
         Default = false,
@@ -1154,7 +1372,6 @@ return function(Exec, keydata, keycheck)
             MovementState.InfiniteJump = v
         end
     })
-
     MoveBox:AddToggle("Move_Fly_Toggle", {
         Text    = "Fly (camera based)",
         Default = false,
@@ -1162,7 +1379,6 @@ return function(Exec, keydata, keycheck)
             MovementState.Fly = v
         end
     })
-
     MoveBox:AddSlider("Move_FlySpeed_Slider", {
         Text     = "Fly speed",
         Default  = 50,
@@ -1173,7 +1389,6 @@ return function(Exec, keydata, keycheck)
             MovementState.FlySpeed = val
         end
     })
-
     MoveBox:AddToggle("Move_NoClip_Toggle", {
         Text    = "NoClip",
         Default = false,
@@ -1182,7 +1397,6 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    -- Infinite Jump
     AddConnection(UserInputService.JumpRequest:Connect(function()
         if not MovementState.InfiniteJump then
             return
@@ -1193,7 +1407,6 @@ return function(Exec, keydata, keycheck)
         end
     end))
 
-    -- Fly & NoClip update
     AddConnection(RunService.RenderStepped:Connect(function()
         local char = GetCharacter()
         local hum  = GetHumanoid()
@@ -1336,8 +1549,8 @@ return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     -- Tab: ESP (UI settings)
     ----------------------------------------------------------------
-    local ESPMainBox   = Tabs.ESP:AddLeftGroupbox("ESP Core")
-    local ESPFilterBox = Tabs.ESP:AddLeftGroupbox("Filter / Whitelist")
+    local ESPMainBox   = Tabs.ESP:AddLeftGroupbox("ESP Visual")
+    local ESPFilterBox = Tabs.ESP:AddRightGroupbox("Filter / Performance")
 
     ESPMainBox:AddToggle("ESP_Enable_Toggle", {
         Text    = "Enable ESP",
@@ -1404,36 +1617,22 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    ESPMainBox:AddSlider("ESP_MaxDistance", {
-        Text     = "Max distance",
-        Default  = 1000,
-        Min      = 50,
-        Max      = 3000,
-        Rounding = 0,
-        Callback = function(val)
-            ESPSettings.MaxDistance = val
+    ESPMainBox:AddToggle("ESP_UseESPFOV", {
+        Text    = "Limit ESP by FOV",
+        Default = false,
+        Callback = function(v)
+            ESPSettings.UseESPFOV = v
         end
     })
 
-    ESPMainBox:AddSlider("ESP_MaxPlayers", {
-        Text     = "Max players",
-        Default  = 30,
-        Min      = 5,
-        Max      = 100,
+    ESPMainBox:AddSlider("ESP_ESPFOVRadius", {
+        Text     = "ESP FOV radius (px)",
+        Default  = 500,
+        Min      = 100,
+        Max      = 1000,
         Rounding = 0,
         Callback = function(val)
-            ESPSettings.MaxPlayers = val
-        end
-    })
-
-    ESPMainBox:AddSlider("ESP_UpdateInterval", {
-        Text     = "Update interval (ms)",
-        Default  = 80,
-        Min      = 20,
-        Max      = 250,
-        Rounding = 0,
-        Callback = function(val)
-            ESPSettings.UpdateInterval = val / 1000
+            ESPSettings.ESPFOVRadius = val
         end
     })
 
@@ -1454,7 +1653,7 @@ return function(Exec, keydata, keycheck)
     })
 
     ESPFilterBox:AddToggle("ESP_VisibleOnly", {
-        Text    = "Visible only (Raycast)",
+        Text    = "Visible only (ESP)",
         Default = false,
         Callback = function(v)
             ESPSettings.VisibleOnly = v
@@ -1462,17 +1661,49 @@ return function(Exec, keydata, keycheck)
     })
 
     ESPFilterBox:AddToggle("ESP_WallCheck", {
-        Text    = "Wall check",
+        Text    = "Wall check (for red/green)",
         Default = true,
         Callback = function(v)
             ESPSettings.WallCheck = v
         end
     })
 
+    ESPFilterBox:AddSlider("ESP_MaxDistance", {
+        Text     = "Max distance",
+        Default  = 1000,
+        Min      = 50,
+        Max      = 3000,
+        Rounding = 0,
+        Callback = function(val)
+            ESPSettings.MaxDistance = val
+        end
+    })
+
+    ESPFilterBox:AddSlider("ESP_MaxPlayers", {
+        Text     = "Max players",
+        Default  = 30,
+        Min      = 5,
+        Max      = 100,
+        Rounding = 0,
+        Callback = function(val)
+            ESPSettings.MaxPlayers = val
+        end
+    })
+
+    ESPFilterBox:AddSlider("ESP_UpdateInterval", {
+        Text     = "Update interval (ms)",
+        Default  = 80,
+        Min      = 10,
+        Max      = 250,
+        Rounding = 0,
+        Callback = function(val)
+            ESPSettings.UpdateInterval = val / 1000
+        end
+    })
+
     ESPFilterBox:AddDivider()
     ESPFilterBox:AddLabel("<b>Manual whitelist (auto player list)</b>", true)
 
-    -- Dropdown แบบ multi-select สำหรับ whitelist
     local function buildPlayerNameList()
         local list = {}
         for _, plr in ipairs(Players:GetPlayers()) do
@@ -1492,7 +1723,6 @@ return function(Exec, keydata, keycheck)
         Values  = buildPlayerNameList(),
         Multi   = true,
         Callback = function(selected)
-            -- selected = { [name] = true/false } (ตามสไตล์ Obsidian/Linoria)
             for name in pairs(WhitelistNames) do
                 WhitelistNames[name] = nil
             end
@@ -1507,14 +1737,32 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    -- อัปเดตค่า Values ตอนมี player เข้า/ออก (ถ้าไม่มี method SetValues ก็ไม่พัง แค่ไม่อัปเดต)
+    local WhitelistLabel = ESPFilterBox:AddLabel("Whitelisted: (none)", true)
+
     local function refreshWhitelistValues()
         local values = buildPlayerNameList()
         local opt = Library.Options.ESP_Whitelist_Dropdown
         if opt and opt.SetValues then
             opt:SetValues(values)
         end
+
+        local names = {}
+        for name, ok in pairs(WhitelistNames) do
+            if ok then
+                table.insert(names, name)
+            end
+        end
+        table.sort(names)
+        local text = (#names == 0) and "Whitelisted: (none)" or ("Whitelisted: " .. table.concat(names, ", "))
+        if WhitelistLabel and WhitelistLabel.TextLabel then
+            WhitelistLabel.TextLabel.Text = text
+            WhitelistLabel.TextLabel.RichText = false
+        end
     end
+
+    ESPFilterBox:AddButton("Refresh player list", function()
+        refreshWhitelistValues()
+    end)
 
     AddConnection(Players.PlayerAdded:Connect(function()
         refreshWhitelistValues()
@@ -1529,9 +1777,10 @@ return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     -- Tab: Aim
     ----------------------------------------------------------------
-    local AimBox = Tabs.Aim:AddLeftGroupbox("Aimbot")
+    local AimBehaviorBox = Tabs.Aim:AddLeftGroupbox("Aimbot Behavior")
+    local AimTargetBox   = Tabs.Aim:AddRightGroupbox("Aim Target / Weights")
 
-    AimBox:AddToggle("Aim_Enabled", {
+    AimBehaviorBox:AddToggle("Aim_Enabled", {
         Text    = "Enable Aimbot",
         Default = true,
         Callback = function(v)
@@ -1539,16 +1788,7 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    AimBox:AddDropdown("Aim_Part", {
-        Text    = "Aim part",
-        Default = "Head",
-        Values  = { "Head", "Torso" },
-        Callback = function(v)
-            AimSettings.AimPart = v
-        end
-    })
-
-    AimBox:AddSlider("Aim_FOV", {
+    AimBehaviorBox:AddSlider("Aim_FOV", {
         Text     = "FOV radius",
         Default  = 120,
         Min      = 30,
@@ -1559,7 +1799,7 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    AimBox:AddToggle("Aim_ShowFOV", {
+    AimBehaviorBox:AddToggle("Aim_ShowFOV", {
         Text    = "Show FOV circle",
         Default = true,
         Callback = function(v)
@@ -1567,7 +1807,7 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    AimBox:AddSlider("Aim_Smooth", {
+    AimBehaviorBox:AddSlider("Aim_Smooth", {
         Text     = "Smooth",
         Default  = 0.25,
         Min      = 0.05,
@@ -1578,7 +1818,7 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    AimBox:AddToggle("Aim_TeamCheck", {
+    AimBehaviorBox:AddToggle("Aim_TeamCheck", {
         Text    = "Team check",
         Default = true,
         Callback = function(v)
@@ -1586,7 +1826,7 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    AimBox:AddToggle("Aim_IgnoreFriends", {
+    AimBehaviorBox:AddToggle("Aim_IgnoreFriends", {
         Text    = "Ignore friends",
         Default = true,
         Callback = function(v)
@@ -1594,22 +1834,86 @@ return function(Exec, keydata, keycheck)
         end
     })
 
-    AimBox:AddToggle("Aim_VisibleOnly", {
-        Text    = "Visible only",
+    AimBehaviorBox:AddToggle("Aim_VisibleOnly", {
+        Text    = "Visible only (Aim)",
         Default = true,
         Callback = function(v)
             AimSettings.VisibleOnly = v
         end
     })
 
-    AimBox:AddLabel("Activation: Right mouse button (RMB)", true)
+    AimBehaviorBox:AddLabel("Activation: Right mouse button (RMB)", true)
+
+    AimTargetBox:AddDropdown("Aim_Part", {
+        Text    = "Aim part mode",
+        Default = "Head",
+        Values  = {
+            "Head",
+            "Chest",
+            "Arms",
+            "Legs",
+            "Closest",
+            "RandomWeighted",
+        },
+        Callback = function(v)
+            AimSettings.AimPart = v
+        end
+    })
+
+    AimTargetBox:AddLabel("<b>RandomWeighted: part lock %</b>", true)
+    AimTargetBox:AddSlider("Aim_WHead", {
+        Text     = "Head weight",
+        Default  = 60,
+        Min      = 0,
+        Max      = 100,
+        Rounding = 0,
+        Callback = function(val)
+            AimSettings.Weights.Head = val
+        end
+    })
+    AimTargetBox:AddSlider("Aim_WChest", {
+        Text     = "Chest weight",
+        Default  = 25,
+        Min      = 0,
+        Max      = 100,
+        Rounding = 0,
+        Callback = function(val)
+            AimSettings.Weights.Chest = val
+        end
+    })
+    AimTargetBox:AddSlider("Aim_WArms", {
+        Text     = "Arms weight",
+        Default  = 10,
+        Min      = 0,
+        Max      = 100,
+        Rounding = 0,
+        Callback = function(val)
+            AimSettings.Weights.Arms = val
+        end
+    })
+    AimTargetBox:AddSlider("Aim_WLegs", {
+        Text     = "Legs weight",
+        Default  = 5,
+        Min      = 0,
+        Max      = 100,
+        Rounding = 0,
+        Callback = function(val)
+            AimSettings.Weights.Legs = val
+        end
+    })
 
     ----------------------------------------------------------------
-    -- Tab: Game (stub ไว้ต่อยอด module)
+    -- Tab: Game (stub)
     ----------------------------------------------------------------
-    local GameBox = Tabs.Game:AddLeftGroupbox("Game Module")
-    addRichLabel(GameBox, "<b>No per-game module configured yet.</b>")
-    addRichLabel(GameBox, "You can add GameModules system later.")
+    local GameLeftBox  = Tabs.Game:AddLeftGroupbox("Game Info")
+    local GameRightBox = Tabs.Game:AddRightGroupbox("Game Modules")
+
+    addRichLabel(GameLeftBox, "<b>Game:</b> " .. gameName)
+    addRichLabel(GameLeftBox, string.format("<b>PlaceId:</b> %d", placeId))
+    addRichLabel(GameLeftBox, "<b>JobId:</b> " .. jobId)
+
+    GameRightBox:AddLabel("<b>Game module</b>", true)
+    GameRightBox:AddLabel("No per-game module configured yet.", true)
 
     ----------------------------------------------------------------
     -- Tab: UI / Theme / Config
@@ -1617,29 +1921,23 @@ return function(Exec, keydata, keycheck)
     local UIThemeBox  = Tabs.UI:AddLeftGroupbox("UI / Theme")
     local UIConfigBox = Tabs.UI:AddRightGroupbox("Config / Misc")
 
-    -- Theme section (ซ้าย)
     UIThemeBox:AddLabel("<b>Theme</b>", true)
     UIThemeBox:AddDivider()
 
     if ThemeManager then
-        -- ตามสไตล์ Obsidian/Linoria: Apply ทั้ง Tab
         if ThemeManager.ApplyToTab then
             ThemeManager:ApplyToTab(Tabs.UI)
         end
-
-        -- ถ้า ThemeManager มี UI builder แบบใช้ Groupbox ก็ใช้กับ UIThemeBox ได้
         if ThemeManager.BuildThemeSection then
             ThemeManager:BuildThemeSection(UIThemeBox)
         end
     end
 
-    -- Config / Misc section (ขวา)
     UIConfigBox:AddLabel("<b>Config</b>", true)
     UIConfigBox:AddDivider()
 
     if SaveManager and SaveManager.BuildConfigSection then
-        -- สำคัญ: ต้องส่ง "Tab" เข้าไป ไม่ใช่ Groupbox
-        -- ภายใน SaveManager จะเรียก tab:AddRightGroupbox(...) เอง
+        -- สำคัญ: ต้องส่ง Tab เข้าไป ไม่ใช่ Groupbox
         SaveManager:BuildConfigSection(Tabs.UI)
     else
         UIConfigBox:AddLabel("SaveManager not fully available.", true)
@@ -1667,7 +1965,6 @@ return function(Exec, keydata, keycheck)
             Notify("Clipboard not available: " .. tostring(err), 3)
         end
     end)
-
 
     ----------------------------------------------------------------
     -- Main loops: update targets + render ESP + aimbot
