@@ -8,7 +8,7 @@ return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
     -- ชั้นที่สอง: ตรวจ keycheck + keydata
     ----------------------------------------------------------------
-    local EXPECTED_KEYCHECK = "success" -- ต้องตรงกับ Config.KEYCHECK_TOKEN ใน Key_Loaded.lua
+    local EXPECTED_KEYCHECK = "BxB.ware-universal-private-*&^%$#$*#%&@#" -- ต้องตรงกับ Config.KEYCHECK_TOKEN ใน Key_Loaded.lua
     if keycheck ~= EXPECTED_KEYCHECK then
         return
     end
