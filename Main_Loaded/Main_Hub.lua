@@ -1615,23 +1615,32 @@ return function(Exec, keydata, keycheck)
     -- Tab: UI / Theme / Config
     ----------------------------------------------------------------
     local UIThemeBox  = Tabs.UI:AddLeftGroupbox("UI / Theme")
-    local UIConfigBox = Tabs.UI:AddLeftGroupbox("Config / Misc")
+    local UIConfigBox = Tabs.UI:AddRightGroupbox("Config / Misc")
 
+    -- Theme section (ซ้าย)
     UIThemeBox:AddLabel("<b>Theme</b>", true)
     UIThemeBox:AddDivider()
+
     if ThemeManager then
+        -- ตามสไตล์ Obsidian/Linoria: Apply ทั้ง Tab
         if ThemeManager.ApplyToTab then
             ThemeManager:ApplyToTab(Tabs.UI)
         end
+
+        -- ถ้า ThemeManager มี UI builder แบบใช้ Groupbox ก็ใช้กับ UIThemeBox ได้
         if ThemeManager.BuildThemeSection then
             ThemeManager:BuildThemeSection(UIThemeBox)
         end
     end
 
+    -- Config / Misc section (ขวา)
     UIConfigBox:AddLabel("<b>Config</b>", true)
     UIConfigBox:AddDivider()
+
     if SaveManager and SaveManager.BuildConfigSection then
-        SaveManager:BuildConfigSection(UIConfigBox)
+        -- สำคัญ: ต้องส่ง "Tab" เข้าไป ไม่ใช่ Groupbox
+        -- ภายใน SaveManager จะเรียก tab:AddRightGroupbox(...) เอง
+        SaveManager:BuildConfigSection(Tabs.UI)
     else
         UIConfigBox:AddLabel("SaveManager not fully available.", true)
     end
@@ -1658,6 +1667,7 @@ return function(Exec, keydata, keycheck)
             Notify("Clipboard not available: " .. tostring(err), 3)
         end
     end)
+
 
     ----------------------------------------------------------------
     -- Main loops: update targets + render ESP + aimbot
