@@ -937,229 +937,197 @@ return function(Exec, keydata, keycheck)
         local visibleColor = Color3.fromRGB(0, 255, 0)   -- เห็นได้ = เขียว
         local hiddenColor  = Color3.fromRGB(255, 0, 0)   -- หลังกำแพง = แดง
 
-        for plr, info in pairs(PlayerInfo) do
-            local objs = getDrawObjects(plr)
+for plr, info in pairs(PlayerInfo) do
+    local objs = getDrawObjects(plr)
 
-            if not info.Valid or not info.ShouldRender then
+    if not info.Valid or not info.ShouldRender then
+        -- ข้อมูลไม่ valid หรืออยู่นอก limit (MaxPlayers / MaxDistance)
+        hideDrawFor(plr)
+        if info.Character then
+            removeHighlight(info.Character)
+        end
+    else
+        -- ใช้ flag แทน goto
+        local skip = false
+
+        -- 1) VisibleOnly (ESP): ถ้าเปิดและไม่ visible -> ซ่อนทุกอย่าง / ไม่ต้อง render ต่อ
+        if ESPSettings.VisibleOnly and not info.Visible then
+            hideDrawFor(plr)
+            if info.Character then
+                removeHighlight(info.Character)
+            end
+            skip = true
+        end
+
+        -- 2) ESP FOV: ถ้าเปิดและอยู่นอก FOV -> ซ่อนทุกอย่าง / ไม่ต้อง render ต่อ
+        if not skip and ESPSettings.UseESPFOV then
+            local mousePos = UserInputService:GetMouseLocation()
+            local delta = info.ScreenPos - mousePos
+            if delta.Magnitude > ESPSettings.ESPFOVRadius then
                 hideDrawFor(plr)
                 if info.Character then
                     removeHighlight(info.Character)
                 end
-            else
-                -- ถ้าเปิด ESP VisibleOnly แล้วเป้าไม่ Visible → ไม่ render
-                if ESPSettings.VisibleOnly and not info.Visible then
-                    hideDrawFor(plr)
-                    if info.Character then
-                        removeHighlight(info.Character)
-                    end
-                else
-                    local color = info.Visible and visibleColor or hiddenColor
+                skip = true
+            end
+        end
 
-                    -- 3D highlight
-                    if ESPSettings.UseHighlight then
-                        local hl = getHighlight(info.Character)
-                        if hl then
-                            hl.FillColor    = color
-                            hl.OutlineColor = color
+        if not skip then
+            -- สีตามการมองเห็น (หน้า/หลังกำแพง)
+            local color = info.Visible and visibleColor or hiddenColor
+
+            -- 3D highlight (Chams)
+            if ESPSettings.UseHighlight then
+                local hl = getHighlight(info.Character)
+                if hl then
+                    hl.FillColor    = color
+                    hl.OutlineColor = color
+                end
+            else
+                removeHighlight(info.Character)
+            end
+
+            -- 2D Drawing ESP
+            if ESPSettings.Enabled and hasDrawing then
+                local cam = workspace.CurrentCamera
+                if not cam then
+                    hideDrawFor(plr)
+                else
+                    local viewSize     = cam.ViewportSize
+                    local screenCenter = viewSize / 2
+
+                    local screenPos = info.ScreenPos
+                    local distance  = info.Distance
+
+                    -- ปรับขนาด Box ตามระยะ (สูตรใหม่)
+                    local baseSize = Vector2.new(30, 55)
+                    local distForScale = math.max(distance, 1)
+                    local scale = 600 / distForScale
+                    if scale < 0.6 then
+                        scale = 0.6
+                    elseif scale > 1.6 then
+                        scale = 1.6
+                    end
+
+                    local boxSize = baseSize * scale
+                    boxSize = Vector2.new(
+                        math.clamp(boxSize.X, 18, 90),
+                        math.clamp(boxSize.Y, 40, 150)
+                    )
+
+                    local topLeft = screenPos - boxSize / 2
+
+                    -- Offscreen arrow
+                    if ESPSettings.OffscreenArrow and not info.OnScreen then
+                        local dir = info.ScreenPos - screenCenter
+                        if dir.Magnitude > 0 then
+                            dir = dir.Unit
+                            local radius = math.min(viewSize.X, viewSize.Y) * 0.45
+                            local edgePos = screenCenter + dir * radius
+                            local perp    = Vector2.new(-dir.Y, dir.X) * 8
+
+                            local p1 = edgePos
+                            local p2 = edgePos - dir * 18 + perp
+                            local p3 = edgePos - dir * 18 - perp
+
+                            objs.Offscreen.Visible = true
+                            objs.Offscreen.PointA  = p1
+                            objs.Offscreen.PointB  = p2
+                            objs.Offscreen.PointC  = p3
+                            objs.Offscreen.Color   = color
                         end
                     else
-                        removeHighlight(info.Character)
+                        objs.Offscreen.Visible = false
                     end
 
-                    -- ESP FOV จำกัดพื้นที่แสดง (ถ้าใช้)
-                    local useFOV = ESPSettings.UseESPFOV
-                    if useFOV then
-                        local mousePos = UserInputService:GetMouseLocation()
-                        local delta = info.ScreenPos - mousePos
-                        if delta.Magnitude > ESPSettings.ESPFOVRadius then
-                            hideDrawFor(plr)
-                            goto continue_player
+                    if not info.OnScreen then
+                        -- นอกจอ: ซ่อน box / tracer / text ฯลฯ
+                        objs.Box.Visible       = false
+                        objs.Tracer.Visible    = false
+                        objs.Name.Visible      = false
+                        objs.HealthBar.Visible = false
+                        objs.HeadDot.Visible   = false
+                        for _, c in ipairs(objs.Corners) do
+                            c.Visible = false
                         end
-                    end
-
-                    if ESPSettings.Enabled and hasDrawing then
-                        local screenPos = info.ScreenPos
-                        local distance  = info.Distance
-
-                        -- ปรับขนาด Box ตามระยะ (สูตรใหม่ ไม่ให้บวม)
-                        local baseSize = Vector2.new(30, 55)
-                        local distForScale = math.max(distance, 1)
-                        local scale = 600 / distForScale
-                        if scale < 0.6 then
-                            scale = 0.6
-                        elseif scale > 1.6 then
-                            scale = 1.6
+                    else
+                        -- Box / Corner
+                        for _, c in ipairs(objs.Corners) do
+                            c.Visible = false
                         end
+                        objs.Box.Visible = false
 
-                        local boxSize = baseSize * scale
-                        boxSize = Vector2.new(
-                            math.clamp(boxSize.X, 18, 90),
-                            math.clamp(boxSize.Y, 40, 150)
-                        )
+                        if ESPSettings.BoxMode == "Box" then
+                            objs.Box.Visible  = true
+                            objs.Box.Position = topLeft
+                            objs.Box.Size     = boxSize
+                            objs.Box.Color    = color
+                        elseif ESPSettings.BoxMode == "Corner" then
+                            local w, h = boxSize.X, boxSize.Y
+                            local tl   = topLeft
+                            local tr   = topLeft + Vector2.new(w, 0)
+                            local len  = math.max(4, math.floor(w * 0.2))
 
-                        local topLeft = screenPos - boxSize / 2
-
-                        -- Offscreen arrow
-                        if ESPSettings.OffscreenArrow and not info.OnScreen then
-                            local dir = info.ScreenPos - screenCenter
-                            if dir.Magnitude > 0 then
-                                dir = dir.Unit
-                                local radius = math.min(viewSize.X, viewSize.Y) * 0.45
-                                local edgePos = screenCenter + dir * radius
-                                local perp    = Vector2.new(-dir.Y, dir.X) * 8
-
-                                local p1 = edgePos
-                                local p2 = edgePos - dir * 18 + perp
-                                local p3 = edgePos - dir * 18 - perp
-
-                                objs.Offscreen.Visible = true
-                                objs.Offscreen.PointA  = p1
-                                objs.Offscreen.PointB  = p2
-                                objs.Offscreen.PointC  = p3
-                                objs.Offscreen.Color   = color
+                            local corners = objs.Corners
+                            if corners[1] then
+                                corners[1].Visible = true
+                                corners[1].From    = tl
+                                corners[1].To      = tl + Vector2.new(len, 0)
+                                corners[1].Color   = color
                             end
+                            if corners[2] then
+                                corners[2].Visible = true
+                                corners[2].From    = tl
+                                corners[2].To      = tl + Vector2.new(0, len)
+                                corners[2].Color   = color
+                            end
+                            if corners[3] then
+                                corners[3].Visible = true
+                                corners[3].From    = tr
+                                corners[3].To      = tr + Vector2.new(-len, 0)
+                                corners[3].Color   = color
+                            end
+                            if corners[4] then
+                                corners[4].Visible = true
+                                corners[4].From    = tr
+                                corners[4].To      = tr + Vector2.new(0, len)
+                                corners[4].Color   = color
+                            end
+                        end
+
+                        -- Tracer (จากกลางขอบล่าง)
+                        if ESPSettings.Tracer then
+                            local fromPos = Vector2.new(viewSize.X / 2, viewSize.Y)
+                            objs.Tracer.Visible = true
+                            objs.Tracer.From    = fromPos
+                            objs.Tracer.To      = screenPos
+                            objs.Tracer.Color   = color
                         else
-                            objs.Offscreen.Visible = false
+                            objs.Tracer.Visible = false
                         end
 
-                        if not info.OnScreen then
-                            objs.Box.Visible       = false
-                            objs.Tracer.Visible    = false
-                            objs.Name.Visible      = false
-                            objs.HealthBar.Visible = false
-                            objs.HeadDot.Visible   = false
-                            for _, c in ipairs(objs.Corners) do
-                                c.Visible = false
+                        -- Name + distance
+                        if ESPSettings.NameTag or ESPSettings.ShowDistance then
+                            local parts = {}
+                            if ESPSettings.NameTag then
+                                table.insert(parts, plr.Name)
                             end
+                            if ESPSettings.ShowDistance then
+                                table.insert(parts, string.format("%dm", math.floor(distance)))
+                            end
+
+                            local text = table.concat(parts, " | ")
+                            objs.Name.Visible   = true
+                            objs.Name.Text      = text
+                            objs.Name.Position  = Vector2.new(screenPos.X, topLeft.Y - 12)
+                            objs.Name.Color     = color
                         else
-                            -- Box/Corner
-                            for _, c in ipairs(objs.Corners) do
-                                c.Visible = false
-                            end
-                            objs.Box.Visible = false
-
-                            if ESPSettings.BoxMode == "Box" then
-                                objs.Box.Visible  = true
-                                objs.Box.Position = topLeft
-                                objs.Box.Size     = boxSize
-                                objs.Box.Color    = color
-                            elseif ESPSettings.BoxMode == "Corner" then
-                                local w, h = boxSize.X, boxSize.Y
-                                local tl   = topLeft
-                                local tr   = topLeft + Vector2.new(w, 0)
-                                local len  = math.max(4, math.floor(w * 0.2))
-
-                                local corners = objs.Corners
-                                if corners[1] then
-                                    corners[1].Visible = true
-                                    corners[1].From    = tl
-                                    corners[1].To      = tl + Vector2.new(len, 0)
-                                    corners[1].Color   = color
-                                end
-                                if corners[2] then
-                                    corners[2].Visible = true
-                                    corners[2].From    = tl
-                                    corners[2].To      = tl + Vector2.new(0, len)
-                                    corners[2].Color   = color
-                                end
-                                if corners[3] then
-                                    corners[3].Visible = true
-                                    corners[3].From    = tr
-                                    corners[3].To      = tr + Vector2.new(-len, 0)
-                                    corners[3].Color   = color
-                                end
-                                if corners[4] then
-                                    corners[4].Visible = true
-                                    corners[4].From    = tr
-                                    corners[4].To      = tr + Vector2.new(0, len)
-                                    corners[4].Color   = color
-                                end
-                            end
-
-                            -- tracer
-                            if ESPSettings.Tracer then
-                                local fromPos = Vector2.new(viewSize.X / 2, viewSize.Y)
-                                objs.Tracer.Visible = true
-                                objs.Tracer.From    = fromPos
-                                objs.Tracer.To      = screenPos
-                                objs.Tracer.Color   = color
-                            else
-                                objs.Tracer.Visible = false
-                            end
-
-                            -- Name + distance
-                            if ESPSettings.NameTag or ESPSettings.ShowDistance then
-                                local parts = {}
-
-                                if ESPSettings.NameTag then
-                                    table.insert(parts, plr.Name)
-                                end
-                                if ESPSettings.ShowDistance then
-                                    table.insert(parts, string.format("%dm", math.floor(distance)))
-                                end
-
-                                local text = table.concat(parts, " | ")
-
-                                objs.Name.Visible   = true
-                                objs.Name.Text      = text
-                                objs.Name.Position  = Vector2.new(screenPos.X, topLeft.Y - 12)
-                                objs.Name.Color     = color
-                            else
-                                objs.Name.Visible = false
-                            end
-
-                            -- healthbar
-                            if ESPSettings.HealthBar and info.Humanoid then
-                                local hp  = info.Humanoid.Health
-                                local mhp = math.max(info.Humanoid.MaxHealth, 1)
-                                local r   = math.clamp(hp / mhp, 0, 1)
-
-                                local barHeight = boxSize.Y * r
-                                local x = topLeft.X - 4
-                                local y1 = topLeft.Y + boxSize.Y
-                                local y2 = y1 - barHeight
-
-                                objs.HealthBar.Visible = true
-                                objs.HealthBar.From    = Vector2.new(x, y1)
-                                objs.HealthBar.To      = Vector2.new(x, y2)
-                                objs.HealthBar.Color   = Color3.fromRGB(
-                                    math.floor(255 * (1 - r)),
-                                    math.floor(255 * r),
-                                    0
-                                )
-                            else
-                                objs.HealthBar.Visible = false
-                            end
-
-                            -- head dot
-                            if ESPSettings.HeadDot and info.Head then
-                                local headPos3D = info.Head.Position
-                                local headView, onHeadScreen = cam:WorldToViewportPoint(headPos3D)
-                                if onHeadScreen then
-                                    objs.HeadDot.Visible  = true
-                                    objs.HeadDot.Position = Vector2.new(headView.X, headView.Y)
-                                    objs.HeadDot.Radius   = 3
-                                    objs.HeadDot.Color    = color
-                                else
-                                    objs.HeadDot.Visible = false
-                                end
-                            else
-                                objs.HeadDot.Visible = false
-                            end
-
-                            -- skeleton (simple R15/R6)
-                            if ESPSettings.Skeleton and info.AimParts then
-                                -- สำหรับความง่าย: ใช้ Head / UpperTorso/Torso / Legs/Arms
-                                -- (จะ implement ในรอบถัดไปได้ละเอียดกว่านี้ ถ้าต้องการ)
-                                -- ตอนนี้เน้น ESP main ก่อน
-                            end
+                            objs.Name.Visible = false
                         end
-                    end
-                end
-            end
-            ::continue_player::
-        end
-    end
+
+                        -- Health bar
+                        if ESPSettings.HealthBar and info.Humanoid then
+                            local hp  = info.Humanoid.Health
 
     ----------------------------------------------------------------
     -- Window + Tabs
