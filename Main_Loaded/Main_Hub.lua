@@ -775,6 +775,7 @@ return function(Exec, keydata, keycheck)
         Center = true,
         AutoShow = true,
         Resizable = true,  
+        GlobalSearch = true, 
         Compact = true
     })
 
