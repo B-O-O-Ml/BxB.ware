@@ -1169,6 +1169,8 @@ for plr, info in pairs(PlayerInfo) do
         end
     end
 end
+end
+
     ----------------------------------------------------------------
     -- Window + Tabs
     ----------------------------------------------------------------
@@ -1191,6 +1193,7 @@ local Window = Library:CreateWindow({
         Game   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "joystick", Description = "Game Module"}),
         UI     = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "settings", Description = "UI/UX Setings"}),
     }
+
 
     local Options = Library.Options
 
