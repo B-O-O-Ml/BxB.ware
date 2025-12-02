@@ -10,7 +10,7 @@
   "keys": [
     {
       "key": "FREE-USER-001",
-      "hwid_hash": "c0ffee0000aa11223344556677889900",
+      "hwid_hash": "",
       "timestamp": 1733000000,
       "role": "user",
       "expire": 1767056400,
@@ -29,7 +29,7 @@
 
     {
       "key": "VV1",
-      "hwid_hash": "2436e823dec95964ffaadcc44dc98e75",
+      "hwid_hash": "",
       "timestamp": 1732910000,
       "expire": 0,
       "role": "premium",
