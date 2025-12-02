@@ -1,4 +1,8 @@
 -- STATUS:online
+-- STATUS_MSG:Main hub is live and ready
+
+-- MainHub.lua
+-- ต้องถูกโหลดผ่าน Key_Loaded.lua เท่านั้น
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
@@ -1419,7 +1423,7 @@ local Window = Library:CreateWindow({
         Info = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "database", Description = "Key Status / Info"}),
         Player = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "users", Description = "Player Tool"}),
         Combat    = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "eye", Description = "Combat Client"}),
-        ESP   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "crosshair", Description = "ESP Client"}
+        ESP   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "crosshair", Description = "ESP Client"}),
         Misc    = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "crosshair", Description = "Misc Client"}),
         Game   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "joystick", Description = "Game Module"}),
         Settings     = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "settings", Description = "UI/UX Setings"}),
