@@ -1,8 +1,4 @@
 -- STATUS:online
--- STATUS_MSG:Main hub is live and ready
-
--- MainHub.lua
--- ต้องถูกโหลดผ่าน Key_Loaded.lua เท่านั้น
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
@@ -26,6 +22,7 @@ return function(Exec, keydata, keycheck)
     local Stats              = game:GetService("Stats")
     local TeleportService    = game:GetService("TeleportService")
     local MarketplaceService = game:GetService("MarketplaceService")
+    local Lighting           = game:GetService("Lighting")
 
     local LocalPlayer = Players.LocalPlayer
     if not LocalPlayer then
@@ -63,6 +60,8 @@ return function(Exec, keydata, keycheck)
         SaveManager:SetFolder("ObsidianUniversalHub")
     end
 
+    local Options = Library.Options
+
     ----------------------------------------------------------------
     -- Helper: connections / notify
     ----------------------------------------------------------------
@@ -94,7 +93,7 @@ return function(Exec, keydata, keycheck)
     end
 
     ----------------------------------------------------------------
-    -- Role / Status helpers
+    -- Role / key helpers
     ----------------------------------------------------------------
     local role      = tostring(keydata.role or "user")
     local keyStatus = tostring(keydata.status or "active")
@@ -346,32 +345,42 @@ return function(Exec, keydata, keycheck)
         OffscreenArrow  = false,
         TeamCheck       = true,
         IgnoreFriends   = true,
-        VisibleOnly     = false,   -- ถ้า true ซ่อนเป้าที่หลังกำแพง (ตาม Visible flag)
-        WallCheck       = true,
+        VisibleOnly     = false,   -- ซ่อนเป้าหลังกำแพง สำหรับ ESP
+        WallCheck       = true,    -- ใช้ raycast เช็คกำแพง (เปลี่ยนสีแดง/เขียว)
         MaxDistance     = 1000,
         MaxPlayers      = 30,
-        UpdateInterval  = 0.08,    -- วินาที (จาก slider ms 10–250)
+        UpdateInterval  = 0.08,    -- วินาที (จาก slider ms)
         UseESPFOV       = false,
         ESPFOVRadius    = 500,
+
+        DistanceFade    = false,
+        FadeStart       = 500,
+        FadeEnd         = 2000,
     }
 
     local AimSettings = {
         Enabled       = true,
-        AimPart       = "Head",    -- Head/Chest/Arms/Legs/Closest/RandomWeighted
+        Mode          = "Legit",           -- Legit / Rage (ใช้เป็น preset)
+        AimType       = "Hold",            -- Hold / Toggle
+        AimPart       = "Head",            -- Head/Chest/Arms/Legs/Closest/RandomWeighted
         FOVRadius     = 120,
         ShowFOV       = true,
-        Smoothing     = 0.25,
+        Smoothing     = 0.25,              -- 0.05–1 (ใน UI map เป็น 1–20)
         VisibleOnly   = true,
         TeamCheck     = true,
         IgnoreFriends = true,
+        MaxDistance   = 1000,
+        HitChance     = 100,               -- 0–100
         Key           = Enum.UserInputType.MouseButton2, -- RMB
-        Weights       = { -- สำหรับ RandomWeighted
+        Weights       = {                  -- สำหรับ RandomWeighted
             Head  = 60,
             Chest = 25,
             Arms  = 10,
             Legs  = 5,
         },
     }
+
+    local AimToggleState = false -- สำหรับ AimType = "Toggle"
 
     local WhitelistNames = {} -- [playerName] = true
 
@@ -571,6 +580,7 @@ return function(Exec, keydata, keycheck)
         FOVCircle.Filled = false
         FOVCircle.Visible = false
         FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+        FOVCircle.Transparency = 1
     end
 
     local function getDrawObjects(plr)
@@ -586,11 +596,13 @@ return function(Exec, keydata, keycheck)
         t.Box.Filled = false
         t.Box.Visible = false
         t.Box.Color = Color3.new(1, 1, 1)
+        t.Box.Transparency = 1
 
         t.Tracer = Drawing.new("Line")
         t.Tracer.Thickness = 1
         t.Tracer.Visible = false
         t.Tracer.Color = Color3.new(1, 1, 1)
+        t.Tracer.Transparency = 1
 
         t.Name = Drawing.new("Text")
         t.Name.Size = 13
@@ -598,22 +610,26 @@ return function(Exec, keydata, keycheck)
         t.Name.Outline = true
         t.Name.Visible = false
         t.Name.Color = Color3.new(1, 1, 1)
+        t.Name.Transparency = 1
 
         t.HealthBar = Drawing.new("Line")
         t.HealthBar.Thickness = 3
         t.HealthBar.Visible = false
         t.HealthBar.Color = Color3.new(0, 1, 0)
+        t.HealthBar.Transparency = 1
 
         t.HeadDot = Drawing.new("Circle")
         t.HeadDot.Thickness = 2
         t.HeadDot.Filled = false
         t.HeadDot.Visible = false
         t.HeadDot.Color = Color3.new(1, 1, 1)
+        t.HeadDot.Transparency = 1
 
         t.Offscreen = Drawing.new("Triangle")
         t.Offscreen.Filled = true
         t.Offscreen.Visible = false
         t.Offscreen.Color = Color3.new(1, 1, 1)
+        t.Offscreen.Transparency = 1
 
         t.Corners = {}
         for i = 1, 4 do
@@ -621,6 +637,7 @@ return function(Exec, keydata, keycheck)
             c.Thickness = 1
             c.Visible = false
             c.Color = Color3.new(1, 1, 1)
+            c.Transparency = 1
             table.insert(t.Corners, c)
         end
 
@@ -696,12 +713,25 @@ return function(Exec, keydata, keycheck)
         end
 
         local key = AimSettings.Key
-        if key == Enum.UserInputType.MouseButton2 then
-            return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-        end
 
-        return false
+        if AimSettings.AimType == "Hold" then
+            if key == Enum.UserInputType.MouseButton2 then
+                return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+            end
+            return false
+        else -- Toggle mode
+            return AimToggleState
+        end
     end
+
+    AddConnection(UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.UserInputType == AimSettings.Key then
+            if AimSettings.AimType == "Toggle" then
+                AimToggleState = not AimToggleState
+            end
+        end
+    end))
 
     local function getWeightedRandomPart(info)
         local parts = info.AimParts
@@ -841,28 +871,26 @@ return function(Exec, keydata, keycheck)
         local bestScore = math.huge
 
         for _, info in pairs(PlayerInfo) do
-            if info.Valid and info.ShouldRender then
-                if info.Distance <= ESPSettings.MaxDistance then
-                    local skip = false
+            if info.Valid and info.ShouldRender and info.Distance <= AimSettings.MaxDistance then
+                local skip = false
 
-                    if AimSettings.TeamCheck and not info.TeamOK then
-                        skip = true
-                    end
+                if AimSettings.TeamCheck and not info.TeamOK then
+                    skip = true
+                end
 
-                    if not skip and AimSettings.IgnoreFriends and info.IsFriend and not info.Whitelisted then
-                        skip = true
-                    end
+                if not skip and AimSettings.IgnoreFriends and info.IsFriend and not info.Whitelisted then
+                    skip = true
+                end
 
-                    if not skip then
-                        if (not AimSettings.VisibleOnly) or info.Visible then
-                            local sp = info.ScreenPos
-                            local delta = sp - mousePos
-                            local dist2D = delta.Magnitude
+                if not skip then
+                    if (not AimSettings.VisibleOnly) or info.Visible then
+                        local sp = info.ScreenPos
+                        local delta = sp - mousePos
+                        local dist2D = delta.Magnitude
 
-                            if dist2D <= AimSettings.FOVRadius and dist2D < bestScore then
-                                bestScore = dist2D
-                                bestInfo = info
-                            end
+                        if dist2D <= AimSettings.FOVRadius and dist2D < bestScore then
+                            bestScore = dist2D
+                            bestInfo = info
                         end
                     end
                 end
@@ -883,6 +911,14 @@ return function(Exec, keydata, keycheck)
             return
         end
 
+        -- HitChance
+        local chance = math.clamp(AimSettings.HitChance or 100, 0, 100)
+        if chance < 100 then
+            if math.random(1, 100) > chance then
+                return
+            end
+        end
+
         local cam = workspace.CurrentCamera
         if not cam then
             return
@@ -900,13 +936,15 @@ return function(Exec, keydata, keycheck)
 
         local currentCF = cam.CFrame
         local targetCF  = CFrame.new(currentCF.Position, targetPart.Position)
-        local alpha     = math.clamp(AimSettings.Smoothing, 0.01, 1)
+
+        local smoothSlider = AimSettings.Smoothing -- 0.05–1
+        local alpha = math.clamp(smoothSlider, 0.05, 1)
 
         cam.CFrame = currentCF:Lerp(targetCF, alpha)
     end
 
     ----------------------------------------------------------------
-    -- ESP render step
+    -- ESP render step (ไม่มี goto / continue)
     ----------------------------------------------------------------
     local function espStep()
         local cam = workspace.CurrentCamera
@@ -918,7 +956,7 @@ return function(Exec, keydata, keycheck)
         local viewSize     = cam.ViewportSize
         local screenCenter = viewSize / 2
 
-        -- FOV circle (ของ Aimbot)
+        -- FOV circle (Aimbot)
         if hasDrawing and FOVCircle then
             if AimSettings.Enabled and AimSettings.ShowFOV then
                 local mousePos = UserInputService:GetMouseLocation()
@@ -930,377 +968,281 @@ return function(Exec, keydata, keycheck)
             end
         end
 
-        if not (ESPSettings.Enabled and hasDrawing) then
-            hideAllDraw()
+        if not hasDrawing then
+            return
         end
 
         local visibleColor = Color3.fromRGB(0, 255, 0)   -- เห็นได้ = เขียว
         local hiddenColor  = Color3.fromRGB(255, 0, 0)   -- หลังกำแพง = แดง
 
-for plr, info in pairs(PlayerInfo) do
-    local objs = getDrawObjects(plr)
+        for plr, info in pairs(PlayerInfo) do
+            local objs = getDrawObjects(plr)
 
-    if not info.Valid or not info.ShouldRender then
-        -- ข้อมูลไม่ valid หรืออยู่นอก limit (MaxPlayers / MaxDistance)
-        hideDrawFor(plr)
-        if info.Character then
-            removeHighlight(info.Character)
-        end
-    else
-        -- ใช้ flag แทน goto
-        local skip = false
-
-        -- 1) VisibleOnly (ESP): ถ้าเปิดและไม่ visible -> ซ่อนทุกอย่าง / ไม่ต้อง render ต่อ
-        if ESPSettings.VisibleOnly and not info.Visible then
-            hideDrawFor(plr)
-            if info.Character then
-                removeHighlight(info.Character)
-            end
-            skip = true
-        end
-
-        -- 2) ESP FOV: ถ้าเปิดและอยู่นอก FOV -> ซ่อนทุกอย่าง / ไม่ต้อง render ต่อ
-        if not skip and ESPSettings.UseESPFOV then
-            local mousePos = UserInputService:GetMouseLocation()
-            local delta = info.ScreenPos - mousePos
-            if delta.Magnitude > ESPSettings.ESPFOVRadius then
+            if not info.Valid or not info.ShouldRender then
                 hideDrawFor(plr)
                 if info.Character then
                     removeHighlight(info.Character)
                 end
-                skip = true
-            end
-        end
-
-        if not skip then
-            -- สีตามการมองเห็น (หน้า/หลังกำแพง)
-            local color = info.Visible and visibleColor or hiddenColor
-
-            -- 3D highlight (Chams)
-            if ESPSettings.UseHighlight then
-                local hl = getHighlight(info.Character)
-                if hl then
-                    hl.FillColor    = color
-                    hl.OutlineColor = color
-                end
             else
-                removeHighlight(info.Character)
-            end
+                local skip = false
 
-            -- 2D Drawing ESP
-            if ESPSettings.Enabled and hasDrawing then
-                local cam = workspace.CurrentCamera
-                if not cam then
+                -- VisibleOnly (ESP)
+                if ESPSettings.VisibleOnly and not info.Visible then
                     hideDrawFor(plr)
-                else
-                    local viewSize     = cam.ViewportSize
-                    local screenCenter = viewSize / 2
+                    if info.Character then
+                        removeHighlight(info.Character)
+                    end
+                    skip = true
+                end
 
-                    local screenPos = info.ScreenPos
-                    local distance  = info.Distance
+                -- ESP FOV limit
+                if not skip and ESPSettings.UseESPFOV then
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local delta = info.ScreenPos - mousePos
+                    if delta.Magnitude > ESPSettings.ESPFOVRadius then
+                        hideDrawFor(plr)
+                        if info.Character then
+                            removeHighlight(info.Character)
+                        end
+                        skip = true
+                    end
+                end
 
-                    -- ปรับขนาด Box ตามระยะ (สูตรใหม่)
-                    local baseSize = Vector2.new(30, 55)
-                    local distForScale = math.max(distance, 1)
-                    local scale = 600 / distForScale
-                    if scale < 0.6 then
-                        scale = 0.6
-                    elseif scale > 1.6 then
-                        scale = 1.6
+                if not skip then
+                    local color = info.Visible and visibleColor or hiddenColor
+
+                    -- Distance fade alpha
+                    local alpha = 1
+                    if ESPSettings.DistanceFade then
+                        local s = ESPSettings.FadeStart
+                        local e = ESPSettings.FadeEnd
+                        local d = info.Distance
+                        if d >= s then
+                            if d >= e then
+                                alpha = 0
+                            else
+                                local t = (d - s) / math.max(e - s, 1)
+                                alpha = 1 - t
+                            end
+                        end
+                        alpha = math.clamp(alpha, 0, 1)
                     end
 
-                    local boxSize = baseSize * scale
-                    boxSize = Vector2.new(
-                        math.clamp(boxSize.X, 18, 90),
-                        math.clamp(boxSize.Y, 40, 150)
-                    )
-
-                    local topLeft = screenPos - boxSize / 2
-
-                    -- Offscreen arrow
-                    if ESPSettings.OffscreenArrow and not info.OnScreen then
-                        local dir = info.ScreenPos - screenCenter
-                        if dir.Magnitude > 0 then
-                            dir = dir.Unit
-                            local radius = math.min(viewSize.X, viewSize.Y) * 0.45
-                            local edgePos = screenCenter + dir * radius
-                            local perp    = Vector2.new(-dir.Y, dir.X) * 8
-
-                            local p1 = edgePos
-                            local p2 = edgePos - dir * 18 + perp
-                            local p3 = edgePos - dir * 18 - perp
-
-                            objs.Offscreen.Visible = true
-                            objs.Offscreen.PointA  = p1
-                            objs.Offscreen.PointB  = p2
-                            objs.Offscreen.PointC  = p3
-                            objs.Offscreen.Color   = color
+                    -- 3D Chams
+                    if ESPSettings.UseHighlight then
+                        local hl = getHighlight(info.Character)
+                        if hl then
+                            hl.FillColor    = color
+                            hl.OutlineColor = color
+                            hl.FillTransparency    = 0.7 + (1 - alpha) * 0.2
+                            hl.OutlineTransparency = 0 + (1 - alpha) * 0.3
                         end
                     else
-                        objs.Offscreen.Visible = false
+                        removeHighlight(info.Character)
                     end
 
-                    if not info.OnScreen then
-                        -- นอกจอ: ซ่อน box / tracer / text ฯลฯ
-                        objs.Box.Visible       = false
-                        objs.Tracer.Visible    = false
-                        objs.Name.Visible      = false
-                        objs.HealthBar.Visible = false
-                        objs.HeadDot.Visible   = false
-                        for _, c in ipairs(objs.Corners) do
-                            c.Visible = false
-                        end
-                    else
-                        -- Box / Corner
-                        for _, c in ipairs(objs.Corners) do
-                            c.Visible = false
-                        end
-                        objs.Box.Visible = false
+                    -- 2D ESP
+                    if ESPSettings.Enabled then
+                        local screenPos = info.ScreenPos
+                        local distance  = info.Distance
 
-                        if ESPSettings.BoxMode == "Box" then
-                            objs.Box.Visible  = true
-                            objs.Box.Position = topLeft
-                            objs.Box.Size     = boxSize
-                            objs.Box.Color    = color
-                        elseif ESPSettings.BoxMode == "Corner" then
-                            local w, h = boxSize.X, boxSize.Y
-                            local tl   = topLeft
-                            local tr   = topLeft + Vector2.new(w, 0)
-                            local len  = math.max(4, math.floor(w * 0.2))
-
-                            local corners = objs.Corners
-                            if corners[1] then
-                                corners[1].Visible = true
-                                corners[1].From    = tl
-                                corners[1].To      = tl + Vector2.new(len, 0)
-                                corners[1].Color   = color
-                            end
-                            if corners[2] then
-                                corners[2].Visible = true
-                                corners[2].From    = tl
-                                corners[2].To      = tl + Vector2.new(0, len)
-                                corners[2].Color   = color
-                            end
-                            if corners[3] then
-                                corners[3].Visible = true
-                                corners[3].From    = tr
-                                corners[3].To      = tr + Vector2.new(-len, 0)
-                                corners[3].Color   = color
-                            end
-                            if corners[4] then
-                                corners[4].Visible = true
-                                corners[4].From    = tr
-                                corners[4].To      = tr + Vector2.new(0, len)
-                                corners[4].Color   = color
-                            end
+                        -- ขนาด Box auto-scale ตามระยะ
+                        local baseSize = Vector2.new(30, 55)
+                        local distForScale = math.max(distance, 1)
+                        local scale = 600 / distForScale
+                        if scale < 0.6 then
+                            scale = 0.6
+                        elseif scale > 1.6 then
+                            scale = 1.6
                         end
 
-                        -- Tracer (จากกลางขอบล่าง)
-                        if ESPSettings.Tracer then
-                            local fromPos = Vector2.new(viewSize.X / 2, viewSize.Y)
-                            objs.Tracer.Visible = true
-                            objs.Tracer.From    = fromPos
-                            objs.Tracer.To      = screenPos
-                            objs.Tracer.Color   = color
+                        local boxSize = baseSize * scale
+                        boxSize = Vector2.new(
+                            math.clamp(boxSize.X, 18, 90),
+                            math.clamp(boxSize.Y, 40, 150)
+                        )
+
+                        local topLeft = screenPos - boxSize / 2
+
+                        -- Offscreen arrow
+                        if ESPSettings.OffscreenArrow and not info.OnScreen then
+                            local dir = info.ScreenPos - screenCenter
+                            if dir.Magnitude > 0 then
+                                dir = dir.Unit
+                                local radius = math.min(viewSize.X, viewSize.Y) * 0.45
+                                local edgePos = screenCenter + dir * radius
+                                local perp    = Vector2.new(-dir.Y, dir.X) * 8
+
+                                local p1 = edgePos
+                                local p2 = edgePos - dir * 18 + perp
+                                local p3 = edgePos - dir * 18 - perp
+
+                                objs.Offscreen.Visible = alpha > 0
+                                objs.Offscreen.PointA  = p1
+                                objs.Offscreen.PointB  = p2
+                                objs.Offscreen.PointC  = p3
+                                objs.Offscreen.Color   = color
+                                objs.Offscreen.Transparency = 1 - alpha
+                            end
                         else
-                            objs.Tracer.Visible = false
+                            objs.Offscreen.Visible = false
                         end
 
-                        -- Name + distance
-                        if ESPSettings.NameTag or ESPSettings.ShowDistance then
-                            local parts = {}
-                            if ESPSettings.NameTag then
-                                table.insert(parts, plr.Name)
-                            end
-                            if ESPSettings.ShowDistance then
-                                table.insert(parts, string.format("%dm", math.floor(distance)))
-                            end
-
-                            local text = table.concat(parts, " | ")
-                            objs.Name.Visible   = true
-                            objs.Name.Text      = text
-                            objs.Name.Position  = Vector2.new(screenPos.X, topLeft.Y - 12)
-                            objs.Name.Color     = color
-                        else
-                            objs.Name.Visible = false
-                        end
-
-                        -- Health bar
-                        if ESPSettings.HealthBar and info.Humanoid then
-                            local hp  = info.Humanoid.Health
-                            local mhp = math.max(info.Humanoid.MaxHealth, 1)
-                            local r   = math.clamp(hp / mhp, 0, 1)
-
-                            local barHeight = boxSize.Y * r
-                            local x = topLeft.X - 4
-                            local y1 = topLeft.Y + boxSize.Y
-                            local y2 = y1 - barHeight
-
-                            objs.HealthBar.Visible = true
-                            objs.HealthBar.From    = Vector2.new(x, y1)
-                            objs.HealthBar.To      = Vector2.new(x, y2)
-                            objs.HealthBar.Color   = Color3.fromRGB(
-                                math.floor(255 * (1 - r)),
-                                math.floor(255 * r),
-                                0
-                            )
-                        else
+                        if not info.OnScreen or alpha <= 0 then
+                            objs.Box.Visible       = false
+                            objs.Tracer.Visible    = false
+                            objs.Name.Visible      = false
                             objs.HealthBar.Visible = false
-                        end
+                            objs.HeadDot.Visible   = false
+                            for _, c in ipairs(objs.Corners) do
+                                c.Visible = false
+                            end
+                        else
+                            -- Reset all corners
+                            for _, c in ipairs(objs.Corners) do
+                                c.Visible = false
+                            end
+                            objs.Box.Visible = false
 
-                        -- Head dot
-                        if ESPSettings.HeadDot and info.Head then
-                            local headPos3D = info.Head.Position
-                            local headView, onHeadScreen = cam:WorldToViewportPoint(headPos3D)
-                            if onHeadScreen then
-                                objs.HeadDot.Visible  = true
-                                objs.HeadDot.Position = Vector2.new(headView.X, headView.Y)
-                                objs.HeadDot.Radius   = 3
-                                objs.HeadDot.Color    = color
+                            if ESPSettings.BoxMode == "Box" then
+                                objs.Box.Visible      = true
+                                objs.Box.Position     = topLeft
+                                objs.Box.Size         = boxSize
+                                objs.Box.Color        = color
+                                objs.Box.Transparency = 1 - alpha
+                            elseif ESPSettings.BoxMode == "Corner" then
+                                local w, h = boxSize.X, boxSize.Y
+                                local tl   = topLeft
+                                local tr   = topLeft + Vector2.new(w, 0)
+                                local len  = math.max(4, math.floor(w * 0.2))
+
+                                local corners = objs.Corners
+                                if corners[1] then
+                                    corners[1].Visible      = true
+                                    corners[1].From         = tl
+                                    corners[1].To           = tl + Vector2.new(len, 0)
+                                    corners[1].Color        = color
+                                    corners[1].Transparency = 1 - alpha
+                                end
+                                if corners[2] then
+                                    corners[2].Visible      = true
+                                    corners[2].From         = tl
+                                    corners[2].To           = tl + Vector2.new(0, len)
+                                    corners[2].Color        = color
+                                    corners[2].Transparency = 1 - alpha
+                                end
+                                if corners[3] then
+                                    corners[3].Visible      = true
+                                    corners[3].From         = tr
+                                    corners[3].To           = tr + Vector2.new(-len, 0)
+                                    corners[3].Color        = color
+                                    corners[3].Transparency = 1 - alpha
+                                end
+                                if corners[4] then
+                                    corners[4].Visible      = true
+                                    corners[4].From         = tr
+                                    corners[4].To           = tr + Vector2.new(0, len)
+                                    corners[4].Color        = color
+                                    corners[4].Transparency = 1 - alpha
+                                end
+                            end
+
+                            -- Tracer
+                            if ESPSettings.Tracer then
+                                local fromPos = Vector2.new(viewSize.X / 2, viewSize.Y)
+                                objs.Tracer.Visible      = true
+                                objs.Tracer.From         = fromPos
+                                objs.Tracer.To           = screenPos
+                                objs.Tracer.Color        = color
+                                objs.Tracer.Transparency = 1 - alpha
+                            else
+                                objs.Tracer.Visible = false
+                            end
+
+                            -- Name + distance
+                            if ESPSettings.NameTag or ESPSettings.ShowDistance then
+                                local parts = {}
+                                if ESPSettings.NameTag then
+                                    table.insert(parts, plr.Name)
+                                end
+                                if ESPSettings.ShowDistance then
+                                    table.insert(parts, string.format("%dm", math.floor(distance)))
+                                end
+
+                                local text = table.concat(parts, " | ")
+                                objs.Name.Visible      = true
+                                objs.Name.Text         = text
+                                objs.Name.Position     = Vector2.new(screenPos.X, topLeft.Y - 12)
+                                objs.Name.Color        = color
+                                objs.Name.Transparency = 1 - alpha
+                            else
+                                objs.Name.Visible = false
+                            end
+
+                            -- Health bar
+                            if ESPSettings.HealthBar and info.Humanoid then
+                                local hp  = info.Humanoid.Health
+                                local mhp = math.max(info.Humanoid.MaxHealth, 1)
+                                local r   = math.clamp(hp / mhp, 0, 1)
+
+                                local barHeight = boxSize.Y * r
+                                local x = topLeft.X - 4
+                                local y1 = topLeft.Y + boxSize.Y
+                                local y2 = y1 - barHeight
+
+                                objs.HealthBar.Visible = true
+                                objs.HealthBar.From    = Vector2.new(x, y1)
+                                objs.HealthBar.To      = Vector2.new(x, y2)
+                                objs.HealthBar.Color   = Color3.fromRGB(
+                                    math.floor(255 * (1 - r)),
+                                    math.floor(255 * r),
+                                    0
+                                )
+                                objs.HealthBar.Transparency = 1 - alpha
+                            else
+                                objs.HealthBar.Visible = false
+                            end
+
+                            -- Head dot
+                            if ESPSettings.HeadDot and info.Head then
+                                local headPos3D = info.Head.Position
+                                local headView, onHeadScreen = cam:WorldToViewportPoint(headPos3D)
+                                if onHeadScreen then
+                                    objs.HeadDot.Visible     = true
+                                    objs.HeadDot.Position    = Vector2.new(headView.X, headView.Y)
+                                    objs.HeadDot.Radius      = 3
+                                    objs.HeadDot.Color       = color
+                                    objs.HeadDot.Transparency = 1 - alpha
+                                else
+                                    objs.HeadDot.Visible = false
+                                end
                             else
                                 objs.HeadDot.Visible = false
                             end
-                        else
-                            objs.HeadDot.Visible = false
+
+                            -- Skeleton (stub – สามารถเพิ่มได้ในอนาคต)
                         end
                     end
                 end
             end
         end
     end
-end
-end
 
     ----------------------------------------------------------------
-    -- Window + Tabs
+    -- Player movement / misc state
     ----------------------------------------------------------------
-local Window = Library:CreateWindow({
-        Title = "",
-        Icon = 84528813312016,
-        Size = UDim2.fromOffset(720, 600),  
-        Center = true,
-        AutoShow = true,
-        Resizable = true,  
-        Compact = true
-    })
-
-
-    local Tabs = {
-        Status = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "database", Description = "Key Status / Info"}),
-        Player = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "users", Description = "Player Tool"}),
-        ESP    = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "eye", Description = "ESP Client"}),
-        Aim    = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "crosshair", Description = "Aimbot Client"}),
-        Game   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "joystick", Description = "Game Module"}),
-        UI     = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "settings", Description = "UI/UX Setings"}),
-    }
-
-
-    local Options = Library.Options
-
-    ----------------------------------------------------------------
-    -- Helper: RichText label
-    ----------------------------------------------------------------
-    local function addRichLabel(groupbox, text)
-        local lbl = groupbox:AddLabel(text, true)
-        if lbl and lbl.TextLabel then
-            lbl.TextLabel.RichText = true
-        end
-        return lbl
-    end
-
-    ----------------------------------------------------------------
-    -- Tab: Status
-    ----------------------------------------------------------------
-    local StatusKeyBox    = Tabs.Status:AddLeftGroupbox("Key / Role")
-    local StatusSystemBox = Tabs.Status:AddRightGroupbox("System Info")
-
-    local keyRole      = GetRoleLabel(keydata.role)
-    local keyNote      = tostring(keydata.note or "")
-    local keyStamp     = tonumber(keydata.timestamp)
-    local keyExpire    = tonumber(keydata.expire)
-    local keyCreatedAt = keyStamp and formatUnix(keyStamp) or "N/A"
-    local keyExpireAt  = keyExpire and formatUnix(keyExpire) or "Lifetime"
-    local roleColorHex = GetRoleColorHex(role)
-
-    StatusKeyBox:AddLabel("<b>Key Information</b>", true)
-    StatusKeyBox:AddDivider()
-    addRichLabel(StatusKeyBox, string.format("<b>Key</b>: %s", shortKey(keydata.key)))
-    addRichLabel(StatusKeyBox, string.format("<b>Role</b>: <font color=\"%s\">%s</font>", roleColorHex, keyRole))
-    addRichLabel(StatusKeyBox, string.format("<b>Status</b>: %s", keyStatus))
-    addRichLabel(StatusKeyBox, string.format("<b>Tier</b>: %s", GetTierLabel()))
-    addRichLabel(StatusKeyBox, string.format("<b>Note</b>: %s", (keyNote ~= "" and keyNote or "N/A")))
-    addRichLabel(StatusKeyBox, string.format("<b>Created at</b>: %s", keyCreatedAt))
-    local ExpireLabel   = addRichLabel(StatusKeyBox, string.format("<b>Expire at</b>: %s", keyExpireAt))
-    local TimeLeftLabel = addRichLabel(StatusKeyBox, string.format("<b>Time left</b>: %s", formatTimeLeft(keyExpire)))
-
-    StatusKeyBox:AddDivider()
-    addRichLabel(StatusKeyBox, '<font color="#ffcc66">Key is bound to your HWID. Sharing key may result in ban.</font>')
-
-    AddConnection(RunService.Heartbeat:Connect(function()
-        if TimeLeftLabel and TimeLeftLabel.TextLabel then
-            TimeLeftLabel.TextLabel.Text = string.format("<b>Time left</b>: %s", formatTimeLeft(keyExpire))
-            TimeLeftLabel.TextLabel.RichText = true
-        end
-    end))
-
-    StatusSystemBox:AddLabel("<b>System / Game / Player</b>", true)
-    StatusSystemBox:AddDivider()
-
-    local placeId = game.PlaceId
-    local jobId   = game.JobId
-    local gameName = "Unknown game"
-
-    do
-        local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, placeId)
-        if ok and type(info) == "table" and type(info.Name) == "string" then
-            gameName = info.Name
-        end
-    end
-
-    local sysLabels = {
-        Game   = addRichLabel(StatusSystemBox, string.format("<b>Game</b>: %s (PlaceId: %d)", gameName, placeId)),
-        Server = addRichLabel(StatusSystemBox, string.format("<b>JobId</b>: %s", jobId)),
-        Player = addRichLabel(StatusSystemBox, string.format("<b>Player</b>: %s (%d)", LocalPlayer.Name, LocalPlayer.UserId)),
-        FPS    = addRichLabel(StatusSystemBox, "<b>FPS</b>: ..."),
-        Ping   = addRichLabel(StatusSystemBox, "<b>Ping</b>: ..."),
-        Memory = addRichLabel(StatusSystemBox, "<b>Memory</b>: ... MB"),
-    }
-
-    AddConnection(RunService.Heartbeat:Connect(function()
-        if sysLabels.FPS and sysLabels.FPS.TextLabel then
-            sysLabels.FPS.TextLabel.Text = string.format("<b>FPS</b>: %d", math.floor(FPS))
-            sysLabels.FPS.TextLabel.RichText = true
-        end
-        if sysLabels.Ping and sysLabels.Ping.TextLabel then
-            sysLabels.Ping.TextLabel.Text = string.format("<b>Ping</b>: %d ms", getPing())
-            sysLabels.Ping.TextLabel.RichText = true
-        end
-        if sysLabels.Memory and sysLabels.Memory.TextLabel then
-            sysLabels.Memory.TextLabel.Text = string.format("<b>Memory</b>: %d MB", getMemoryMB())
-            sysLabels.Memory.TextLabel.RichText = true
-        end
-    end))
-
-    StatusSystemBox:AddDivider()
-    StatusSystemBox:AddLabel("<b>Credits</b>", true)
-    StatusSystemBox:AddLabel("Owner: YOUR_NAME_HERE", true)
-    StatusSystemBox:AddLabel("UI: Obsidian UI Library", true)
-    StatusSystemBox:AddLabel("Discord: yourdiscord", true)
-
-    ----------------------------------------------------------------
-    -- Tab: Player
-    ----------------------------------------------------------------
-    local MoveBox = Tabs.Player:AddLeftGroupbox("Movement")
-    local QoLBox  = Tabs.Player:AddRightGroupbox("Anti-AFK / Server / Safe")
-
     local MovementState = {
         WalkSpeedEnabled = false,
         WalkSpeedValue   = 16,
+        WalkSpeedLock    = false,
+
         JumpEnabled      = false,
         JumpValue        = 50,
+        JumpLock         = false,
+
         InfiniteJump     = false,
         Fly              = false,
-        FlySpeed         = 50,
+        FlySpeed         = 60,
         NoClip           = false,
     }
 
@@ -1315,106 +1257,29 @@ local Window = Library:CreateWindow({
         end
     end
 
-    MoveBox:AddToggle("Move_WalkSpeed_Toggle", {
-        Text    = "Custom WalkSpeed",
-        Default = false,
-        Callback = function(v)
-            MovementState.WalkSpeedEnabled = v
-            local hum = GetHumanoid()
+    AddConnection(LocalPlayer.CharacterAdded:Connect(function(char)
+        task.defer(function()
+            local hum = char:WaitForChild("Humanoid", 5)
             if hum then
-                hum.WalkSpeed = v and MovementState.WalkSpeedValue or DefaultWalkSpeed
-            end
-        end
-    })
+                DefaultWalkSpeed = hum.WalkSpeed
+                DefaultJumpPower = hum.JumpPower
 
-    MoveBox:AddSlider("Move_WalkSpeed_Slider", {
-        Text     = "WalkSpeed",
-        Default  = 16,
-        Min      = 5,
-        Max      = 100,
-        Rounding = 0,
-        Callback = function(val)
-            MovementState.WalkSpeedValue = val
-            if MovementState.WalkSpeedEnabled then
-                local hum = GetHumanoid()
-                if hum then
-                    hum.WalkSpeed = val
+                if MovementState.WalkSpeedEnabled and MovementState.WalkSpeedLock then
+                    hum.WalkSpeed = MovementState.WalkSpeedValue
+                end
+                if MovementState.JumpEnabled and MovementState.JumpLock then
+                    hum.JumpPower = MovementState.JumpValue
                 end
             end
-        end
-    })
-
-    MoveBox:AddDivider()
-
-    MoveBox:AddToggle("Move_Jump_Toggle", {
-        Text    = "Custom JumpPower",
-        Default = false,
-        Callback = function(v)
-            MovementState.JumpEnabled = v
-            local hum = GetHumanoid()
-            if hum then
-                hum.JumpPower = v and MovementState.JumpValue or DefaultJumpPower
-            end
-        end
-    })
-
-    MoveBox:AddSlider("Move_Jump_Slider", {
-        Text     = "JumpPower",
-        Default  = 50,
-        Min      = 20,
-        Max      = 150,
-        Rounding = 0,
-        Callback = function(val)
-            MovementState.JumpValue = val
-            if MovementState.JumpEnabled then
-                local hum = GetHumanoid()
-                if hum then
-                    hum.JumpPower = val
-                end
-            end
-        end
-    })
-
-    MoveBox:AddDivider()
-    MoveBox:AddToggle("Move_InfiniteJump_Toggle", {
-        Text    = "Infinite Jump",
-        Default = false,
-        Callback = function(v)
-            MovementState.InfiniteJump = v
-        end
-    })
-    MoveBox:AddToggle("Move_Fly_Toggle", {
-        Text    = "Fly (camera based)",
-        Default = false,
-        Callback = function(v)
-            MovementState.Fly = v
-        end
-    })
-    MoveBox:AddSlider("Move_FlySpeed_Slider", {
-        Text     = "Fly speed",
-        Default  = 50,
-        Min      = 10,
-        Max      = 200,
-        Rounding = 0,
-        Callback = function(val)
-            MovementState.FlySpeed = val
-        end
-    })
-    MoveBox:AddToggle("Move_NoClip_Toggle", {
-        Text    = "NoClip",
-        Default = false,
-        Callback = function(v)
-            MovementState.NoClip = v
-        end
-    })
+        end)
+    end))
 
     AddConnection(UserInputService.JumpRequest:Connect(function()
-        if not MovementState.InfiniteJump then
-            return
-        end
-        local hum = GetHumanoid()
-        if hum then
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        if MovementState.InfiniteJump then
+            local hum = GetHumanoid()
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
         end
     end))
 
@@ -1473,10 +1338,307 @@ local Window = Library:CreateWindow({
         end
     end))
 
-    QoLBox:AddLabel("<b>Safety & Anti-AFK</b>", true)
-    QoLBox:AddDivider()
+    ----------------------------------------------------------------
+    -- Anti-AFK
+    ----------------------------------------------------------------
+    local AntiAFKConn
+    local AntiAFKInterval = 60
 
-    QoLBox:AddButton("Reset movement", function()
+    local function setAntiAFK(enabled)
+        if enabled then
+            if VirtualUser and not AntiAFKConn then
+                AntiAFKConn = LocalPlayer.Idled:Connect(function()
+                    pcall(function()
+                        VirtualUser:CaptureController()
+                        VirtualUser:ClickButton2(Vector2.new())
+                    end)
+                end)
+                AddConnection(AntiAFKConn)
+                Notify("Anti-AFK enabled", 3)
+            else
+                if not VirtualUser then
+                    Notify("VirtualUser not available", 3)
+                end
+            end
+        else
+            if AntiAFKConn then
+                AntiAFKConn:Disconnect()
+                AntiAFKConn = nil
+            end
+            Notify("Anti-AFK disabled", 3)
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- Fullbright
+    ----------------------------------------------------------------
+    local FullbrightEnabled = false
+    local SavedLighting = {}
+
+    local function saveLighting()
+        SavedLighting.Ambient            = Lighting.Ambient
+        SavedLighting.OutdoorAmbient     = Lighting.OutdoorAmbient
+        SavedLighting.Brightness         = Lighting.Brightness
+        SavedLighting.ColorShift_Bottom  = Lighting.ColorShift_Bottom
+        SavedLighting.ColorShift_Top     = Lighting.ColorShift_Top
+        SavedLighting.EnvironmentDiffuseScale  = Lighting.EnvironmentDiffuseScale
+        SavedLighting.EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
+    end
+
+    local function applyFullbright()
+        saveLighting()
+        Lighting.Ambient           = Color3.new(1, 1, 1)
+        Lighting.OutdoorAmbient    = Color3.new(1, 1, 1)
+        Lighting.Brightness        = 2
+        Lighting.ColorShift_Bottom = Color3.new(0, 0, 0)
+        Lighting.ColorShift_Top    = Color3.new(0, 0, 0)
+        Lighting.EnvironmentDiffuseScale  = 1
+        Lighting.EnvironmentSpecularScale = 1
+    end
+
+    local function restoreLighting()
+        for k, v in pairs(SavedLighting) do
+            Lighting[k] = v
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- Window + Tabs (ตามสเปกใหม่)
+    ----------------------------------------------------------------
+local Window = Library:CreateWindow({
+        Title = "",
+        Icon = 84528813312016,
+        Size = UDim2.fromOffset(720, 600),  
+        Center = true,
+        AutoShow = true,
+        Resizable = true,  
+        Compact = true
+    })
+
+    local Tabs = {
+        Info = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "database", Description = "Key Status / Info"}),
+        Player = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "users", Description = "Player Tool"}),
+        Combat    = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "eye", Description = "Combat Client"}),
+        ESP   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "crosshair", Description = "ESP Client"}
+        Misc    = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "crosshair", Description = "Misc Client"}),
+        Game   = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "joystick", Description = "Game Module"}),
+        Settings     = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>', Icon = "settings", Description = "UI/UX Setings"}),
+    }
+
+
+    ----------------------------------------------------------------
+    -- Helper: RichText label
+    ----------------------------------------------------------------
+    local function addRichLabel(groupbox, text)
+        local lbl = groupbox:AddLabel(text, true)
+        if lbl and lbl.TextLabel then
+            lbl.TextLabel.RichText = true
+        end
+        return lbl
+    end
+
+    ----------------------------------------------------------------
+    -- Tab: Info (Key / Game / Player / FPS / Ping / Memory)
+    ----------------------------------------------------------------
+    local InfoKeyBox    = Tabs.Info:AddLeftGroupbox("Key / Role")
+    local InfoSystemBox = Tabs.Info:AddRightGroupbox("Game / System")
+
+    local keyRole      = GetRoleLabel(keydata.role)
+    local keyNote      = tostring(keydata.note or "")
+    local keyStamp     = tonumber(keydata.timestamp)
+    local keyExpire    = tonumber(keydata.expire)
+    local keyCreatedAt = keyStamp and formatUnix(keyStamp) or "N/A"
+    local keyExpireAt  = keyExpire and formatUnix(keyExpire) or "Lifetime"
+    local roleColorHex = GetRoleColorHex(role)
+
+    InfoKeyBox:AddLabel("<b>Key Information</b>", true)
+    InfoKeyBox:AddDivider()
+    addRichLabel(InfoKeyBox, string.format("<b>Key</b>: %s", shortKey(keydata.key)))
+    addRichLabel(InfoKeyBox, string.format("<b>Role</b>: <font color=\"%s\">%s</font>", roleColorHex, keyRole))
+    addRichLabel(InfoKeyBox, string.format("<b>Status</b>: %s", keyStatus))
+    addRichLabel(InfoKeyBox, string.format("<b>Tier</b>: %s", GetTierLabel()))
+    addRichLabel(InfoKeyBox, string.format("<b>Note</b>: %s", (keyNote ~= "" and keyNote or "N/A")))
+    addRichLabel(InfoKeyBox, string.format("<b>Created at</b>: %s", keyCreatedAt))
+    local ExpireLabel   = addRichLabel(InfoKeyBox, string.format("<b>Expire at</b>: %s", keyExpireAt))
+    local TimeLeftLabel = addRichLabel(InfoKeyBox, string.format("<b>Time left</b>: %s", formatTimeLeft(keyExpire)))
+
+    InfoKeyBox:AddDivider()
+    addRichLabel(InfoKeyBox, '<font color="#ffcc66">Key is bound to your HWID. Sharing key may result in ban.</font>')
+
+    AddConnection(RunService.Heartbeat:Connect(function()
+        if TimeLeftLabel and TimeLeftLabel.TextLabel then
+            TimeLeftLabel.TextLabel.Text = string.format("<b>Time left</b>: %s", formatTimeLeft(keyExpire))
+            TimeLeftLabel.TextLabel.RichText = true
+        end
+    end))
+
+    InfoSystemBox:AddLabel("<b>Game / System / Player</b>", true)
+    InfoSystemBox:AddDivider()
+
+    local placeId = game.PlaceId
+    local jobId   = game.JobId
+    local gameName = "Unknown game"
+
+    do
+        local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, placeId)
+        if ok and type(info) == "table" and type(info.Name) == "string" then
+            gameName = info.Name
+        end
+    end
+
+    local sysLabels = {
+        Game   = addRichLabel(InfoSystemBox, string.format("<b>Game</b>: %s (PlaceId: %d)", gameName, placeId)),
+        Server = addRichLabel(InfoSystemBox, string.format("<b>JobId</b>: %s", jobId)),
+        Player = addRichLabel(InfoSystemBox, string.format("<b>Player</b>: %s (%d)", LocalPlayer.Name, LocalPlayer.UserId)),
+        FPS    = addRichLabel(InfoSystemBox, "<b>FPS</b>: ..."),
+        Ping   = addRichLabel(InfoSystemBox, "<b>Ping</b>: ..."),
+        Memory = addRichLabel(InfoSystemBox, "<b>Memory</b>: ... MB"),
+    }
+
+    AddConnection(RunService.Heartbeat:Connect(function()
+        if sysLabels.FPS and sysLabels.FPS.TextLabel then
+            sysLabels.FPS.TextLabel.Text = string.format("<b>FPS</b>: %d", math.floor(FPS))
+            sysLabels.FPS.TextLabel.RichText = true
+        end
+        if sysLabels.Ping and sysLabels.Ping.TextLabel then
+            sysLabels.Ping.TextLabel.Text = string.format("<b>Ping</b>: %d ms", getPing())
+            sysLabels.Ping.TextLabel.RichText = true
+        end
+        if sysLabels.Memory and sysLabels.Memory.TextLabel then
+            sysLabels.Memory.TextLabel.Text = string.format("<b>Memory</b>: %d MB", getMemoryMB())
+            sysLabels.Memory.TextLabel.RichText = true
+        end
+    end))
+
+    InfoSystemBox:AddDivider()
+    InfoSystemBox:AddLabel("<b>Credits</b>", true)
+    InfoSystemBox:AddLabel("Owner: YOUR_NAME_HERE", true)
+    InfoSystemBox:AddLabel("UI: Obsidian UI Library", true)
+    InfoSystemBox:AddLabel("Discord: yourdiscord", true)
+
+    ----------------------------------------------------------------
+    -- Tab: Player (Movement / Teleport & Utility / View)
+    ----------------------------------------------------------------
+    local MoveBox   = Tabs.Player:AddLeftGroupbox("Movement & Character")
+    local UtilBox   = Tabs.Player:AddRightGroupbox("Teleport / Utility / View")
+
+    -- Movement: WalkSpeed
+    MoveBox:AddToggle("Move_WalkSpeed_Toggle", {
+        Text    = "Custom WalkSpeed",
+        Default = false,
+        Callback = function(v)
+            MovementState.WalkSpeedEnabled = v
+            local hum = GetHumanoid()
+            if hum then
+                hum.WalkSpeed = v and MovementState.WalkSpeedValue or DefaultWalkSpeed
+            end
+        end
+    })
+
+    MoveBox:AddSlider("Move_WalkSpeed_Slider", {
+        Text     = "WalkSpeed",
+        Default  = 16,
+        Min      = 0,
+        Max      = 200,
+        Rounding = 0,
+        Callback = function(val)
+            MovementState.WalkSpeedValue = val
+            if MovementState.WalkSpeedEnabled then
+                local hum = GetHumanoid()
+                if hum then
+                    hum.WalkSpeed = val
+                end
+            end
+        end
+    })
+
+    MoveBox:AddToggle("Move_WalkSpeed_Lock", {
+        Text    = "Lock on spawn",
+        Default = true,
+        Callback = function(v)
+            MovementState.WalkSpeedLock = v
+        end
+    })
+
+    MoveBox:AddDivider()
+
+    -- Movement: JumpPower
+    MoveBox:AddToggle("Move_Jump_Toggle", {
+        Text    = "Custom JumpPower",
+        Default = false,
+        Callback = function(v)
+            MovementState.JumpEnabled = v
+            local hum = GetHumanoid()
+            if hum then
+                hum.JumpPower = v and MovementState.JumpValue or DefaultJumpPower
+            end
+        end
+    })
+
+    MoveBox:AddSlider("Move_Jump_Slider", {
+        Text     = "JumpPower",
+        Default  = 50,
+        Min      = 0,
+        Max      = 200,
+        Rounding = 0,
+        Callback = function(val)
+            MovementState.JumpValue = val
+            if MovementState.JumpEnabled then
+                local hum = GetHumanoid()
+                if hum then
+                    hum.JumpPower = val
+                end
+            end
+        end
+    })
+
+    MoveBox:AddToggle("Move_Jump_Lock", {
+        Text    = "Lock on spawn",
+        Default = true,
+        Callback = function(v)
+            MovementState.JumpLock = v
+        end
+    })
+
+    MoveBox:AddDivider()
+
+    MoveBox:AddToggle("Move_InfiniteJump_Toggle", {
+        Text    = "Infinite Jump",
+        Default = false,
+        Callback = function(v)
+            MovementState.InfiniteJump = v
+        end
+    })
+
+    MoveBox:AddToggle("Move_Fly_Toggle", {
+        Text    = "Fly (WASD / Space / Ctrl)",
+        Default = false,
+        Callback = function(v)
+            MovementState.Fly = v
+        end
+    })
+
+    MoveBox:AddSlider("Move_FlySpeed_Slider", {
+        Text     = "Fly speed",
+        Default  = 60,
+        Min      = 1,
+        Max      = 200,
+        Rounding = 0,
+        Callback = function(val)
+            MovementState.FlySpeed = val
+        end
+    })
+
+    MoveBox:AddToggle("Move_NoClip_Toggle", {
+        Text    = "NoClip",
+        Default = false,
+        Callback = function(v)
+            MovementState.NoClip = v
+        end
+    })
+
+    MoveBox:AddDivider()
+    MoveBox:AddButton("Reset movement", function()
         MovementState.WalkSpeedEnabled = false
         MovementState.JumpEnabled      = false
         MovementState.InfiniteJump     = false
@@ -1493,39 +1655,106 @@ local Window = Library:CreateWindow({
         Notify("Movement reset", 3)
     end)
 
-    local AntiAFKConn
+    -- Teleport & Utility
+    UtilBox:AddLabel("<b>Teleport to Player</b>", true)
+    local function buildPlayerNameList()
+        local list = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then
+                table.insert(list, plr.Name)
+            end
+        end
+        table.sort(list, function(a, b)
+            return a:lower() < b:lower()
+        end)
+        return list
+    end
 
-    QoLBox:AddToggle("AntiAFK_Toggle", {
-        Text    = "Enable Anti-AFK",
+    local TeleportTarget = nil
+
+    local TeleportDropdown = UtilBox:AddDropdown("TP_TargetPlayer", {
+        Text    = "Target player",
+        Default = "",
+        Values  = buildPlayerNameList(),
+        Callback = function(v)
+            TeleportTarget = v
+        end
+    })
+
+    UtilBox:AddButton("Teleport now", function()
+        if not TeleportTarget then
+            Notify("No target selected", 3)
+            return
+        end
+        local target = Players:FindFirstChild(TeleportTarget)
+        if not target or not target.Character then
+            Notify("Target not available", 3)
+            return
+        end
+        local myRoot = GetRoot()
+        local theirRoot = target.Character:FindFirstChild("HumanoidRootPart") or target.Character:FindFirstChild("UpperTorso") or target.Character:FindFirstChild("Torso")
+        if myRoot and theirRoot then
+            myRoot.CFrame = theirRoot.CFrame * CFrame.new(0, 3, 0)
+        end
+    end)
+
+    UtilBox:AddButton("Refresh player list", function()
+        local values = buildPlayerNameList()
+        local opt = Library.Options.TP_TargetPlayer
+        if opt and opt.SetValues then
+            opt:SetValues(values)
+        end
+    end)
+
+    UtilBox:AddDivider()
+    UtilBox:AddLabel("<b>View / Camera</b>", true)
+
+    local FOVDefault = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView or 70
+    local FOVEnabled = false
+
+    UtilBox:AddToggle("View_FOV_Toggle", {
+        Text    = "Enable FOV changer",
         Default = false,
         Callback = function(v)
-            if v then
-                if VirtualUser and not AntiAFKConn then
-                    AntiAFKConn = LocalPlayer.Idled:Connect(function()
-                        pcall(function()
-                            VirtualUser:CaptureController()
-                            VirtualUser:ClickButton2(Vector2.new())
-                        end)
-                    end)
-                    AddConnection(AntiAFKConn)
-                    Notify("Anti-AFK enabled", 3)
-                else
-                    Notify("VirtualUser not available", 3)
+            FOVEnabled = v
+            local cam = workspace.CurrentCamera
+            if cam then
+                if not v then
+                    cam.FieldOfView = FOVDefault
                 end
-            else
-                if AntiAFKConn then
-                    AntiAFKConn:Disconnect()
-                    AntiAFKConn = nil
-                end
-                Notify("Anti-AFK disabled", 3)
             end
         end
     })
 
-    QoLBox:AddDivider()
-    QoLBox:AddLabel("<b>Server Tools</b>", true)
+    UtilBox:AddSlider("View_FOV_Slider", {
+        Text     = "FOV",
+        Default  = FOVDefault,
+        Min      = 40,
+        Max      = 120,
+        Rounding = 0,
+        Callback = function(val)
+            local cam = workspace.CurrentCamera
+            if cam and FOVEnabled then
+                cam.FieldOfView = val
+            end
+        end
+    })
 
-    QoLBox:AddButton("Rejoin server", function()
+    UtilBox:AddToggle("View_Fullbright_Toggle", {
+        Text    = "Fullbright (world)",
+        Default = false,
+        Callback = function(v)
+            FullbrightEnabled = v
+            if v then
+                applyFullbright()
+            else
+                restoreLighting()
+            end
+        end
+    })
+
+    UtilBox:AddDivider()
+    UtilBox:AddButton("Rejoin server", function()
         local ok, err = pcall(function()
             TeleportService:TeleportToPlaceInstance(placeId, jobId, LocalPlayer)
         end)
@@ -1534,7 +1763,7 @@ local Window = Library:CreateWindow({
         end
     end)
 
-    QoLBox:AddButton("Server hop (random)", function()
+    UtilBox:AddButton("Server hop (random)", function()
         local ok, err = pcall(function()
             TeleportService:Teleport(placeId, LocalPlayer)
         end)
@@ -1543,25 +1772,11 @@ local Window = Library:CreateWindow({
         end
     end)
 
-    QoLBox:AddDivider()
-    QoLBox:AddButton("Panic (Unload Hub)", function()
-        CleanupConnections()
-        pcall(function()
-            HighlightFolder:Destroy()
-        end)
-        hideAllDraw()
-        if FOVCircle then
-            FOVCircle.Visible = false
-        end
-        Notify("Unloading hub...", 2)
-        Library:Unload()
-    end)
-
     ----------------------------------------------------------------
-    -- Tab: ESP (UI settings)
+    -- Tab: ESP & Visuals
     ----------------------------------------------------------------
-    local ESPMainBox   = Tabs.ESP:AddLeftGroupbox("ESP Visual")
-    local ESPFilterBox = Tabs.ESP:AddRightGroupbox("Filter / Performance")
+    local ESPMainBox   = Tabs.ESP:AddLeftGroupbox("Player ESP")
+    local ESPFilterBox = Tabs.ESP:AddRightGroupbox("Filter / Visual / Whitelist")
 
     ESPMainBox:AddToggle("ESP_Enable_Toggle", {
         Text    = "Enable ESP",
@@ -1581,7 +1796,7 @@ local Window = Library:CreateWindow({
     })
 
     ESPMainBox:AddToggle("ESP_UseHighlight", {
-        Text    = "Use 3D Chams (Highlight)",
+        Text    = "3D Chams (Highlight)",
         Default = true,
         Callback = function(v)
             ESPSettings.UseHighlight = v
@@ -1601,6 +1816,7 @@ local Window = Library:CreateWindow({
         Default = true,
         Callback = function(v)
             ESPSettings.NameTag = v
+            ESPSettings.ShowDistance = v
         end
     })
 
@@ -1672,7 +1888,7 @@ local Window = Library:CreateWindow({
     })
 
     ESPFilterBox:AddToggle("ESP_WallCheck", {
-        Text    = "Wall check (for red/green)",
+        Text    = "Wall check (สำหรับสีแดง/เขียว)",
         Default = true,
         Callback = function(v)
             ESPSettings.WallCheck = v
@@ -1683,7 +1899,7 @@ local Window = Library:CreateWindow({
         Text     = "Max distance",
         Default  = 1000,
         Min      = 50,
-        Max      = 3000,
+        Max      = 5000,
         Rounding = 0,
         Callback = function(val)
             ESPSettings.MaxDistance = val
@@ -1713,20 +1929,38 @@ local Window = Library:CreateWindow({
     })
 
     ESPFilterBox:AddDivider()
-    ESPFilterBox:AddLabel("<b>Manual whitelist (auto player list)</b>", true)
-
-    local function buildPlayerNameList()
-        local list = {}
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then
-                table.insert(list, plr.Name)
-            end
+    ESPFilterBox:AddToggle("ESP_DistanceFade_Toggle", {
+        Text    = "Distance fade",
+        Default = false,
+        Callback = function(v)
+            ESPSettings.DistanceFade = v
         end
-        table.sort(list, function(a, b)
-            return a:lower() < b:lower()
-        end)
-        return list
-    end
+    })
+
+    ESPFilterBox:AddSlider("ESP_FadeStart", {
+        Text     = "Fade start",
+        Default  = 500,
+        Min      = 0,
+        Max      = 5000,
+        Rounding = 0,
+        Callback = function(val)
+            ESPSettings.FadeStart = val
+        end
+    })
+
+    ESPFilterBox:AddSlider("ESP_FadeEnd", {
+        Text     = "Fade end",
+        Default  = 2000,
+        Min      = 0,
+        Max      = 5000,
+        Rounding = 0,
+        Callback = function(val)
+            ESPSettings.FadeEnd = val
+        end
+    })
+
+    ESPFilterBox:AddDivider()
+    ESPFilterBox:AddLabel("<b>Manual whitelist</b>", true)
 
     local WhitelistDropdown = ESPFilterBox:AddDropdown("ESP_Whitelist_Dropdown", {
         Text    = "Whitelist players",
@@ -1786,12 +2020,12 @@ local Window = Library:CreateWindow({
     end))
 
     ----------------------------------------------------------------
-    -- Tab: Aim
+    -- Tab: Combat & Aimbot
     ----------------------------------------------------------------
-    local AimBehaviorBox = Tabs.Aim:AddLeftGroupbox("Aimbot Behavior")
-    local AimTargetBox   = Tabs.Aim:AddRightGroupbox("Aim Target / Weights")
+    local CombatLeft  = Tabs.Combat:AddLeftGroupbox("Core Aimbot")
+    local CombatRight = Tabs.Combat:AddRightGroupbox("Target / Extra")
 
-    AimBehaviorBox:AddToggle("Aim_Enabled", {
+    CombatLeft:AddToggle("Aim_Enabled", {
         Text    = "Enable Aimbot",
         Default = true,
         Callback = function(v)
@@ -1799,18 +2033,47 @@ local Window = Library:CreateWindow({
         end
     })
 
-    AimBehaviorBox:AddSlider("Aim_FOV", {
+    CombatLeft:AddDropdown("Aim_Mode", {
+        Text    = "Mode",
+        Default = "Legit",
+        Values  = { "Legit", "Rage" },
+        Callback = function(v)
+            AimSettings.Mode = v
+            if v == "Legit" then
+                AimSettings.FOVRadius   = 120
+                AimSettings.Smoothing   = 0.25
+                AimSettings.HitChance   = 90
+                AimSettings.VisibleOnly = true
+            else
+                AimSettings.FOVRadius   = 300
+                AimSettings.Smoothing   = 0.5
+                AimSettings.HitChance   = 100
+                AimSettings.VisibleOnly = false
+            end
+        end
+    })
+
+    CombatLeft:AddDropdown("Aim_Type", {
+        Text    = "Aim type",
+        Default = "Hold",
+        Values  = { "Hold", "Toggle" },
+        Callback = function(v)
+            AimSettings.AimType = v
+        end
+    })
+
+    CombatLeft:AddSlider("Aim_FOV", {
         Text     = "FOV radius",
         Default  = 120,
-        Min      = 30,
-        Max      = 300,
+        Min      = 0,
+        Max      = 360,
         Rounding = 0,
         Callback = function(val)
             AimSettings.FOVRadius = val
         end
     })
 
-    AimBehaviorBox:AddToggle("Aim_ShowFOV", {
+    CombatLeft:AddToggle("Aim_ShowFOV", {
         Text    = "Show FOV circle",
         Default = true,
         Callback = function(v)
@@ -1818,18 +2081,32 @@ local Window = Library:CreateWindow({
         end
     })
 
-    AimBehaviorBox:AddSlider("Aim_Smooth", {
-        Text     = "Smooth",
-        Default  = 0.25,
-        Min      = 0.05,
-        Max      = 1,
-        Rounding = 2,
+    CombatLeft:AddSlider("Aim_Smooth", {
+        Text     = "Smooth (1–20)",
+        Default  = 5,
+        Min      = 1,
+        Max      = 20,
+        Rounding = 0,
         Callback = function(val)
-            AimSettings.Smoothing = val
+            -- map 1–20 -> 0.05–1
+            local t = math.clamp(val, 1, 20)
+            local alpha = 0.05 + (t - 1) * (0.95 / 19)
+            AimSettings.Smoothing = alpha
         end
     })
 
-    AimBehaviorBox:AddToggle("Aim_TeamCheck", {
+    CombatLeft:AddSlider("Aim_HitChance", {
+        Text     = "Hit chance (%)",
+        Default  = 100,
+        Min      = 0,
+        Max      = 100,
+        Rounding = 0,
+        Callback = function(val)
+            AimSettings.HitChance = val
+        end
+    })
+
+    CombatLeft:AddToggle("Aim_TeamCheck", {
         Text    = "Team check",
         Default = true,
         Callback = function(v)
@@ -1837,7 +2114,7 @@ local Window = Library:CreateWindow({
         end
     })
 
-    AimBehaviorBox:AddToggle("Aim_IgnoreFriends", {
+    CombatLeft:AddToggle("Aim_IgnoreFriends", {
         Text    = "Ignore friends",
         Default = true,
         Callback = function(v)
@@ -1845,17 +2122,28 @@ local Window = Library:CreateWindow({
         end
     })
 
-    AimBehaviorBox:AddToggle("Aim_VisibleOnly", {
-        Text    = "Visible only (Aim)",
+    CombatLeft:AddToggle("Aim_VisibleOnly", {
+        Text    = "Visible only (Aimbot)",
         Default = true,
         Callback = function(v)
             AimSettings.VisibleOnly = v
         end
     })
 
-    AimBehaviorBox:AddLabel("Activation: Right mouse button (RMB)", true)
+    CombatLeft:AddSlider("Aim_MaxDistance", {
+        Text     = "Max distance",
+        Default  = 1000,
+        Min      = 0,
+        Max      = 5000,
+        Rounding = 0,
+        Callback = function(val)
+            AimSettings.MaxDistance = val
+        end
+    })
 
-    AimTargetBox:AddDropdown("Aim_Part", {
+    CombatLeft:AddLabel("Activation: Right mouse button", true)
+
+    CombatRight:AddDropdown("Aim_Part", {
         Text    = "Aim part mode",
         Default = "Head",
         Values  = {
@@ -1871,8 +2159,8 @@ local Window = Library:CreateWindow({
         end
     })
 
-    AimTargetBox:AddLabel("<b>RandomWeighted: part lock %</b>", true)
-    AimTargetBox:AddSlider("Aim_WHead", {
+    CombatRight:AddLabel("<b>RandomWeighted: part weights</b>", true)
+    CombatRight:AddSlider("Aim_WHead", {
         Text     = "Head weight",
         Default  = 60,
         Min      = 0,
@@ -1882,7 +2170,7 @@ local Window = Library:CreateWindow({
             AimSettings.Weights.Head = val
         end
     })
-    AimTargetBox:AddSlider("Aim_WChest", {
+    CombatRight:AddSlider("Aim_WChest", {
         Text     = "Chest weight",
         Default  = 25,
         Min      = 0,
@@ -1892,7 +2180,7 @@ local Window = Library:CreateWindow({
             AimSettings.Weights.Chest = val
         end
     })
-    AimTargetBox:AddSlider("Aim_WArms", {
+    CombatRight:AddSlider("Aim_WArms", {
         Text     = "Arms weight",
         Default  = 10,
         Min      = 0,
@@ -1902,7 +2190,7 @@ local Window = Library:CreateWindow({
             AimSettings.Weights.Arms = val
         end
     })
-    AimTargetBox:AddSlider("Aim_WLegs", {
+    CombatRight:AddSlider("Aim_WLegs", {
         Text     = "Legs weight",
         Default  = 5,
         Min      = 0,
@@ -1913,8 +2201,60 @@ local Window = Library:CreateWindow({
         end
     })
 
+    CombatRight:AddDivider()
+    CombatRight:AddLabel("<b>Extra (Skeleton / Silent / Trigger)</b>", true)
+    CombatRight:AddLabel("SilentAim / Triggerbot / Recoil ต้องต่อกับ module per-game", true)
+
     ----------------------------------------------------------------
-    -- Tab: Game (stub)
+    -- Tab: Misc & System
+    ----------------------------------------------------------------
+    local MiscLeft  = Tabs.Misc:AddLeftGroupbox("Anti-AFK / Safety")
+    local MiscRight = Tabs.Misc:AddRightGroupbox("System / Devtools")
+
+    MiscLeft:AddToggle("Misc_AntiAFK", {
+        Text    = "Enable Anti-AFK",
+        Default = false,
+        Callback = function(v)
+            setAntiAFK(v)
+        end
+    })
+
+    MiscLeft:AddSlider("Misc_AntiAFK_Interval", {
+        Text     = "AFK interval (sec)",
+        Default  = 60,
+        Min      = 30,
+        Max      = 600,
+        Rounding = 0,
+        Callback = function(val)
+            AntiAFKInterval = val
+        end
+    })
+
+    MiscLeft:AddButton("Panic (Unload Hub)", function()
+        CleanupConnections()
+        pcall(function()
+            HighlightFolder:Destroy()
+        end)
+        hideAllDraw()
+        if FOVCircle then
+            FOVCircle.Visible = false
+        end
+        if FullbrightEnabled then
+            restoreLighting()
+        end
+        Notify("Unloading hub...", 2)
+        Library:Unload()
+    end)
+
+    MiscRight:AddLabel("<b>Server tools (duplicate)</b>", true)
+    MiscRight:AddLabel("Server hop / Rejoin มีใน Player Tab แล้ว", true)
+
+    MiscRight:AddDivider()
+    MiscRight:AddLabel("<b>Dev tools (stub)</b>", true)
+    MiscRight:AddLabel("สามารถเพิ่ม Logger / Console / ESP debug ภายหลัง", true)
+
+    ----------------------------------------------------------------
+    -- Tab: Game (Game Client / Modules)
     ----------------------------------------------------------------
     local GameLeftBox  = Tabs.Game:AddLeftGroupbox("Game Info")
     local GameRightBox = Tabs.Game:AddRightGroupbox("Game Modules")
@@ -1927,17 +2267,17 @@ local Window = Library:CreateWindow({
     GameRightBox:AddLabel("No per-game module configured yet.", true)
 
     ----------------------------------------------------------------
-    -- Tab: UI / Theme / Config
+    -- Tab: Settings (Theme / Config / Keybind)
     ----------------------------------------------------------------
-    local UIThemeBox  = Tabs.UI:AddLeftGroupbox("UI / Theme")
-    local UIConfigBox = Tabs.UI:AddRightGroupbox("Config / Misc")
+    local UIThemeBox  = Tabs.Settings:AddLeftGroupbox("UI / Theme")
+    local UIConfigBox = Tabs.Settings:AddRightGroupbox("Config / Misc")
 
     UIThemeBox:AddLabel("<b>Theme</b>", true)
     UIThemeBox:AddDivider()
 
     if ThemeManager then
         if ThemeManager.ApplyToTab then
-            ThemeManager:ApplyToTab(Tabs.UI)
+            ThemeManager:ApplyToTab(Tabs.Settings)
         end
         if ThemeManager.BuildThemeSection then
             ThemeManager:BuildThemeSection(UIThemeBox)
@@ -1948,8 +2288,8 @@ local Window = Library:CreateWindow({
     UIConfigBox:AddDivider()
 
     if SaveManager and SaveManager.BuildConfigSection then
-        -- สำคัญ: ต้องส่ง Tab เข้าไป ไม่ใช่ Groupbox
-        SaveManager:BuildConfigSection(Tabs.UI)
+        -- ต้องส่ง Tab เข้าไป ไม่ใช่ Groupbox
+        SaveManager:BuildConfigSection(Tabs.Settings)
     else
         UIConfigBox:AddLabel("SaveManager not fully available.", true)
     end
@@ -1963,6 +2303,9 @@ local Window = Library:CreateWindow({
         hideAllDraw()
         if FOVCircle then
             FOVCircle.Visible = false
+        end
+        if FullbrightEnabled then
+            restoreLighting()
         end
         Notify("Unloading hub...", 2)
         Library:Unload()
