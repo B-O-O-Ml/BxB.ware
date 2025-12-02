@@ -1128,7 +1128,47 @@ for plr, info in pairs(PlayerInfo) do
                         -- Health bar
                         if ESPSettings.HealthBar and info.Humanoid then
                             local hp  = info.Humanoid.Health
+                            local mhp = math.max(info.Humanoid.MaxHealth, 1)
+                            local r   = math.clamp(hp / mhp, 0, 1)
 
+                            local barHeight = boxSize.Y * r
+                            local x = topLeft.X - 4
+                            local y1 = topLeft.Y + boxSize.Y
+                            local y2 = y1 - barHeight
+
+                            objs.HealthBar.Visible = true
+                            objs.HealthBar.From    = Vector2.new(x, y1)
+                            objs.HealthBar.To      = Vector2.new(x, y2)
+                            objs.HealthBar.Color   = Color3.fromRGB(
+                                math.floor(255 * (1 - r)),
+                                math.floor(255 * r),
+                                0
+                            )
+                        else
+                            objs.HealthBar.Visible = false
+                        end
+
+                        -- Head dot
+                        if ESPSettings.HeadDot and info.Head then
+                            local headPos3D = info.Head.Position
+                            local headView, onHeadScreen = cam:WorldToViewportPoint(headPos3D)
+                            if onHeadScreen then
+                                objs.HeadDot.Visible  = true
+                                objs.HeadDot.Position = Vector2.new(headView.X, headView.Y)
+                                objs.HeadDot.Radius   = 3
+                                objs.HeadDot.Color    = color
+                            else
+                                objs.HeadDot.Visible = false
+                            end
+                        else
+                            objs.HeadDot.Visible = false
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
     ----------------------------------------------------------------
     -- Window + Tabs
     ----------------------------------------------------------------
