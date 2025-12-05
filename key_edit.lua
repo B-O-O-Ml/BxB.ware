@@ -419,20 +419,28 @@ end
         return nil
     end
 
-    local function getExpireTimestamp(remoteRecord)
-        if type(remoteRecord) ~= "table" then
-            return nil
-        end
-
-        local ts = tonumber(
-            remoteRecord.expire
-            or remoteRecord.expire_at
-            or remoteRecord.expire_unix
-            or remoteRecord.expires_at
-        )
-
-        return ts
+-- แปลง expire จากหลายรูปแบบให้เป็น unix timestamp
+local function getExpireTimestamp(remoteRecord)
+    if not remoteRecord then
+        return nil
     end
+
+    -- รองรับทั้ง numeric / string field หลายชื่อ
+    local raw =
+        remoteRecord.expire
+        or remoteRecord.expire_at
+        or remoteRecord.expire_unix
+        or remoteRecord.expires_at
+
+    -- ถ้าเลขอยู่แล้วก็ใช้เลย
+    if typeof(raw) == "number" then
+        return raw
+    end
+
+    -- ถ้า string ให้ใช้ parseTimeField (รองรับ "MM/DD/YY HH:MM:SS" และรูปแบบอื่น ๆ ที่คุณรองรับใน parseTimeField)
+    local ts = parseTimeField(raw)
+    return ts
+end
 
     local function isKeyExpired(remoteRecord)
         local expireTs = getExpireTimestamp(remoteRecord)
@@ -506,15 +514,15 @@ end
             return false
         end
 
-        local keydata = {
-            key       = localKey,
-            hwid_hash = hwidHash,
-            timestamp = tonumber(remoteRecord.timestamp) or 0,
-            role      = remoteRecord.role or "user",
-            expire    = getExpireTimestamp(remoteRecord),
-            status    = status,
-            note      = note
-        }
+local keydata = {
+    key       = localKey,
+    hwid_hash = hwidHash,
+    timestamp = parseTimeField(remoteRecord.timestamp or remoteRecord.created_at),
+    role      = remoteRecord.role or "user",
+    expire    = getExpireTimestamp(remoteRecord),
+    status    = status,
+    note      = note
+}
 
         return true, keydata
     end
@@ -581,17 +589,20 @@ end
         local keydata = {
             key       = key,
             hwid_hash = hwidHash,
-            timestamp = tonumber(remoteRecord.timestamp) or 0,
+            bind_hwid = remoteRecord.bind_hwid,  -- อาจเป็น true/false หรือ nil
+            timestamp = parseTimeField(remoteRecord.timestamp or remoteRecord.created_at),
             role      = remoteRecord.role or "user",
             expire    = getExpireTimestamp(remoteRecord),
             status    = status,
             note      = note
         }
 
+        -- บันทึกไฟล์ local เก็บเฉพาะ key ตามที่คุณต้องการ
         saveLocalKeydata(key)
 
         return true, keydata
     end
+
 
     ----------------------------------------------------------------
     -- Main Hub Loader
