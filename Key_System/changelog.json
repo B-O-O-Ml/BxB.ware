@@ -1,75 +1,79 @@
 {
   "status": "online",
-  "status_message": "Changelog synced and up-to-date",
+  "project": "Obsidian Universal Hub",
+  "latest_version": "1.5.0",
   "entries": [
     {
-      "version": "v1.3.0",
-      "date": "2025-12-02",
-      "tag": "Stable",
+      "version": "1.5.0",
+      "date": "2025-12-05 13:45:00",
+      "channel": "stable",
+      "status": "released",
+      "title": "Combat & ESP upgrade",
+      "highlights": [
+        "Improved aimbot smoothing and weighted hitpart logic.",
+        "Added ESP distance fade and ESP FOV limiter.",
+        "Added free-key (no HWID) support in Key UI."
+      ],
       "changes": {
-        "Added": [
-          "Role-based feature locks (user/premium/staff/owner)",
-          "Key status integration in Main Hub status tab",
-          "Online/offline status panel based on remote config in key UI"
+        "added": [
+          "Support for free keys (bind_hwid = false) without HWID check.",
+          "RandomWeighted aimpart mode (Head/Chest/Arms/Legs with sliders).",
+          "ESP FOV circle limiter for performance."
         ],
-        "Changed": [
-          "Improved HWID hashing with 128-bit mixer",
-          "Refined status UI layout for smaller screens"
+        "changed": [
+          "ESP box scaling now adapts to distance for better readability.",
+          "Aimbot smoothness range changed to 0.05–1.00 for better control."
         ],
-        "Fixed": [
-          "Bug where MainHub could load when key already expired",
-          "Incorrect time-left display for lifetime keys"
+        "fixed": [
+          "Fixed groupbox layout not updating when resizing window.",
+          "Fixed MainHub crash when Drawing API is not available."
         ],
-        "Removed": [
-          "Legacy debug prints in output"
-        ]
+        "removed": []
       }
     },
     {
-      "version": "v1.2.5",
-      "date": "2025-11-28",
-      "tag": "Hotfix",
+      "version": "1.4.0",
+      "date": "2025-11-28 21:10:00",
+      "channel": "stable",
+      "status": "released",
+      "title": "Key UI & MainHub integration",
+      "highlights": [
+        "Added second layer keycheck for MainHub.",
+        "Integrated Key UI with MainHub loader."
+      ],
       "changes": {
-        "Added": [
-          "Optional panic key to quickly unload UI & features"
+        "added": [
+          "Key UI window with Info/Status/Script Info/Changelog tabs.",
+          "MainHub loader that accepts (Exec, keydata, keycheck) parameters.",
+          "Key auto-load from local file for valid keys."
         ],
-        "Changed": [
-          "Safer error handling when MainHub.lua fails to load"
+        "changed": [
+          "Refactored Exec abstraction for multi-executor support."
         ],
-        "Fixed": [
-          "Crash when HTTP request returns non-string body",
-          "Incorrect handling when changelog.json is empty"
-        ]
+        "fixed": [
+          "Fixed issue where status text overlapped in Status groupbox."
+        ],
+        "removed": []
       }
     },
     {
-      "version": "v1.2.0",
-      "date": "2025-11-20",
-      "tag": "Beta",
+      "version": "1.3.0",
+      "date": "2025-11-20 18:30:00",
+      "channel": "beta",
+      "status": "deprecated",
+      "title": "Early ESP & Player build",
+      "highlights": [
+        "Initial ESP (box + name + tracer).",
+        "Basic Player tab (WalkSpeed, JumpPower, Fly, NoClip)."
+      ],
       "changes": {
-        "Added": [
-          "Key UI built with Obsidian (2 tabs: Key / Info)",
-          "Script info & changelog panels in Info tab",
-          "Support for trial keys and basic role field"
+        "added": [
+          "Player tab with Movement/Character controls.",
+          "ESP box + tracers with simple settings."
         ],
-        "Changed": [
-          "Cleaner default theme & spacing for mobile users"
-        ],
-        "Fixed": [
-          "Minor layout issues on small resolutions"
-        ]
-      }
-    },
-    {
-      "version": "v1.0.0",
-      "date": "2025-11-01",
-      "tag": "Initial",
-      "changes": {
-        "Added": [
-          "Initial universal hub core",
-          "Basic movement features (walkspeed, jumppower)",
-          "Basic 3D ESP using Highlight"
-        ]
+        "changed": [],
+        "fixed": [],
+        "removed": []
       }
     }
   ]
