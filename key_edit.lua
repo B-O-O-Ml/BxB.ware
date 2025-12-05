@@ -331,7 +331,7 @@ local function parseTimeField(raw)
 end
 
 ----------------------------------------------------------------
--- Helper: แปลง scriptinfo JSON/raw -> status, text (เวอร์ชันใหม่)
+-- Helper: แปลง scriptinfo JSON/raw -> status, text (NEW, รองรับ nested JSON)
 ----------------------------------------------------------------
 local function parseScriptInfoBody(body)
     if type(body) ~= "string" or body == "" then
@@ -342,9 +342,18 @@ local function parseScriptInfoBody(body)
         return HttpService:JSONDecode(body)
     end)
 
-    -- ถ้าไม่ใช่ JSON → คืนข้อความดิบ
+    -- ถ้าไม่ใช่ JSON → ใช้ทั้งก้อนเป็นข้อความดิบ
     if not ok or type(decoded) ~= "table" then
         return "online", body
+    end
+
+    -- escape สำหรับ RichText
+    local function esc(s)
+        s = tostring(s or "")
+        s = s:gsub("&", "&amp;")
+             :gsub("<", "&lt;")
+             :gsub(">", "&gt;")
+        return s
     end
 
     local status = decoded.status or decoded.state or "online"
@@ -356,218 +365,228 @@ local function parseScriptInfoBody(body)
         end
     end
 
-    -- header / name / version / author / last update
-    local name    = decoded.title or decoded.name or decoded.script_name or "Unknown Script"
-    local version = decoded.version or decoded.ver
-    local author  = decoded.author or decoded.dev
-    local updated = decoded.updated_at or decoded.last_update
+    ----------------------------------------------------------------
+    -- HEADER หลักจาก JSON ตัวอย่างที่คุณส่งมา
+    ----------------------------------------------------------------
+    local hubName  = decoded.hub_name or decoded.name or "Unknown Hub"
+    local hubCode  = decoded.hub_code or decoded.code
+    local version  = decoded.version or decoded.ver
+    local channel  = decoded.channel or decoded.release_channel
+    local updated  = decoded.last_update or decoded.updated_at
 
-    local header = string.format("<b>%s</b>", name)
+    local header = string.format("<b>%s</b>", esc(hubName))
+
     if version then
-        header = header .. "  v" .. tostring(version)
+        header = header .. "  <font color=\"#aaaaaa\">v" .. esc(version) .. "</font>"
     end
+    if channel then
+        header = header .. "  <font color=\"#cccccc\">[" .. esc(channel) .. "]</font>"
+    end
+
     add(header)
 
-    if author then
-        add("Author: " .. tostring(author))
+    if hubCode then
+        add("Hub code: " .. esc(hubCode))
     end
     if updated then
-        add("Updated at: " .. tostring(updated))
+        add("Last update: " .. esc(updated))
     end
 
-    -- list helper (รองรับทั้ง string / array / table)
-    local function appendList(label, value)
-        if value == nil then
-            return
+    ----------------------------------------------------------------
+    -- DESCRIPTION
+    ----------------------------------------------------------------
+    if type(decoded.description) == "string" then
+        add("")
+        add(esc(decoded.description))
+    elseif type(decoded.description) == "table" then
+        if decoded.description.short then
+            add("")
+            add("Short: " .. esc(decoded.description.short))
         end
-
-        if type(value) == "string" then
-            add(string.format("%s: %s", label, value))
-            return
+        if decoded.description.long then
+            add("")
+            add("Description:")
+            add(esc(decoded.description.long))
         end
+    end
 
-        if type(value) == "table" then
+    ----------------------------------------------------------------
+    -- ROLES REQUIRED
+    ----------------------------------------------------------------
+    if type(decoded.roles_required) == "table" then
+        add("")
+        add("<b>Roles / Permissions</b>:")
+
+        local function listRoles(label, arr)
+            if type(arr) ~= "table" or #arr == 0 then
+                return
+            end
             local buf = {}
+            for _, v in ipairs(arr) do
+                table.insert(buf, esc(v))
+            end
+            add(string.format("  %s: %s", label, table.concat(buf, ", ")))
+        end
 
-            -- ถ้าเป็น array
-            for _, v in ipairs(value) do
-                table.insert(buf, tostring(v))
+        listRoles("Basic",            decoded.roles_required.basic)
+        listRoles("Premium features", decoded.roles_required.premium_features)
+        listRoles("Staff tools",      decoded.roles_required.staff_tools)
+    end
+
+    ----------------------------------------------------------------
+    -- FEATURES (player / esp / aimbot / silent_aim / item_esp ...)
+    ----------------------------------------------------------------
+    if type(decoded.features) == "table" then
+        add("")
+        add("<b>Features</b>:")
+
+        local function addFeature(key, feat)
+            if type(feat) ~= "table" then
+                return
             end
 
-            -- ถ้าไม่มี numeric index เลย ลอง pairs
-            if #buf == 0 then
-                for k, v in pairs(value) do
-                    table.insert(buf, string.format("%s=%s", tostring(k), tostring(v)))
+            local fname   = key
+            local fstatus = tostring(feat.status or "unknown")
+            local frole   = feat.min_role and ("min role: " .. tostring(feat.min_role)) or nil
+            local fdesc   = feat.description and tostring(feat.description) or nil
+
+            local line = string.format("  - %s (%s)", esc(fname), esc(fstatus))
+            if frole then
+                line = line .. " [" .. esc(frole) .. "]"
+            end
+            add(line)
+
+            if fdesc then
+                add("    " .. esc(fdesc))
+            end
+        end
+
+        -- ลองเรียงตาม key ที่คาดว่ามี
+        local ordered = { "player", "esp", "aimbot", "silent_aim", "item_esp" }
+        local used = {}
+
+        for _, k in ipairs(ordered) do
+            if decoded.features[k] ~= nil then
+                addFeature(k, decoded.features[k])
+                used[k] = true
+            end
+        end
+
+        -- feature อื่น ๆ ที่คุณอาจเพิ่มเอง
+        for k, v in pairs(decoded.features) do
+            if not used[k] then
+                addFeature(k, v)
+            end
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- EXECUTORS SUPPORT
+    ----------------------------------------------------------------
+    if type(decoded.executors_support) == "table" then
+        add("")
+        add("<b>Executors support</b>:")
+
+        local ex = decoded.executors_support
+
+        local function listExec(label, arr)
+            if type(arr) ~= "table" or #arr == 0 then
+                return
+            end
+            local buf = {}
+            for _, v in ipairs(arr) do
+                table.insert(buf, esc(v))
+            end
+            add(string.format("  %s: %s", label, table.concat(buf, ", ")))
+        end
+
+        listExec("Stable",  ex.stable)
+        listExec("Partial", ex.partial)
+        listExec("Mobile",  ex.mobile)
+
+        if ex.notes then
+            add("  Note: " .. esc(ex.notes))
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- GAME SUPPORT
+    ----------------------------------------------------------------
+    if type(decoded.game_support) == "table" and #decoded.game_support > 0 then
+        add("")
+        add("<b>Game support</b>:")
+
+        for _, g in ipairs(decoded.game_support) do
+            if type(g) == "table" then
+                local gname  = g.name or "Unknown game"
+                local place  = g.place_id or 0
+                local gstat  = g.status or "unknown"
+                local gmod   = g.module
+                local minr   = g.min_role
+
+                local line = string.format(
+                    "  - %s [PlaceId: %s] (%s)",
+                    esc(gname),
+                    tostring(place),
+                    esc(gstat)
+                )
+
+                if minr then
+                    line = line .. " min role: " .. esc(minr)
+                end
+
+                add(line)
+
+                if gmod then
+                    add("    module: " .. esc(gmod))
                 end
             end
+        end
+    end
 
-            if #buf > 0 then
-                add(string.format("%s: %s", label, table.concat(buf, ", ")))
+    ----------------------------------------------------------------
+    -- CREDITS
+    ----------------------------------------------------------------
+    if type(decoded.credits) == "table" and #decoded.credits > 0 then
+        add("")
+        add("<b>Credits</b>:")
+
+        for _, c in ipairs(decoded.credits) do
+            if type(c) == "table" then
+                local role = c.role or "member"
+                local name = c.name or "Unknown"
+                local note = c.note
+
+                local line = string.format("  - [%s] %s", esc(role), esc(name))
+                if note then
+                    line = line .. " - " .. esc(note)
+                end
+
+                add(line)
             end
         end
     end
 
-    appendList("Supported executors", decoded.executors or decoded.supported_executors)
-    appendList("Supported games",     decoded.games     or decoded.supported_games or decoded.support_games)
-    appendList("Tags",                decoded.tags)
+    ----------------------------------------------------------------
+    -- LINKS
+    ----------------------------------------------------------------
+    if type(decoded.links) == "table" then
+        add("")
+        add("<b>Links</b>:")
 
-    -- ส่วน description / info / notes / lines (ใช้ให้หมด)
-    local function appendMultiLines(value, label)
-        if value == nil then
-            return
-        end
-
-        if type(value) == "string" then
-            if label then
-                add("")
-                add(label .. ":")
-            end
-            add(value)
-            return
-        end
-
-        if type(value) == "table" then
-            if label then
-                add("")
-                add(label .. ":")
-            end
-            for _, v in ipairs(value) do
-                add(tostring(v))
-            end
+        for k, v in pairs(decoded.links) do
+            add(string.format("  - %s: %s", esc(k), esc(v)))
         end
     end
 
-    appendMultiLines(decoded.description, "Description")
-    appendMultiLines(decoded.info,        "Info")
-    appendMultiLines(decoded.notes,       "Notes")
-    appendMultiLines(decoded.lines,       nil)
-    appendMultiLines(decoded.extra,       "Extra")
-    appendMultiLines(decoded.details,     "Details")
-
-    -- แสดง field อื่น ๆ ที่ไม่ได้ใช้ด้านบนด้วย (กันข้อมูลหาย)
-    local usedKeys = {
-        status      = true,
-        state       = true,
-        title       = true,
-        name        = true,
-        script_name = true,
-        version     = true,
-        ver         = true,
-        author      = true,
-        dev         = true,
-        updated_at  = true,
-        last_update = true,
-        executors   = true,
-        supported_executors = true,
-        games       = true,
-        supported_games = true,
-        support_games = true,
-        tags        = true,
-        description = true,
-        info        = true,
-        notes       = true,
-        lines       = true,
-        extra       = true,
-        details     = true,
-    }
-
-    for k, v in pairs(decoded) do
-        if not usedKeys[k] then
-            if type(v) == "table" then
-                appendList(k, v)
-            else
-                add(string.format("%s: %s", tostring(k), tostring(v)))
-            end
-        end
-    end
-
+    -- ถ้าไม่มีอะไรเลย ให้ fallback เป็น body ดิบ
     if #lines == 0 then
         return status, body
     end
 
     return status, table.concat(lines, "\n")
 end
-----------------------------------------------------------------
--- Helper: แปลง changelog JSON/raw -> status, text (เวอร์ชันใหม่)
-----------------------------------------------------------------
-local function parseChangelogBody(body)
-    if type(body) ~= "string" or body == "" then
-        return "unknown", "No changelog data."
-    end
 
-    local ok, decoded = pcall(function()
-        return HttpService:JSONDecode(body)
-    end)
-
-    if not ok or type(decoded) ~= "table" then
-        -- ไม่ใช่ JSON → ใช้ข้อความดิบ
-        return "online", body
-    end
-
-    local status = decoded.status or decoded.state or "online"
-    local lines  = {}
-
-    local function add(line)
-        if line and line ~= "" then
-            table.insert(lines, tostring(line))
-        end
-    end
-
-    -- รองรับทั้ง:
-    -- 1) { entries = {...} }
-    -- 2) { changelog = {...} } / { logs = {...} }
-    -- 3) [ {version=...}, {version=...} ]
-    local entries = decoded.entries or decoded.changelog or decoded.logs
-
-    if type(entries) ~= "table" then
-        -- ถ้า top-level เป็น array ของ entries
-        if #decoded > 0 then
-            entries = decoded
-        else
-            return status, body
-        end
-    end
-
-    local function addSection(label, arr)
-        if type(arr) ~= "table" or #arr == 0 then
-            return
-        end
-        add("  " .. label .. ":")
-        for _, v in ipairs(arr) do
-            add("    - " .. tostring(v))
-        end
-    end
-
-    for _, ent in ipairs(entries) do
-        if type(ent) ~= "table" then
-            add(tostring(ent))
-        else
-            local ver   = ent.version or ent.tag or ent.build or "Unknown"
-            local date  = ent.date or ent.released_at or ent.time or "Unknown date"
-            local title = ent.title or ent.name or ""
-
-            add(string.format("<b>Version %s</b> (%s)", tostring(ver), tostring(date)))
-            if title ~= "" then
-                add("  " .. tostring(title))
-            end
-
-            -- ส่วนรายละเอียด
-            addSection("Added",   ent.added   or (ent.changes and ent.changes.Added))
-            addSection("Changed", ent.changed or (ent.changes and ent.changes.Changed))
-            addSection("Fixed",   ent.fixed   or (ent.changes and ent.changes.Fixed))
-            addSection("Removed", ent.removed or (ent.changes and ent.changes.Removed))
-            addSection("Other",   ent.other   or (ent.changes and ent.changes.Other))
-
-            add("") -- เว้นบรรทัดคั่นแต่ละเวอร์ชัน
-        end
-    end
-
-    if #lines == 0 then
-        return status, body
-    end
-
-    return status, table.concat(lines, "\n")
-end
 
     ----------------------------------------------------------------
     -- Local keyfile helpers (เก็บเฉพาะ key)
