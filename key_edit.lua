@@ -586,6 +586,129 @@ local function parseScriptInfoBody(body)
 
     return status, table.concat(lines, "\n")
 end
+----------------------------------------------------------------
+-- Helper: แปลง changelog JSON/raw -> status, text (รองรับโครงตัวอย่าง)
+----------------------------------------------------------------
+local function parseChangelogBody(body)
+    if type(body) ~= "string" or body == "" then
+        return "unknown", "No changelog data."
+    end
+
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(body)
+    end)
+
+    -- ถ้าไม่ใช่ JSON → ใช้ข้อความดิบ
+    if not ok or type(decoded) ~= "table" then
+        return "online", body
+    end
+
+    -- escape สำหรับ RichText
+    local function esc(s)
+        s = tostring(s or "")
+        s = s:gsub("&", "&amp;")
+             :gsub("<", "&lt;")
+             :gsub(">", "&gt;")
+        return s
+    end
+
+    local status = decoded.status or decoded.state or "online"
+    local lines  = {}
+
+    local function add(line)
+        if line and line ~= "" then
+            table.insert(lines, tostring(line))
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- HEADER: project + latest_version
+    ----------------------------------------------------------------
+    local project = decoded.project or "Changelog"
+    local latest  = decoded.latest_version
+
+    if latest then
+        add(string.format(
+            "<b>%s</b>  <font color=\"#aaaaaa\">(latest: %s)</font>",
+            esc(project),
+            esc(latest)
+        ))
+    else
+        add(string.format("<b>%s</b>", esc(project)))
+    end
+
+    ----------------------------------------------------------------
+    -- ENTRIES
+    ----------------------------------------------------------------
+    local entries = decoded.entries
+    if type(entries) ~= "table" or #entries == 0 then
+        -- ถ้าไม่มี entries เลย → แสดง JSON ดิบ
+        return status, body
+    end
+
+    local function addSection(label, arr)
+        if type(arr) ~= "table" or #arr == 0 then
+            return
+        end
+        add("  " .. label .. ":")
+        for _, v in ipairs(arr) do
+            add("    - " .. esc(v))
+        end
+    end
+
+    for _, ent in ipairs(entries) do
+        if type(ent) ~= "table" then
+            add(esc(ent))
+        else
+            local ver     = ent.version or "Unknown"
+            local date    = ent.date or "Unknown date"
+            local channel = ent.channel or nil
+            local estatus = ent.status or nil
+            local title   = ent.title or nil
+
+            -- header ของแต่ละเวอร์ชัน
+            local header = string.format("<b>Version %s</b> (%s)", esc(ver), esc(date))
+
+            if channel then
+                header = header .. string.format("  <font color=\"#cccccc\">[%s]</font>", esc(channel))
+            end
+            if estatus then
+                header = header .. string.format("  <font color=\"#7bd5ff\">{%s}</font>", esc(estatus))
+            end
+
+            add("")
+            add(header)
+
+            -- title
+            if title and title ~= "" then
+                add("  " .. esc(title))
+            end
+
+            -- highlights (หัวข้อสรุป)
+            if type(ent.highlights) == "table" and #ent.highlights > 0 then
+                add("  Highlights:")
+                for _, h in ipairs(ent.highlights) do
+                    add("    • " .. esc(h))
+                end
+            end
+
+            -- changes.*: added / changed / fixed / removed
+            local changes = ent.changes
+            if type(changes) == "table" then
+                addSection("Added",   changes.added)
+                addSection("Changed", changes.changed)
+                addSection("Fixed",   changes.fixed)
+                addSection("Removed", changes.removed)
+            end
+        end
+    end
+
+    if #lines == 0 then
+        return status, body
+    end
+
+    return status, table.concat(lines, "\n")
+end
 
 
     ----------------------------------------------------------------
