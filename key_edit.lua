@@ -330,6 +330,144 @@ local function parseTimeField(raw)
     return dt.UnixTimestamp
 end
 
+----------------------------------------------------------------
+-- Helper: แปลง scriptinfo JSON/raw -> status, text
+----------------------------------------------------------------
+local function parseScriptInfoBody(body)
+    if type(body) ~= "string" or body == "" then
+        return "unknown", "No script info data."
+    end
+
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(body)
+    end)
+
+    if not ok or type(decoded) ~= "table" then
+        -- ไม่ใช่ JSON → ใช้ทั้งก้อนเป็นข้อความดิบ
+        return "online", body
+    end
+
+    local status = decoded.status or decoded.state or "online"
+    local lines = {}
+
+    -- header / title / version
+    if decoded.title or decoded.name then
+        table.insert(lines, string.format("<b>%s</b>", decoded.title or decoded.name))
+    end
+    if decoded.version then
+        table.insert(lines, string.format("Version: %s", tostring(decoded.version)))
+    end
+    if decoded.author then
+        table.insert(lines, string.format("Author: %s", tostring(decoded.author)))
+    end
+    if decoded.updated_at or decoded.last_update then
+        table.insert(lines, string.format("Updated at: %s", tostring(decoded.updated_at or decoded.last_update)))
+    end
+
+    -- executors / games / tags ฯลฯ
+    local function appendList(label, arr)
+        if type(arr) ~= "table" or #arr == 0 then
+            return
+        end
+        local buf = {}
+        for _, v in ipairs(arr) do
+            table.insert(buf, tostring(v))
+        end
+        table.insert(lines, string.format("%s: %s", label, table.concat(buf, ", ")))
+    end
+
+    appendList("Supported executors", decoded.executors or decoded.supported_executors)
+    appendList("Supported games", decoded.games or decoded.supported_games)
+    appendList("Tags", decoded.tags)
+
+    -- description / info / notes (ใช้ครบทุกบรรทัด)
+    local function appendLines(arr)
+        if type(arr) ~= "table" then
+            return
+        end
+        for _, v in ipairs(arr) do
+            table.insert(lines, tostring(v))
+        end
+    end
+
+    if type(decoded.description) == "string" then
+        table.insert(lines, "")
+        table.insert(lines, decoded.description)
+    end
+
+    appendLines(decoded.lines)
+    appendLines(decoded.info)
+    appendLines(decoded.notes)
+
+    if #lines == 0 then
+        -- ไม่เจอ field อะไรที่ใช้ได้ → แสดง JSON ทั้งก้อน
+        return status, body
+    end
+
+    return status, table.concat(lines, "\n")
+end
+
+----------------------------------------------------------------
+-- Helper: แปลง changelog JSON/raw -> status, text
+----------------------------------------------------------------
+local function parseChangelogBody(body)
+    if type(body) ~= "string" or body == "" then
+        return "unknown", "No changelog data."
+    end
+
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(body)
+    end)
+
+    if not ok or type(decoded) ~= "table" then
+        -- ไม่ใช่ JSON → ใช้ข้อความดิบ
+        return "online", body
+    end
+
+    local status = decoded.status or decoded.state or "online"
+    local lines = {}
+
+    local entries = decoded.entries or decoded.changelog or decoded.logs
+    if type(entries) ~= "table" then
+        -- ไม่มี entries → แสดง JSON ดิบ
+        return status, body
+    end
+
+    -- วนทุกเวอร์ชัน ไม่ตัดจำนวน
+    for _, ent in ipairs(entries) do
+        local ver   = ent.version or ent.tag or "Unknown"
+        local date  = ent.date or ent.released_at or "Unknown date"
+        local title = ent.title or ""
+
+        table.insert(lines, string.format("<b>Version %s</b> (%s)", tostring(ver), tostring(date)))
+        if title ~= "" then
+            table.insert(lines, "  " .. tostring(title))
+        end
+
+        local function addSection(label, arr)
+            if type(arr) ~= "table" or #arr == 0 then
+                return
+            end
+            table.insert(lines, "  " .. label .. ":")
+            for _, v in ipairs(arr) do
+                table.insert(lines, "    - " .. tostring(v))
+            end
+        end
+
+        addSection("Added",   ent.added)
+        addSection("Changed", ent.changed)
+        addSection("Fixed",   ent.fixed)
+        addSection("Removed", ent.removed)
+
+        table.insert(lines, "") -- เว้นบรรทัดก่อน version ถัดไป
+    end
+
+    if #lines == 0 then
+        return status, body
+    end
+
+    return status, table.concat(lines, "\n")
+end
 
     ----------------------------------------------------------------
     -- Local keyfile helpers (เก็บเฉพาะ key)
@@ -672,8 +810,8 @@ local function createKeyUI(Library)
         })
 
         local Tabs = {
-            Key = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware</font></b>',Icon = "key", Description = "<b>Main controls & examples</b>"}),
-            Info = Window:AddTab("", "info")
+            Key = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware</font></b>',Icon = "key", Description = "<b>Key System & Security</b>"}),
+            Info = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware</font></b>',Icon = "info", Description = "<b>Script info & Changlog</b>"})
         }
 
         local KeyLeft   = Tabs.Key:AddLeftGroupbox("Key System", "key-round")
