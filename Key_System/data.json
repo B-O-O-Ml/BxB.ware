@@ -1,150 +1,128 @@
 {
   "status": "online",
-  "status_message": "Key system is active and accepting requests",
-  "meta": {
-    "name": "Obsidian Universal Keydata",
-    "version": "1.1.0",
-    "last_update": "2025-12-01T12:00:00Z",
-    "note": "Example keydata for testing multiple roles and statuses"
-  },
+  "message": "Key server online",
+  "version": "1.2.0",
+  "last_update": "2025-12-05 14:30:00",
   "keys": [
     {
-      "key": "FREE-USER-001",
+      "key": "FREE-GLOBAL-OBSIDIAN",
+      "role": "free",
+      "status": "active",
+      "bind_hwid": false,
       "hwid_hash": "",
-      "timestamp": 1733000000,
+      "timestamp": "12/05/25 00:00:00",
+      "expire": null,
+      "note": "Global free key (no HWID binding, never expires)"
+    },
+    {
+      "key": "TRIAL-1DAY-USER",
+      "role": "trial",
+      "status": "active",
+      "bind_hwid": true,
+      "hwid_hash": "A1B2C3D4E5F6A1B2",
+      "timestamp": "12/05/25 10:00:00",
+      "expire": "12/06/25 10:00:00",
+      "note": "1 day trial key (bind HWID)"
+    },
+    {
+      "key": "USER-BASIC-1234",
       "role": "user",
-      "expire": 1767056400,
       "status": "active",
-      "note": "Standard free user #1"
+      "bind_hwid": true,
+      "hwid_hash": "1122AABB7788CCDD",
+      "timestamp": 1733383200,
+      "expire": 1735975200,
+      "note": "Normal user key (unix timestamp)"
     },
     {
-      "key": "BxB.ware",
-      "hwid_hash": "2436e823dec95964ffaadcc44dc98e75",
-      "timestamp": 1733000500,
-      "role": "owner",
-      "expire": 1767056400,
-      "status": "active",
-      "note": "BxB.ware | OWNER Permission"
-    },
-
-    {
-      "key": "VV1",
-      "hwid_hash": "",
-      "timestamp": 1732910000,
-      "expire": 0,
+      "key": "PREMIUM-OBSIDIAN-777",
       "role": "premium",
       "status": "active",
-      "note": "3 days trial"
+      "bind_hwid": true,
+      "hwid_hash": "FFEEDDCCBBAA0099",
+      "timestamp": "12/01/25 00:00:00",
+      "expire": "12/31/2025 23:59:59",
+      "note": "Premium key (MM/DD/YYYY format)"
     },
     {
-      "key": "TRIAL-7D-001",
-      "hwid_hash": "99990000111122223333444455556666",
-      "timestamp": 1732910000,
-      "expire": 1733514800,
-      "role": "user",
-      "status": "trial",
-      "note": "7 days trial with limited features"
-    },
-
-    {
-      "key": "PREMIUM-MONTH-001",
-      "hwid_hash": "deadbeef1234567890abcdef12345678",
-      "timestamp": 1733001000,
-      "role": "premium",
-      "expire": 1738200000,
-      "status": "active",
-      "note": "Premium 30 days"
-    },
-    {
-      "key": "PREMIUM-MONTH-002",
-      "hwid_hash": "77778888999900001111222233334444",
-      "timestamp": 1733002000,
-      "role": "premium",
-      "expire": 1738790000,
-      "status": "active",
-      "note": "Premium 30 days (second account)"
-    },
-    {
-      "key": "PREMIUM-LIFETIME-001",
-      "hwid_hash": "11112222333344445555666677778888",
-      "timestamp": 1732000000,
-      "role": "premium",
-      "status": "active",
-      "note": "Lifetime premium (no expire field)"
-    },
-
-    {
-      "key": "VIP-LIFETIME-001",
-      "hwid_hash": "abcdefabcdefabcdefabcdefabcdef12",
-      "timestamp": 1731500000,
+      "key": "VIP-TH-ULTIMATE",
       "role": "vip",
       "status": "active",
-      "note": "VIP tier for showcase (treat as premium+)"
+      "bind_hwid": true,
+      "hwid_hash": "9988776655443322",
+      "timestamp": "05/12/25 00:00:00",
+      "expire": "31/12/25 23:59:59",
+      "note": "VIP key (DD/MM/YY format)"
     },
-
     {
-      "key": "RESELLER-001",
-      "hwid_hash": "44443333222211110000aaaabbbbcccc",
-      "timestamp": 1732500000,
+      "key": "RESELLER-KEY-ABC",
       "role": "reseller",
       "status": "active",
-      "note": "Reseller account - can generate keys in panel (server-side)"
+      "bind_hwid": true,
+      "hwid_hash": "ABCDABCDABCDABCD",
+      "timestamp": 1733356800,
+      "expire": 1736035200,
+      "note": "Reseller key"
     },
-
     {
-      "key": "STAFF-HELPER-001",
-      "hwid_hash": "f1f2f3f4f5f6f7f8f9f0a1a2a3a4a5a6",
-      "timestamp": 1732600000,
+      "key": "STAFF-DEV-TEAM",
       "role": "staff",
       "status": "active",
-      "note": "Support staff for moderation / helping users"
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/01/25 12:00:00",
+      "expire": null,
+      "note": "Staff key (no HWID binding, lifetime)"
     },
     {
-      "key": "ADMIN-OWNER-001",
-      "hwid_hash": "0f0e0d0c0b0a09080706050403020100",
-      "timestamp": 1731000000,
+      "key": "OWNER-MASTER-KEY",
       "role": "owner",
       "status": "active",
-      "note": "Owner / root account"
-    },
-
-    {
-      "key": "REGION-TH-ONLY-001",
-      "hwid_hash": "11223344556677889900aabbccddeeff",
-      "timestamp": 1733003000,
-      "role": "user",
-      "expire": 1738200000,
-      "status": "active",
-      "note": "Example: Thai region user (enforce region server-side if needed)"
-    },
-
-    {
-      "key": "EXPIRED-OLD-001",
-      "hwid_hash": "eeeeffff000011112222333344445555",
-      "timestamp": 1720000000,
-      "expire": 1725000000,
-      "role": "user",
-      "status": "active",
-      "note": "Expired key example (client will show 'Key expired')"
-    },
-
-    {
-      "key": "REVOKED-TEST-001",
-      "hwid_hash": "99998888777766665555444433332222",
-      "timestamp": 1732800000,
-      "expire": 1735600000,
-      "role": "user",
-      "status": "revoked",
-      "note": "Revoked due to sharing key publicly"
+      "bind_hwid": true,
+      "hwid_hash": "MASTERHWIDHASH0001",
+      "timestamp": "01/01/25 00:00:00",
+      "expire": null,
+      "note": "Owner key"
     },
     {
-      "key": "BANNED-ABUSE-001",
-      "hwid_hash": "aaaabbbbccccddddeeeeffff00001111",
-      "timestamp": 1732800500,
-      "expire": 1735600500,
+      "key": "BANNED-TEST-USER",
       "role": "user",
       "status": "banned",
-      "note": "Banned for abusing key system / chargeback"
+      "bind_hwid": true,
+      "hwid_hash": "BANNEDHWID001122",
+      "timestamp": "11/01/25 00:00:00",
+      "expire": null,
+      "note": "This key is banned"
+    },
+    {
+      "key": "DISABLED-OLD-KEY",
+      "role": "premium",
+      "status": "disabled",
+      "bind_hwid": true,
+      "hwid_hash": "OLDDISABLEDHWID",
+      "timestamp": "10/01/25 00:00:00",
+      "expire": "10/15/25 00:00:00",
+      "note": "Old premium key, disabled by admin"
+    },
+    {
+      "key": "EXPIRED-KEY-EXAMPLE",
+      "role": "user",
+      "status": "expired",
+      "bind_hwid": true,
+      "hwid_hash": "EXPIREDHWID123",
+      "timestamp": "09/01/25 00:00:00",
+      "expire": "09/05/25 00:00:00",
+      "note": "Example expired key"
+    },
+    {
+      "key": "MAINT-TEST-KEY",
+      "role": "test",
+      "status": "test",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/05/25 13:00:00",
+      "expire": null,
+      "note": "Test key for developer / QA"
     }
   ]
 }
