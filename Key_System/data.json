@@ -18,8 +18,8 @@
       "key": "TRIAL-1DAY-USER",
       "role": "trial",
       "status": "active",
-      "bind_hwid": true,
-      "hwid_hash": "A1B2C3D4E5F6A1B2",
+      "bind_hwid": false,
+      "hwid_hash": "",
       "timestamp": "12/05/25 10:00:00",
       "expire": "12/06/25 10:00:00",
       "note": "1 day trial key (bind HWID)"
