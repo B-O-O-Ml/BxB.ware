@@ -1,387 +1,442 @@
 -- STATUS:online
--- STATUS_MSG:Main hub Premium is live
+-- STATUS_MSG:Main hub is live and ready
+
+-- MainHub.lua
+-- ต้องถูกโหลดผ่าน Key_Loaded.lua เท่านั้น
 
 return function(Exec, keydata, keycheck)
     ----------------------------------------------------------------
-    -- Security & Validation
+    -- ชั้นที่สอง: ตรวจ keycheck + keydata
     ----------------------------------------------------------------
-    local EXPECTED_KEYCHECK = "BxB.ware-universal-private-*&^%$#$*#%&@#"
-    if keycheck ~= EXPECTED_KEYCHECK then return end
-    if type(keydata) ~= "table" or type(keydata.key) ~= "string" then return end
+    local EXPECTED_KEYCHECK = "BxB.ware-universal-private-*&^%$#$*#%&@#" -- ต้องตรงกับ Config.KEYCHECK_TOKEN
+    if keycheck ~= EXPECTED_KEYCHECK then
+        return
+    end
+
+    if type(keydata) ~= "table" or type(keydata.key) ~= "string" then
+        return
+    end
 
     ----------------------------------------------------------------
-    -- Services & Locals
+    -- Roblox services / locals
     ----------------------------------------------------------------
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
-    local Stats = game:GetService("Stats")
-    local TeleportService = game:GetService("TeleportService")
+    local Players            = game:GetService("Players")
+    local RunService         = game:GetService("RunService")
+    local UserInputService   = game:GetService("UserInputService")
+    local Stats              = game:GetService("Stats")
+    local TeleportService    = game:GetService("TeleportService")
     local MarketplaceService = game:GetService("MarketplaceService")
-    local Lighting = game:GetService("Lighting")
-    local Camera = workspace.CurrentCamera
-    local Mouse = Players.LocalPlayer:GetMouse()
+    local Lighting           = game:GetService("Lighting")
+    local TweenService       = game:GetService("TweenService")
 
     local LocalPlayer = Players.LocalPlayer
     if not LocalPlayer then return end
 
+    local VirtualUser
+    pcall(function() VirtualUser = game:GetService("VirtualUser") end)
+
     ----------------------------------------------------------------
-    -- Library Setup (Obsidian/Linoria)
+    -- โหลด Obsidian Library
     ----------------------------------------------------------------
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-    local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+    local Library      = loadstring(game:HttpGet(repo .. "Library.lua"))()
     local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-    local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+    local SaveManager  = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 
-    if ThemeManager then ThemeManager:SetLibrary(Library) end
-    if SaveManager then SaveManager:SetLibrary(Library) end
+    if ThemeManager and ThemeManager.SetLibrary then ThemeManager:SetLibrary(Library) end
+    if SaveManager and SaveManager.SetLibrary then SaveManager:SetLibrary(Library) end
+    if SaveManager then 
+        SaveManager:IgnoreThemeSettings() 
+        SaveManager:SetFolder("ObsidianUniversalHub")
+    end
 
     local Options = Library.Options
     local Toggles = Library.Toggles
 
     ----------------------------------------------------------------
-    -- Role System (Core Upgrade 1)
+    -- [CORE] Role System
     ----------------------------------------------------------------
-    local role = tostring(keydata.role or "user"):lower()
-    
-    -- Hierarchy: Free < User < Premium < VIP < Staff < Owner
     local RolePriority = {
-        free = 0,
-        user = 1, trial = 1,
-        premium = 2, reseller = 2,
-        vip = 3,
-        staff = 4,
-        owner = 5
+        free     = 0,
+        user     = 1,
+        trial    = 1,
+        premium  = 2,
+        reseller = 2,
+        vip      = 3,
+        staff    = 4,
+        owner    = 5,
     }
+
+    local userRole = tostring(keydata.role or "free"):lower()
 
     local function GetRolePriority(r)
         return RolePriority[r:lower()] or 0
     end
 
     local function RoleAtLeast(req)
-        return GetRolePriority(role) >= GetRolePriority(req)
+        return GetRolePriority(userRole) >= GetRolePriority(req)
     end
 
-    local function Notify(msg, dur)
-        Library:Notify(tostring(msg), dur or 3)
-    end
-
-    -- Helper to lock toggles if role not met
-    local function CheckRole(req, toggleName)
+    local function RequireRole(req)
         if not RoleAtLeast(req) then
-            if Toggles[toggleName] and Toggles[toggleName].Value then
-                Toggles[toggleName]:SetValue(false)
-            end
-            Notify("🔒 Requires " .. req:upper() .. " rank or higher!", 3)
+            Library:Notify("Access Denied: Requires " .. req:upper() .. " role!", 3)
             return false
         end
         return true
     end
 
-    ----------------------------------------------------------------
-    -- Window Creation
-    ----------------------------------------------------------------
-    local Window = Library:CreateWindow({
-        Title = "BxB.ware | Premium Hub",
-        Icon = 84528813312016,
-        Center = true,
-        AutoShow = true,
-        Resizable = true,
-        Compact = true,
-        Size = UDim2.fromOffset(750, 600)
-    })
-
-    local Tabs = {
-        Info = Window:AddTab({ Name = "Info", Icon = "info" }),
-        Player = Window:AddTab({ Name = "Player", Icon = "user" }),
-        Combat = Window:AddTab({ Name = "Combat", Icon = "crosshair" }),
-        ESP = Window:AddTab({ Name = "Visuals", Icon = "eye" }),
-        Settings = Window:AddTab({ Name = "Settings", Icon = "settings" })
-    }
+    local function GetRoleColorHex(r)
+        r = r:lower()
+        if r == "owner" then return "#ffdd55"
+        elseif r == "staff" then return "#55ff99"
+        elseif r == "vip" then return "#c955ff"
+        elseif r == "premium" then return "#55aaff"
+        else return "#cccccc" end
+    end
 
     ----------------------------------------------------------------
-    -- Variables & State
+    -- Settings & State
     ----------------------------------------------------------------
-    local State = {
-        -- Player
+    local MovementState = {
+        WalkSpeedEnabled = false, WalkSpeedValue = 16,
+        JumpEnabled = false, JumpValue = 50,
+        InfiniteJump = false,
+        Fly = false, FlySpeed = 60,
+        NoClip = false,
+        
+        -- New Features
         SpinBot = false,
-        SpinSpeed = 20,
         AntiAim = false,
         AutoRun = false,
         ClickTP = false,
-        
-        -- ESP
-        Skeleton = false,
-        LookTracer = false,
     }
 
+    local ESPSettings = {
+        Enabled = true,
+        BoxMode = "Box",
+        UseHighlight = true,
+        NameTag = true,
+        ShowDistance = true,
+        HealthBar = true,
+        Tracer = true,
+        OffscreenArrow = false,
+        
+        -- Visual Parts
+        HeadDot = true,
+        Skeleton = false,     -- [NEW]
+        LookTracer = false,   -- [NEW]
+        
+        -- Filter/Settings
+        TeamCheck = true,
+        IgnoreFriends = true,
+        VisibleOnly = false,
+        WallCheck = true,
+        MaxDistance = 1000,
+        MaxPlayers = 30,
+        UpdateInterval = 0.05,
+        
+        -- Styling [NEW]
+        TextSize = 13,
+        Thickness = 1,
+        
+        -- Colors [NEW]
+        Colors = {
+            Box = Color3.new(1,1,1),
+            Name = Color3.new(1,1,1),
+            Tracer = Color3.new(1,1,1),
+            Skeleton = Color3.new(1,1,1),
+            LookTracer = Color3.new(1,0,0),
+            ChamsFill = Color3.fromRGB(255, 0, 0),
+            ChamsOutline = Color3.fromRGB(255, 255, 255),
+            Visible = Color3.fromRGB(0, 255, 0),
+            Hidden = Color3.fromRGB(255, 0, 0)
+        }
+    }
+
+    local AimSettings = {
+        Enabled = true,
+        Mode = "Legit",
+        AimType = "Hold",
+        AimPart = "Head",
+        FOVRadius = 120,
+        ShowFOV = true,
+        Smoothing = 0.25,
+        VisibleOnly = true,
+        TeamCheck = true,
+        IgnoreFriends = true,
+        MaxDistance = 1000,
+        Key = Enum.UserInputType.MouseButton2,
+        
+        -- Advanced [NEW]
+        HitChance = 100,
+        Weights = {
+            Head = 60,
+            Chest = 25,
+            Arms = 10,
+            Legs = 5
+        }
+    }
+
+    local AimToggleState = false
+    local WhitelistNames = {}
+
     ----------------------------------------------------------------
-    -- Tab: Player (Upgrade 2)
+    -- Helpers
     ----------------------------------------------------------------
-    local PlrMain = Tabs.Player:AddLeftGroupbox("Movement")
-    local PlrExtra = Tabs.Player:AddRightGroupbox("Utilities")
-
-    -- WalkSpeed & JumpPower with Reset Fix
-    PlrMain:AddToggle("WS_Toggle", { Text = "Custom WalkSpeed", Default = false }):OnChanged(function(v)
-        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        if hum then
-             hum.WalkSpeed = v and Options.WS_Slider.Value or 16
-        end
-    end)
-    PlrMain:AddSlider("WS_Slider", { Text = "Value", Default = 16, Min = 16, Max = 300, Rounding = 0 }):OnChanged(function(v)
-        if Toggles.WS_Toggle.Value then
-            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-            if hum then hum.WalkSpeed = v end
-        end
-    end)
-
-    PlrMain:AddToggle("JP_Toggle", { Text = "Custom JumpPower", Default = false }):OnChanged(function(v)
-        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-        if hum then
-             hum.JumpPower = v and Options.JP_Slider.Value or 50
-        end
-    end)
-    PlrMain:AddSlider("JP_Slider", { Text = "Value", Default = 50, Min = 50, Max = 500, Rounding = 0 }):OnChanged(function(v)
-        if Toggles.JP_Toggle.Value then
-            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
-            if hum then hum.JumpPower = v end
-        end
-    end)
-
-    PlrMain:AddToggle("AutoRun_Toggle", { Text = "Auto Run", Default = false }):OnChanged(function(v)
-        State.AutoRun = v
-    end)
-
-    -- VIP Features
-    PlrMain:AddDivider()
-    PlrMain:AddLabel("<b>VIP Features</b>")
-    
-    PlrMain:AddToggle("SpinBot_Toggle", { Text = "SpinBot (Blatant)", Default = false }):OnChanged(function(v)
-        if not CheckRole("vip", "SpinBot_Toggle") then return end
-        State.SpinBot = v
-    end)
-    
-    PlrMain:AddSlider("SpinSpeed", { Text = "Spin Speed", Default = 20, Min = 1, Max = 100, Rounding = 0 })
-
-    PlrMain:AddToggle("AntiAim_Toggle", { Text = "Anti-Aim (LookDown)", Default = false }):OnChanged(function(v)
-        if not CheckRole("vip", "AntiAim_Toggle") then return end
-        State.AntiAim = v
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChild("Humanoid")
-        if hum then hum.AutoRotate = not v end
-    end)
-
-    -- Utilities
-    PlrExtra:AddToggle("ClickTP_Toggle", { Text = "Ctrl + Click TP", Default = false }):OnChanged(function(v)
-        if not CheckRole("user", "ClickTP_Toggle") then return end
-        State.ClickTP = v
-    end)
-
-    ----------------------------------------------------------------
-    -- Tab: Combat (Upgrade 3 - Advanced Aimbot)
-    ----------------------------------------------------------------
-    local AimMain = Tabs.Combat:AddLeftGroupbox("Aimbot Settings")
-    local AimSettingsBox = Tabs.Combat:AddRightGroupbox("Targeting Weights")
-
-    AimMain:AddToggle("Aim_Enabled", { Text = "Enable Aimbot", Default = false })
-    
-    AimMain:AddDropdown("Aim_Part", {
-        Text = "Target Selection",
-        Default = "Head",
-        Values = { "Head", "Chest", "Closest", "RandomWeighted" }
-    })
-
-    AimMain:AddSlider("Aim_HitChance", { Text = "Hit Chance (%)", Default = 100, Min = 0, Max = 100, Rounding = 0 })
-
-    -- Weighted Sliders (Role Locked)
-    AimSettingsBox:AddLabel("<b>RandomWeighted Settings (Premium)</b>")
-    AimSettingsBox:AddSlider("Weight_Head", { Text = "Head Chance", Default = 50, Min = 0, Max = 100, Rounding = 0 })
-    AimSettingsBox:AddSlider("Weight_Chest", { Text = "Chest Chance", Default = 30, Min = 0, Max = 100, Rounding = 0 })
-    AimSettingsBox:AddSlider("Weight_Limbs", { Text = "Arms/Legs Chance", Default = 20, Min = 0, Max = 100, Rounding = 0 })
-
-    local function GetWeightedTarget(char)
-        if not RoleAtLeast("premium") then return char:FindFirstChild("Head") end
-
-        local head = Options.Weight_Head.Value
-        local chest = Options.Weight_Chest.Value
-        local limbs = Options.Weight_Limbs.Value
-        local total = head + chest + limbs
-        local rand = math.random(0, total)
-
-        if rand <= head then return char:FindFirstChild("Head")
-        elseif rand <= head + chest then return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-        else return char:FindFirstChild("RightHand") or char:FindFirstChild("LeftFoot") end
+    local function GetCharacter() return LocalPlayer.Character end
+    local function GetRoot() 
+        local c = GetCharacter() 
+        return c and (c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("Torso") or c:FindFirstChild("UpperTorso")) 
+    end
+    local function GetHumanoid()
+        local c = GetCharacter()
+        return c and c:FindFirstChildOfClass("Humanoid")
     end
 
-    ----------------------------------------------------------------
-    -- Tab: ESP & Visuals (Upgrade 4)
-    ----------------------------------------------------------------
-    local ESPMain = Tabs.ESP:AddLeftGroupbox("ESP Main")
-    local ESPStyle = Tabs.ESP:AddRightGroupbox("Style & Colors")
-
-    ESPMain:AddToggle("ESP_Enabled", { Text = "Master Switch", Default = false })
-    ESPMain:AddToggle("ESP_Box", { Text = "Box 2D", Default = true })
-    ESPMain:AddToggle("ESP_Name", { Text = "Names", Default = true })
-    ESPMain:AddToggle("ESP_Health", { Text = "Health Bar", Default = true })
-    ESPMain:AddToggle("ESP_Skeleton", { Text = "Skeleton", Default = false })
-    ESPMain:AddToggle("ESP_Tracers", { Text = "Snaplines", Default = false })
-    ESPMain:AddToggle("ESP_Chams", { Text = "Chams (Highlight)", Default = false })
-
-    -- Styling
-    ESPStyle:AddLabel("Colors")
-    ESPStyle:AddColorPicker("Color_Box", { Default = Color3.fromRGB(255, 255, 255), Title = "Box Color" })
-    ESPStyle:AddColorPicker("Color_Skeleton", { Default = Color3.fromRGB(255, 255, 255), Title = "Skeleton Color" })
-    ESPStyle:AddColorPicker("Color_Chams", { Default = Color3.fromRGB(255, 0, 0), Title = "Chams Fill" })
-    ESPStyle:AddColorPicker("Color_ChamsOut", { Default = Color3.fromRGB(255, 255, 255), Title = "Chams Outline" })
-
-    ESPStyle:AddDivider()
-    ESPStyle:AddSlider("ESP_TextSize", { Text = "Text Size", Default = 13, Min = 10, Max = 24, Rounding = 0 })
-    ESPStyle:AddSlider("ESP_Thickness", { Text = "Line Thickness", Default = 1, Min = 1, Max = 5, Rounding = 1 })
+    local DefaultWalkSpeed, DefaultJumpPower = 16, 50
+    task.spawn(function()
+        local h = GetHumanoid()
+        if h then DefaultWalkSpeed, DefaultJumpPower = h.WalkSpeed, h.JumpPower end
+    end)
 
     ----------------------------------------------------------------
-    -- Core Loop & Logic (Optimization)
+    -- Drawing & ESP Logic
     ----------------------------------------------------------------
-    local DrawCache = {}
+    local DrawObjects = {}
+    local FOVCircle = Drawing.new("Circle")
+    
+    -- Setup FOV Circle
+    FOVCircle.Thickness = 1
+    FOVCircle.Filled = false
+    FOVCircle.Visible = false
+    FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+    FOVCircle.Transparency = 1
 
-    local function CreateDrawing(type, props)
-        local d = Drawing.new(type)
-        for k, v in pairs(props or {}) do d[k] = v end
-        return d
+    local function getDrawObjects(plr)
+        if DrawObjects[plr] then return DrawObjects[plr] end
+        
+        local t = {
+            Box = Drawing.new("Square"),
+            Tracer = Drawing.new("Line"),
+            Name = Drawing.new("Text"),
+            HealthBar = Drawing.new("Line"),
+            HeadDot = Drawing.new("Circle"),
+            LookTracer = Drawing.new("Line"), -- [NEW]
+            SkeletonLines = {}, -- [NEW]
+        }
+        
+        -- Init defaults
+        t.Box.Thickness = 1; t.Box.Filled = false; t.Box.Transparency = 1
+        t.Tracer.Thickness = 1; t.Tracer.Transparency = 1
+        t.Name.Center = true; t.Name.Outline = true; t.Name.Transparency = 1
+        t.HealthBar.Thickness = 2; t.HealthBar.Transparency = 1
+        t.HeadDot.Thickness = 1; t.HeadDot.Filled = true; t.HeadDot.Transparency = 1
+        t.LookTracer.Thickness = 1; t.LookTracer.Transparency = 1
+        
+        -- Init Skeleton lines (15 lines approx)
+        for i=1, 15 do
+            local l = Drawing.new("Line")
+            l.Thickness = 1; l.Transparency = 1; l.Visible = false
+            table.insert(t.SkeletonLines, l)
+        end
+
+        DrawObjects[plr] = t
+        return t
     end
 
-    local function RemoveDrawing(plr)
-        if DrawCache[plr] then
-            for _, d in pairs(DrawCache[plr]) do
-                if type(d) == "table" then -- For corners/skeleton arrays
-                    for _, sub in pairs(d) do sub:Remove() end
-                else
-                    d:Remove()
-                end
-            end
-            DrawCache[plr] = nil
-        end
-        -- Remove Highlights
-        if plr.Character then
-            local hl = plr.Character:FindFirstChild("Obsidian_Highlight")
+    local function hideDraw(t)
+        if not t then return end
+        t.Box.Visible = false
+        t.Tracer.Visible = false
+        t.Name.Visible = false
+        t.HealthBar.Visible = false
+        t.HeadDot.Visible = false
+        t.LookTracer.Visible = false
+        for _, l in pairs(t.SkeletonLines) do l.Visible = false end
+    end
+
+    local function removeHighlight(char)
+        if not char then return end
+        local hl = char:FindFirstChild("Obsidian_Highlight")
+        if hl then hl:Destroy() end
+    end
+
+    local function updateHighlight(char, color, enabled)
+        if not char then return end
+        local hl = char:FindFirstChild("Obsidian_Highlight")
+        if not enabled then
             if hl then hl:Destroy() end
+            return
         end
+        
+        if not hl then
+            hl = Instance.new("Highlight")
+            hl.Name = "Obsidian_Highlight"
+            hl.FillTransparency = 0.7
+            hl.OutlineTransparency = 0
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Parent = char
+        end
+        hl.FillColor = ESPSettings.Colors.ChamsFill
+        hl.OutlineColor = color or ESPSettings.Colors.ChamsOutline
     end
 
-    local function GetDrawObject(plr)
-        if not DrawCache[plr] then
-            DrawCache[plr] = {
-                Box = CreateDrawing("Square", { Transparency = 1, Filled = false }),
-                Name = CreateDrawing("Text", { Center = true, Outline = true, Transparency = 1 }),
-                HealthBar = CreateDrawing("Line", { Transparency = 1 }),
-                HealthOutline = CreateDrawing("Line", { Transparency = 1, Color = Color3.new(0,0,0) }),
-                Tracer = CreateDrawing("Line", { Transparency = 1 }),
-                Skeleton = {} -- Array of lines
-            }
-            -- Pre-create skeleton lines (15 lines max usually)
-            for i=1, 16 do table.insert(DrawCache[plr].Skeleton, CreateDrawing("Line", { Transparency = 1 })) end
-        end
-        return DrawCache[plr]
-    end
-
-    -- Skeleton Connection Map
-    local SkeletonLinks = {
+    -- Skeleton joints map
+    local SkeletonConnections = {
         {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, 
         {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"LeftLowerArm", "LeftHand"},
         {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"RightLowerArm", "RightHand"},
         {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LeftLowerLeg", "LeftFoot"},
         {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}, {"RightLowerLeg", "RightFoot"}
     }
+    
+    -- Main ESP Render Loop
+    local function espStep()
+        local cam = workspace.CurrentCamera
+        if not cam then return end
 
-    local function UpdateVisuals()
-        -- Loop players
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then
-                local cache = GetDrawObject(plr)
-                local char = plr.Character
-                local root = char and char:FindFirstChild("HumanoidRootPart")
-                local hum = char and char:FindFirstChild("Humanoid")
+        -- Aimbot FOV
+        if AimSettings.Enabled and AimSettings.ShowFOV then
+            FOVCircle.Visible = true
+            FOVCircle.Radius = AimSettings.FOVRadius
+            FOVCircle.Position = UserInputService:GetMouseLocation()
+            FOVCircle.NumSides = 64
+        else
+            FOVCircle.Visible = false
+        end
+
+        if not ESPSettings.Enabled then
+            for _, t in pairs(DrawObjects) do hideDraw(t) end
+            return
+        end
+
+        for plr, t in pairs(DrawObjects) do
+            local char = plr.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            local head = char and char:FindFirstChild("Head")
+            local hum = char and char:FindFirstChild("Humanoid")
+
+            if plr ~= LocalPlayer and char and root and head and hum and hum.Health > 0 then
+                local dist = (root.Position - cam.CFrame.Position).Magnitude
                 
-                local isEspEnabled = Toggles.ESP_Enabled.Value
-                local onScreen = false
-                local screenPos, vis = Vector2.zero, false
-
-                if isEspEnabled and char and root and hum and hum.Health > 0 then
-                    local vec3, os = Camera:WorldToViewportPoint(root.Position)
-                    onScreen = os
-                    screenPos = Vector2.new(vec3.X, vec3.Y)
+                -- Team & Distance Check
+                local isTeammate = (LocalPlayer.Team and plr.Team == LocalPlayer.Team)
+                if ESPSettings.TeamCheck and isTeammate then 
+                    hideDraw(t)
+                    updateHighlight(char, nil, false)
+                    continue 
+                end
+                if dist > ESPSettings.MaxDistance then 
+                    hideDraw(t)
+                    updateHighlight(char, nil, false)
+                    continue 
                 end
 
+                -- Visibility Check
+                local _, onScreen = cam:WorldToViewportPoint(root.Position)
+                local color = ESPSettings.Colors.Visible -- Default Visible
+                
+                if ESPSettings.WallCheck then
+                    local ray = Ray.new(cam.CFrame.Position, (head.Position - cam.CFrame.Position).Unit * dist)
+                    local hit = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, char})
+                    if hit then color = ESPSettings.Colors.Hidden end -- Obstructed
+                end
+
+                if ESPSettings.VisibleOnly and color == ESPSettings.Colors.Hidden then
+                    hideDraw(t)
+                    updateHighlight(char, nil, false)
+                    continue
+                end
+
+                -- Highlight (Chams)
+                updateHighlight(char, color, ESPSettings.UseHighlight)
+
                 if onScreen then
-                    -- Color & Style
-                    local boxColor = Options.Color_Box.Value
-                    local skelColor = Options.Color_Skeleton.Value
-                    local thickness = Options.ESP_Thickness.Value
-                    local textSize = Options.ESP_TextSize.Value
+                    local rootPos, _ = cam:WorldToViewportPoint(root.Position)
+                    local headPos, _ = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                    local legPos, _ = cam:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
+                    
+                    local height = math.abs(headPos.Y - legPos.Y)
+                    local width = height * 0.6
 
-                    -- Box Calculation
-                    local rootPos = root.Position
-                    local drag = Camera:WorldToViewportPoint(rootPos + Vector3.new(2, 3, 0))
-                    local drag2 = Camera:WorldToViewportPoint(rootPos + Vector3.new(-2, -3.5, 0))
-                    local height = math.abs(drag.Y - drag2.Y)
-                    local width = height / 1.5 -- Standard aspect ratio
-
-                    -- Draw Box
-                    if Toggles.ESP_Box.Value then
-                        cache.Box.Visible = true
-                        cache.Box.Size = Vector2.new(width, height)
-                        cache.Box.Position = Vector2.new(screenPos.X - width/2, screenPos.Y - height/2)
-                        cache.Box.Color = boxColor
-                        cache.Box.Thickness = thickness
-                    else cache.Box.Visible = false end
-
-                    -- Draw Name
-                    if Toggles.ESP_Name.Value then
-                        cache.Name.Visible = true
-                        cache.Name.Text = plr.Name .. " [" .. math.floor((rootPos - Camera.CFrame.Position).Magnitude) .. "m]"
-                        cache.Name.Size = textSize
-                        cache.Name.Position = Vector2.new(screenPos.X, screenPos.Y - height/2 - textSize - 2)
-                        cache.Name.Color = boxColor
-                    else cache.Name.Visible = false end
-
-                    -- Draw Health
-                    if Toggles.ESP_Health.Value then
-                        cache.HealthOutline.Visible = true
-                        cache.HealthBar.Visible = true
-                        
-                        local barX = screenPos.X - width/2 - 6
-                        local barY = screenPos.Y - height/2
-                        local healthY = height * (hum.Health / hum.MaxHealth)
-                        
-                        cache.HealthOutline.From = Vector2.new(barX, barY)
-                        cache.HealthOutline.To = Vector2.new(barX, barY + height)
-                        cache.HealthOutline.Thickness = 3
-                        
-                        cache.HealthBar.From = Vector2.new(barX, barY + height)
-                        cache.HealthBar.To = Vector2.new(barX, barY + height - healthY)
-                        cache.HealthBar.Color = Color3.fromHSV(math.clamp(hum.Health/hum.MaxHealth, 0, 1)/3, 1, 1)
-                        cache.HealthBar.Thickness = 1
-                    else 
-                        cache.HealthBar.Visible = false 
-                        cache.HealthOutline.Visible = false
+                    -- Update Style
+                    t.Box.Thickness = ESPSettings.Thickness
+                    t.Name.Size = ESPSettings.TextSize
+                    t.Tracer.Thickness = ESPSettings.Thickness
+                    
+                    -- BOX
+                    if ESPSettings.BoxMode == "Box" then
+                        t.Box.Visible = true
+                        t.Box.Size = Vector2.new(width, height)
+                        t.Box.Position = Vector2.new(rootPos.X - width/2, rootPos.Y - height/2)
+                        t.Box.Color = ESPSettings.Colors.Box
+                    else
+                        t.Box.Visible = false
                     end
 
-                    -- Draw Skeleton (Loop through links)
-                    if Toggles.ESP_Skeleton.Value then
-                        for i, link in ipairs(SkeletonLinks) do
-                            local p1 = char:FindFirstChild(link[1])
-                            local p2 = char:FindFirstChild(link[2])
-                            local line = cache.Skeleton[i]
+                    -- NAME
+                    if ESPSettings.NameTag then
+                        t.Name.Visible = true
+                        t.Name.Text = string.format("%s [%d m]", plr.Name, math.floor(dist))
+                        t.Name.Position = Vector2.new(rootPos.X, rootPos.Y - height/2 - 15)
+                        t.Name.Color = ESPSettings.Colors.Name
+                    else
+                        t.Name.Visible = false
+                    end
+
+                    -- TRACER
+                    if ESPSettings.Tracer then
+                        t.Tracer.Visible = true
+                        t.Tracer.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y)
+                        t.Tracer.To = Vector2.new(rootPos.X, rootPos.Y + height/2)
+                        t.Tracer.Color = ESPSettings.Colors.Tracer
+                    else
+                        t.Tracer.Visible = false
+                    end
+
+                    -- HEAD DOT
+                    if ESPSettings.HeadDot then
+                        local headV = cam:WorldToViewportPoint(head.Position)
+                        t.HeadDot.Visible = true
+                        t.HeadDot.Position = Vector2.new(headV.X, headV.Y)
+                        t.HeadDot.Radius = 4
+                        t.HeadDot.Color = color
+                    else
+                        t.HeadDot.Visible = false
+                    end
+
+                    -- LOOK TRACER [NEW]
+                    if ESPSettings.LookTracer then
+                        local lookVec = head.CFrame.LookVector * 5
+                        local lookEnd = head.Position + lookVec
+                        local p1 = cam:WorldToViewportPoint(head.Position)
+                        local p2 = cam:WorldToViewportPoint(lookEnd)
+                        
+                        t.LookTracer.Visible = true
+                        t.LookTracer.From = Vector2.new(p1.X, p1.Y)
+                        t.LookTracer.To = Vector2.new(p2.X, p2.Y)
+                        t.LookTracer.Color = ESPSettings.Colors.LookTracer
+                    else
+                        t.LookTracer.Visible = false
+                    end
+
+                    -- SKELETON [NEW]
+                    if ESPSettings.Skeleton then
+                        for i, conn in ipairs(SkeletonConnections) do
+                            local p1 = char:FindFirstChild(conn[1])
+                            local p2 = char:FindFirstChild(conn[2])
+                            local line = t.SkeletonLines[i]
                             
                             if p1 and p2 and line then
-                                local v1, o1 = Camera:WorldToViewportPoint(p1.Position)
-                                local v2, o2 = Camera:WorldToViewportPoint(p2.Position)
+                                local v1, vis1 = cam:WorldToViewportPoint(p1.Position)
+                                local v2, vis2 = cam:WorldToViewportPoint(p2.Position)
                                 
-                                if o1 and o2 then
+                                if vis1 or vis2 then
                                     line.Visible = true
                                     line.From = Vector2.new(v1.X, v1.Y)
                                     line.To = Vector2.new(v2.X, v2.Y)
-                                    line.Color = skelColor
-                                    line.Thickness = thickness
+                                    line.Color = ESPSettings.Colors.Skeleton
+                                    line.Thickness = ESPSettings.Thickness
                                 else
                                     line.Visible = false
                                 end
@@ -390,131 +445,308 @@ return function(Exec, keydata, keycheck)
                             end
                         end
                     else
-                        for _, l in pairs(cache.Skeleton) do l.Visible = false end
-                    end
-
-                    -- Chams (Highlights)
-                    if Toggles.ESP_Chams.Value then
-                        local hl = char:FindFirstChild("Obsidian_Highlight")
-                        if not hl then
-                            hl = Instance.new("Highlight", char)
-                            hl.Name = "Obsidian_Highlight"
-                            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        end
-                        hl.FillColor = Options.Color_Chams.Value
-                        hl.OutlineColor = Options.Color_ChamsOut.Value
-                    else
-                        local hl = char:FindFirstChild("Obsidian_Highlight")
-                        if hl then hl:Destroy() end
+                        for _, l in pairs(t.SkeletonLines) do l.Visible = false end
                     end
 
                 else
-                    -- Off screen or disabled
-                    cache.Box.Visible = false
-                    cache.Name.Visible = false
-                    cache.HealthBar.Visible = false
-                    cache.HealthOutline.Visible = false
-                    cache.Tracer.Visible = false
-                    for _, l in pairs(cache.Skeleton) do l.Visible = false end
-                    
-                    if char then
-                        local hl = char:FindFirstChild("Obsidian_Highlight")
-                        if hl then hl:Destroy() end
-                    end
+                    hideDraw(t) -- Offscreen
                 end
-            elseif DrawCache[plr] then
-                -- Remove if player valid but logic failed
-                RemoveDrawing(plr)
+            else
+                hideDraw(t) -- Invalid / Dead
+                updateHighlight(char, nil, false)
             end
         end
     end
 
     ----------------------------------------------------------------
-    -- Loop Connections (Aimbot & Player Logic)
+    -- Aimbot Logic (Advanced)
     ----------------------------------------------------------------
-    RunService.RenderStepped:Connect(function()
-        -- Auto Run
-        if State.AutoRun and LocalPlayer.Character then
-            local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
-            if hum then hum:Move(Vector3.new(0, 0, -1), true) end
+    local function GetAimPart(char)
+        if not char then return nil end
+        
+        -- Weighted Selection [NEW]
+        if AimSettings.AimPart == "RandomWeighted" then
+            local w = AimSettings.Weights
+            local total = w.Head + w.Chest + w.Arms + w.Legs
+            local r = math.random(1, total)
+            
+            if r <= w.Head then return char:FindFirstChild("Head")
+            elseif r <= w.Head + w.Chest then return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+            elseif r <= w.Head + w.Chest + w.Arms then return char:FindFirstChild("LeftLowerArm") -- Simplified
+            else return char:FindFirstChild("LeftLowerLeg") end
         end
 
-        -- SpinBot (VIP)
-        if State.SpinBot and LocalPlayer.Character then
-            local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if root then
-                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(Options.SpinSpeed.Value), 0)
-            end
+        if AimSettings.AimPart == "Head" then return char:FindFirstChild("Head") end
+        if AimSettings.AimPart == "Chest" then return char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso") end
+        return char:FindFirstChild("Head") -- Fallback
+    end
+
+    local function aimbotStep()
+        if not AimSettings.Enabled then return end
+        
+        -- Key Check
+        local pressed = false
+        if AimSettings.AimType == "Hold" then
+            pressed = UserInputService:IsMouseButtonPressed(AimSettings.Key)
+        else
+            pressed = AimToggleState
         end
+        if not pressed then return end
 
-        -- Anti-Aim (LookDown) (VIP)
-        if State.AntiAim and LocalPlayer.Character then
-            local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if root then
-                -- Just visual manipulation to look down, real desync requires network tinkering
-                -- Setting lookVector downwards
-                local pos = root.Position
-                -- Keep position, rotate x axis down
-               -- root.CFrame = CFrame.new(pos) * CFrame.Angles(math.rad(-90), 0, 0) -- Too aggressive, might glitch movement
-            end
-        end
+        -- Hit Chance [NEW]
+        if math.random(0, 100) > AimSettings.HitChance then return end
 
-        -- Advanced Aimbot Logic
-        if Toggles.Aim_Enabled.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-            -- Hit Chance Check
-            if math.random(0, 100) > Options.Aim_HitChance.Value then return end
+        -- Find Target
+        local cam = workspace.CurrentCamera
+        local mousePos = UserInputService:GetMouseLocation()
+        local bestPlr, bestDist = nil, AimSettings.FOVRadius
 
-            local bestTarget = nil
-            local bestDist = math.huge
-            local mousePos = UserInputService:GetMouseLocation()
-
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
-                    local targetPart = GetWeightedTarget(plr.Character) -- Use Weighted Function
-                    if targetPart then
-                        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
-                        if onScreen then
-                            local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
-                            if dist < bestDist and dist < 150 then -- Basic FOV
-                                bestDist = dist
-                                bestTarget = targetPart
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                local char = plr.Character
+                local head = char:FindFirstChild("Head")
+                local root = char:FindFirstChild("HumanoidRootPart")
+                local hum = char:FindFirstChild("Humanoid")
+                
+                if head and root and hum and hum.Health > 0 then
+                    -- Team Check
+                    if AimSettings.TeamCheck and plr.Team == LocalPlayer.Team then continue end
+                    
+                    local screenPos, onScreen = cam:WorldToViewportPoint(head.Position)
+                    local dist2d = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    
+                    if onScreen and dist2d < bestDist then
+                        -- Visible Check
+                        if AimSettings.VisibleOnly then
+                            local ray = Ray.new(cam.CFrame.Position, (head.Position - cam.CFrame.Position).Unit * 1000)
+                            local hit = workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character, char})
+                            if not hit or hit:IsDescendantOf(char) then
+                                bestDist = dist2d
+                                bestPlr = plr
                             end
+                        else
+                            bestDist = dist2d
+                            bestPlr = plr
                         end
                     end
                 end
             end
+        end
 
-            if bestTarget then
-                Camera.CFrame = CFrame.new(Camera.CFrame.Position, bestTarget.Position)
+        if bestPlr then
+            local targetPart = GetAimPart(bestPlr.Character)
+            if targetPart then
+                local lookAt = CFrame.new(cam.CFrame.Position, targetPart.Position)
+                cam.CFrame = cam.CFrame:Lerp(lookAt, AimSettings.Smoothing)
             end
         end
-    end)
+    end
 
-    -- ESP Loop (Optimized with task.spawn)
+    ----------------------------------------------------------------
+    -- Movement Loops (Optimization: task.spawn)
+    ----------------------------------------------------------------
     task.spawn(function()
         while true do
-            UpdateVisuals()
-            task.wait() -- Update every frame/tick but in spawn to prevent main thread freeze
-        end
-    end)
+            local dt = RunService.RenderStepped:Wait()
+            local char = GetCharacter()
+            local root = GetRoot()
+            local hum = GetHumanoid()
 
-    -- Click TP
-    UserInputService.InputBegan:Connect(function(input, gpe)
-        if not gpe and input.UserInputType == Enum.UserInputType.MouseButton1 and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-            if State.ClickTP and Mouse.Target then
-                local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if root then
-                    root.CFrame = CFrame.new(Mouse.Hit.Position + Vector3.new(0, 3, 0))
+            if char and root and hum then
+                -- [NEW] SpinBot (VIP)
+                if MovementState.SpinBot then
+                    root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(2000 * dt), 0)
+                end
+
+                -- [NEW] Anti-Aim (LookDown) (VIP)
+                if MovementState.AntiAim then
+                    hum.AutoRotate = false
+                    root.CFrame = CFrame.new(root.Position) * CFrame.Angles(math.rad(-90), 0, 0)
+                else
+                    hum.AutoRotate = true
+                end
+
+                -- [NEW] AutoRun
+                if MovementState.AutoRun then
+                   hum:Move(Vector3.new(0,0,-1), true)
+                end
+
+                -- Fly Logic
+                if MovementState.Fly then
+                    hum.PlatformStand = true
+                    local cam = workspace.CurrentCamera
+                    local moveDir = Vector3.zero
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0,1,0) end
+                    root.Velocity = moveDir.Unit * MovementState.FlySpeed
+                else
+                    hum.PlatformStand = false
                 end
             end
         end
     end)
 
-    -- Cleanup on Unload
-    Library:OnUnload(function()
-        print("Unloading BxB Premium...")
-        for _, plr in pairs(Players:GetPlayers()) do RemoveDrawing(plr) end
+    -- [NEW] Click TP Logic
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if MovementState.ClickTP and input.UserInputType == Enum.UserInputType.MouseButton1 then
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                if not RequireRole("user") then return end
+                local mouse = LocalPlayer:GetMouse()
+                local root = GetRoot()
+                if root and mouse.Hit then
+                    root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0))
+                end
+            end
+        end
+        
+        -- Toggle Aimbot
+        if input.UserInputType == AimSettings.Key and AimSettings.AimType == "Toggle" then
+            AimToggleState = not AimToggleState
+        end
+    end)
+
+    ----------------------------------------------------------------
+    -- UI Construction
+    ----------------------------------------------------------------
+    local Window = Library:CreateWindow({
+        Title = "",
+        Icon = 84528813312016,
+        Size = UDim2.fromOffset(720, 600),  
+        Center = true, AutoShow = true, Resizable = true, Compact = true
+    })
+
+    local Tabs = {
+        Info = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware</font></b>', Icon = "database", Description = "Information"}),
+        Player = Window:AddTab({Name = 'Player', Icon = "users", Description = "Movement & Utils"}),
+        Combat = Window:AddTab({Name = 'Combat', Icon = "eye", Description = "Aimbot & Mods"}),
+        ESP = Window:AddTab({Name = 'Visuals', Icon = "crosshair", Description = "ESP Settings"}),
+        Misc = Window:AddTab({Name = 'Misc', Icon = "wrench", Description = "Extra Tools"}),
+        Settings = Window:AddTab({Name = 'Settings', Icon = "settings", Description = "Config"}),
+    }
+
+    -- 1. INFO TAB
+    local InfoBox = Tabs.Info:AddLeftGroupbox("User Info")
+    InfoBox:AddLabel("Key: " .. (keydata.key:sub(1,10) .. "..."))
+    InfoBox:AddLabel(string.format("Role: <font color='%s'>%s</font>", GetRoleColorHex(userRole), userRole:upper()), true)
+    InfoBox:AddLabel("Status: Active")
+    
+    -- 2. PLAYER TAB
+    local MoveBox = Tabs.Player:AddLeftGroupbox("Movement")
+    local UtilBox = Tabs.Player:AddRightGroupbox("Utility")
+
+    MoveBox:AddToggle("Move_Speed", {
+        Text = "Custom WalkSpeed", Default = false,
+        Callback = function(v)
+            MovementState.WalkSpeedEnabled = v
+            local h = GetHumanoid()
+            if h then h.WalkSpeed = v and MovementState.WalkSpeedValue or DefaultWalkSpeed end
+        end
+    }):AddKeyPicker("SpeedKey", { Default = "N", NoUI = true, SyncToggleState = true })
+
+    MoveBox:AddSlider("Move_SpeedVal", {
+        Text = "Value", Default = 16, Min = 16, Max = 200, Rounding = 0,
+        Callback = function(v) 
+            MovementState.WalkSpeedValue = v 
+            if MovementState.WalkSpeedEnabled then 
+                local h = GetHumanoid(); if h then h.WalkSpeed = v end 
+            end
+        end
+    })
+    
+    -- [NEW] Player Features
+    MoveBox:AddDivider()
+    MoveBox:AddToggle("Move_AutoRun", { Text = "Auto Run", Callback = function(v) MovementState.AutoRun = v end })
+    MoveBox:AddToggle("Move_ClickTP", { 
+        Text = "Click TP (Ctrl+Click)", Callback = function(v) 
+            if v and not RequireRole("user") then Toggles.Move_ClickTP:SetValue(false) return end
+            MovementState.ClickTP = v 
+        end 
+    })
+    MoveBox:AddToggle("Move_SpinBot", { 
+        Text = "SpinBot (VIP)", Callback = function(v) 
+            if v and not RequireRole("vip") then Toggles.Move_SpinBot:SetValue(false) return end
+            MovementState.SpinBot = v 
+        end 
+    })
+    MoveBox:AddToggle("Move_AntiAim", { 
+        Text = "Anti-Aim (VIP)", Callback = function(v) 
+            if v and not RequireRole("vip") then Toggles.Move_AntiAim:SetValue(false) return end
+            MovementState.AntiAim = v 
+        end 
+    })
+
+    MoveBox:AddDivider()
+    MoveBox:AddToggle("Move_Fly", { Text = "Fly", Callback = function(v) MovementState.Fly = v end })
+    MoveBox:AddSlider("Move_FlySpd", { Text = "Speed", Default = 60, Min = 10, Max = 200, Callback = function(v) MovementState.FlySpeed = v end })
+
+    -- 3. COMBAT TAB
+    local AimMain = Tabs.Combat:AddLeftGroupbox("Aimbot Settings")
+    local AimAdv = Tabs.Combat:AddRightGroupbox("Advanced (Premium+)")
+
+    AimMain:AddToggle("Aim_En", { Text = "Enabled", Default = true, Callback = function(v) AimSettings.Enabled = v end })
+    AimMain:AddDropdown("Aim_Part", {
+        Text = "Aim Part", Default = "Head", Values = {"Head", "Chest", "RandomWeighted"},
+        Callback = function(v) AimSettings.AimPart = v end
+    })
+    AimMain:AddToggle("Aim_Vis", { Text = "Visible Only", Default = true, Callback = function(v) AimSettings.VisibleOnly = v end })
+    AimMain:AddSlider("Aim_FOV", { Text = "FOV Radius", Default = 120, Min = 10, Max = 500, Callback = function(v) AimSettings.FOVRadius = v end })
+    AimMain:AddToggle("Aim_ShowFOV", { Text = "Draw FOV", Default = true, Callback = function(v) AimSettings.ShowFOV = v end })
+
+    -- [NEW] Advanced Combat
+    AimAdv:AddSlider("Aim_HitChance", {
+        Text = "Hit Chance %", Default = 100, Min = 0, Max = 100,
+        Callback = function(v) 
+            if not RequireRole("premium") then Options.Aim_HitChance:SetValue(100) return end
+            AimSettings.HitChance = v 
+        end
+    })
+    
+    AimAdv:AddLabel("Random Weights"):AddTooltip("Chance for each part when mode is RandomWeighted")
+    AimAdv:AddSlider("W_Head", { Text = "Head", Default = 60, Min = 0, Max = 100, Callback = function(v) AimSettings.Weights.Head = v end })
+    AimAdv:AddSlider("W_Chest", { Text = "Chest", Default = 25, Min = 0, Max = 100, Callback = function(v) AimSettings.Weights.Chest = v end })
+    AimAdv:AddSlider("W_Arms", { Text = "Arms", Default = 10, Min = 0, Max = 100, Callback = function(v) AimSettings.Weights.Arms = v end })
+    AimAdv:AddSlider("W_Legs", { Text = "Legs", Default = 5, Min = 0, Max = 100, Callback = function(v) AimSettings.Weights.Legs = v end })
+
+    -- 4. ESP TAB
+    local ESPMain = Tabs.ESP:AddLeftGroupbox("ESP Toggles")
+    local ESPColor = Tabs.ESP:AddRightGroupbox("Colors & Style")
+
+    ESPMain:AddToggle("ESP_En", { Text = "Enable ESP", Default = true, Callback = function(v) ESPSettings.Enabled = v end })
+    ESPMain:AddToggle("ESP_Box", { Text = "Box", Default = true, Callback = function(v) ESPSettings.BoxMode = v and "Box" or "Off" end })
+    ESPMain:AddToggle("ESP_Name", { Text = "Name", Default = true, Callback = function(v) ESPSettings.NameTag = v end })
+    ESPMain:AddToggle("ESP_Hl", { Text = "Chams (Highlight)", Default = true, Callback = function(v) ESPSettings.UseHighlight = v end })
+    
+    -- [NEW] Visual Parts
+    ESPMain:AddDivider()
+    ESPMain:AddToggle("ESP_Skel", { Text = "Skeleton", Default = false, Callback = function(v) ESPSettings.Skeleton = v end })
+    ESPMain:AddToggle("ESP_Look", { Text = "Look Tracers", Default = false, Callback = function(v) ESPSettings.LookTracer = v end })
+    ESPMain:AddToggle("ESP_Dot", { Text = "Head Dot", Default = true, Callback = function(v) ESPSettings.HeadDot = v end })
+
+    -- [NEW] Colors & Style
+    ESPColor:AddSlider("ESP_Thick", { Text = "Thickness", Default = 1, Min = 1, Max = 5, Callback = function(v) ESPSettings.Thickness = v end })
+    ESPColor:AddSlider("ESP_TxtSize", { Text = "Text Size", Default = 13, Min = 10, Max = 24, Callback = function(v) ESPSettings.TextSize = v end })
+    
+    ESPColor:AddLabel("Custom Colors"):AddColorPicker("C_Box", { Default = ESPSettings.Colors.Box, Title = "Box", Callback = function(v) ESPSettings.Colors.Box = v end })
+    ESPColor:AddLabel("Name"):AddColorPicker("C_Name", { Default = ESPSettings.Colors.Name, Title = "Name", Callback = function(v) ESPSettings.Colors.Name = v end })
+    ESPColor:AddLabel("Skeleton"):AddColorPicker("C_Skel", { Default = ESPSettings.Colors.Skeleton, Title = "Skeleton", Callback = function(v) ESPSettings.Colors.Skeleton = v end })
+    ESPColor:AddLabel("Chams Fill"):AddColorPicker("C_Fill", { Default = ESPSettings.Colors.ChamsFill, Title = "Fill", Callback = function(v) ESPSettings.Colors.ChamsFill = v end })
+
+    -- 5. SETTINGS TAB
+    ThemeManager:SetLibrary(Library)
+    SaveManager:SetLibrary(Library)
+    SaveManager:BuildConfigSection(Tabs.Settings)
+    ThemeManager:ApplyToTab(Tabs.Settings)
+
+    -- Loops
+    RunService.RenderStepped:Connect(function()
+        espStep()
+        aimbotStep()
     end)
     
-    Notify("Loaded Premium Hub! Role: " .. role:upper(), 5)
+    Library:Notify("Welcome " .. LocalPlayer.Name, 5)
 end
