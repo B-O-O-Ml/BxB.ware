@@ -154,7 +154,7 @@ do
         KEYDATA_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/data.json",
         SCRIPTINFO_URL  = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json",
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
-        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Edit",
+        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Edit.lua",
 
         KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json",
 
