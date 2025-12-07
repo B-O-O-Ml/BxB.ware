@@ -19,7 +19,7 @@
                             glow: 'rgba(192, 132, 252, 0.5)'
                         },
                         dark: {
-                            bg: '#030005', // Darker purple-black
+                            bg: '#030005', 
                             card: '#0a050f',
                             border: '#1f1629'
                         }
@@ -49,7 +49,7 @@
 
     <style>
         /* Modern Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #030005; }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #c084fc; }
@@ -89,6 +89,12 @@
         .modal.active .modal-content {
             transform: scale(1) translateY(0);
         }
+
+        /* Social Icons Hover */
+        .social-link:hover svg {
+            stroke: #c084fc;
+            fill: rgba(192, 132, 252, 0.1);
+        }
     </style>
 </head>
 <body class="bg-dark-bg text-white overflow-x-hidden relative min-h-screen flex flex-col">
@@ -97,7 +103,6 @@
     <div class="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <div class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-lavender-DEFAULT rounded-full mix-blend-screen filter blur-[150px] opacity-10 animate-float"></div>
         <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-900 rounded-full mix-blend-screen filter blur-[150px] opacity-10 animate-float" style="animation-delay: 2s;"></div>
-        <!-- Grid Line -->
         <div class="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5"></div>
         <div class="absolute inset-0" style="background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px); background-size: 50px 50px; mask-image: radial-gradient(circle, black, transparent 80%);"></div>
     </div>
@@ -140,7 +145,7 @@
                     </h1>
                     <p class="text-gray-400 max-w-md text-lg leading-relaxed">
                         The most advanced universal script hub. 
-                        Optimized for performance, designed for dominance.
+                        Optimized for performance, designed for domination.
                     </p>
                 </div>
 
@@ -156,10 +161,13 @@
                             <span class="text-xs text-gray-500 font-mono ml-2">Loader.lua</span>
                         </div>
                         <div class="p-6 bg-[#080808] relative group">
-                            <pre class="font-mono text-sm text-lavender break-all selection:bg-lavender selection:text-black">loadstring(game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_Loaded.lua"))()</pre>
+                            <!-- SCROLLABLE CODE AREA -->
+                            <div class="overflow-x-auto pb-2 mb-2">
+                                <pre class="font-mono text-sm text-lavender whitespace-nowrap selection:bg-lavender selection:text-black">loadstring(game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_Loaded.lua"))()</pre>
+                            </div>
                             
                             <!-- Copy Button Overlay -->
-                            <div class="mt-6">
+                            <div class="mt-4">
                                 <button onclick="copyScript(this)" class="w-full bg-white text-black hover:bg-lavender hover:scale-[1.02] active:scale-[0.98] transition-all font-bold py-3 rounded-lg flex items-center justify-center gap-2 group">
                                     <i data-lucide="copy" class="w-4 h-4"></i>
                                     <span>Copy Script</span>
@@ -228,30 +236,59 @@
                 </div>
             </div>
 
-            <!-- Credits Section -->
+            <!-- Credits Section with Socials -->
             <div class="mb-10">
                 <h2 class="text-2xl font-bold mb-8 text-center">Development Team</h2>
                 <div class="flex flex-wrap justify-center gap-6">
-                    <!-- Dev 1 -->
-                    <div class="glass-panel px-6 py-4 rounded-full flex items-center gap-4 hover:border-lavender/50 transition-colors">
-                        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-lavender to-purple-800 flex items-center justify-center font-bold text-black">
+                    
+                    <!-- Dev 1: BXMQZ -->
+                    <div class="glass-panel p-6 rounded-2xl w-full md:w-80 hover:border-lavender/50 transition-colors flex flex-col items-center text-center">
+                        <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-lavender to-purple-800 flex items-center justify-center font-bold text-black text-2xl mb-4 shadow-lg shadow-lavender/20">
                             B
                         </div>
-                        <div>
-                            <div class="font-bold text-sm">BXMQZ</div>
-                            <div class="text-xs text-gray-400 font-mono">Lead Developer</div>
+                        <div class="mb-4">
+                            <div class="font-bold text-lg">BXMQZ</div>
+                            <div class="text-xs text-gray-400 font-mono">Lead Developer & Founder</div>
+                        </div>
+                        <!-- Social Icons Row -->
+                        <div class="flex gap-4 mt-auto">
+                            <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="Facebook">
+                                <i data-lucide="facebook" class="w-5 h-5"></i>
+                            </a>
+                            <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="Instagram">
+                                <i data-lucide="instagram" class="w-5 h-5"></i>
+                            </a>
+                            <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="GitHub">
+                                <i data-lucide="github" class="w-5 h-5"></i>
+                            </a>
+                            <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="Line">
+                                <!-- Custom Line SVG -->
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.48 2 2 5.96 2 10.85c0 2.5 1.5 4.8 3.85 6.4-.3.9-1 2.3-1.15 2.55-.05.15.05.3.2.3.15 0 2.5-1.5 3.5-2.15.5.15 1.05.2 1.6.2 5.52 0 10-3.96 10-8.85S17.52 2 12 2z"/></svg>
+                            </a>
+                            <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="TikTok">
+                                <!-- Custom TikTok SVG -->
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+                            </a>
                         </div>
                     </div>
-                     <!-- Dev 2 -->
-                     <div class="glass-panel px-6 py-4 rounded-full flex items-center gap-4 hover:border-lavender/50 transition-colors">
-                        <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-gray-700 to-gray-900 flex items-center justify-center font-bold text-white border border-white/10">
+
+                     <!-- Dev 2: Obsidian -->
+                     <div class="glass-panel p-6 rounded-2xl w-full md:w-80 hover:border-lavender/50 transition-colors flex flex-col items-center text-center">
+                        <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-gray-700 to-gray-900 flex items-center justify-center font-bold text-white border border-white/10 text-xl mb-4">
                             UI
                         </div>
-                        <div>
-                            <div class="font-bold text-sm">Obsidian Lib</div>
+                        <div class="mb-4">
+                            <div class="font-bold text-lg">Obsidian Lib</div>
                             <div class="text-xs text-gray-400 font-mono">Interface Engine</div>
                         </div>
+                         <!-- Social Icons Row (Example) -->
+                         <div class="flex gap-4 mt-auto">
+                            <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="GitHub">
+                                <i data-lucide="github" class="w-5 h-5"></i>
+                            </a>
+                        </div>
                     </div>
+
                 </div>
             </div>
 
