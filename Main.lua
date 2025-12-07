@@ -102,7 +102,9 @@ return function(Exec, keydata, keycheck)
     local role      = tostring(keydata.role or "user")
     local keyStatus = tostring(keydata.status or "active")
 
+    -- Role hierarchy: add "free" as tier 0 and shift priorities accordingly
     local RolePriority = {
+        free     = 0,
         user     = 1,
         trial    = 1,
         premium  = 2,
@@ -113,8 +115,9 @@ return function(Exec, keydata, keycheck)
     }
 
     local function GetRolePriority(r)
-        r = tostring(r or "user"):lower()
-        return RolePriority[r] or 1
+        -- Unknown roles default to the lowest tier (free)
+        r = tostring(r or "free"):lower()
+        return RolePriority[r] or 0
     end
 
     local function RoleAtLeast(minRole)
@@ -122,21 +125,25 @@ return function(Exec, keydata, keycheck)
     end
 
     local function GetRoleLabel(r)
-        r = tostring(r or "user"):lower()
-        if r == "premium" then
+        r = tostring(r or "free"):lower()
+        if r == "free" then
+            return "Free"
+        elseif r == "user" then
+            return "User"
+        elseif r == "trial" then
+            return "Trial"
+        elseif r == "premium" then
             return "Premium"
+        elseif r == "reseller" then
+            return "Reseller"
         elseif r == "vip" then
             return "VIP"
         elseif r == "staff" then
             return "Staff"
         elseif r == "owner" then
             return "Owner"
-        elseif r == "reseller" then
-            return "Reseller"
-        elseif r == "trial" then
-            return "Trial"
         else
-            return "User"
+            return r
         end
     end
 
@@ -360,6 +367,14 @@ return function(Exec, keydata, keycheck)
         DistanceFade    = false,
         FadeStart       = 500,
         FadeEnd         = 2000,
+        -- Customisation options (can be changed via UI)
+        BoxColor        = Color3.fromRGB(0, 255, 0),
+        NameColor       = Color3.fromRGB(0, 255, 0),
+        TracerColor     = Color3.fromRGB(0, 255, 0),
+        ChamsColor      = Color3.fromRGB(0, 255, 0),
+        TextSize        = 13,
+        LineThickness   = 1,
+        LookTracer      = false,
     }
 
     local AimSettings = {
@@ -645,6 +660,25 @@ return function(Exec, keydata, keycheck)
             table.insert(t.Corners, c)
         end
 
+        -- Allocate skeleton and look tracer lines for future custom ESP features.
+        -- We use a fixed number of lines (8) to connect major body parts such as head, torso, arms, and legs.
+        t.Skeleton = {}
+        for i = 1, 8 do
+            local l = Drawing.new("Line")
+            l.Thickness = 1
+            l.Visible = false
+            l.Color = Color3.new(1, 1, 1)
+            l.Transparency = 1
+            table.insert(t.Skeleton, l)
+        end
+
+        -- Single line for look tracer (line pointing in the direction the target is looking).
+        t.LookTracer = Drawing.new("Line")
+        t.LookTracer.Thickness = 1
+        t.LookTracer.Visible = false
+        t.LookTracer.Color = Color3.new(1, 1, 1)
+        t.LookTracer.Transparency = 1
+
         DrawObjects[plr] = t
         return t
     end
@@ -663,6 +697,16 @@ return function(Exec, keydata, keycheck)
         objs.Offscreen.Visible = false
         for _, c in ipairs(objs.Corners) do
             c.Visible = false
+        end
+
+        -- Hide skeleton and look tracer lines if they exist.
+        if objs.Skeleton then
+            for _, line in ipairs(objs.Skeleton) do
+                line.Visible = false
+            end
+        end
+        if objs.LookTracer then
+            objs.LookTracer.Visible = false
         end
     end
 
@@ -705,6 +749,45 @@ return function(Exec, keydata, keycheck)
         local existing = char:FindFirstChild(tag)
         if existing and existing:IsA("Highlight") then
             existing:Destroy()
+        end
+    end
+
+    -- Permanently destroy all drawing objects and reset FOVCircle.
+    -- This is used when disabling ESP or unloading the hub to free resources.
+    local function removeAllDraw()
+        -- Remove draw objects
+        for plr, objs in pairs(DrawObjects) do
+            if objs then
+                -- Basic shapes
+                if objs.Box then pcall(function() objs.Box:Remove() end) end
+                if objs.Tracer then pcall(function() objs.Tracer:Remove() end) end
+                if objs.Name then pcall(function() objs.Name:Remove() end) end
+                if objs.HealthBar then pcall(function() objs.HealthBar:Remove() end) end
+                if objs.HeadDot then pcall(function() objs.HeadDot:Remove() end) end
+                if objs.Offscreen then pcall(function() objs.Offscreen:Remove() end) end
+                -- Corner lines
+                if objs.Corners then
+                    for _, c in ipairs(objs.Corners) do
+                        pcall(function() c:Remove() end)
+                    end
+                end
+                -- Skeleton lines
+                if objs.Skeleton then
+                    for _, l in ipairs(objs.Skeleton) do
+                        pcall(function() l:Remove() end)
+                    end
+                end
+                -- Look tracer line
+                if objs.LookTracer then
+                    pcall(function() objs.LookTracer:Remove() end)
+                end
+            end
+        end
+        table.clear(DrawObjects)
+        -- Remove FOV circle
+        if FOVCircle then
+            pcall(function() FOVCircle:Remove() end)
+            FOVCircle = nil
         end
     end
 
@@ -976,8 +1059,20 @@ return function(Exec, keydata, keycheck)
             return
         end
 
-        local visibleColor = Color3.fromRGB(0, 255, 0)   -- เห็นได้ = เขียว
-        local hiddenColor  = Color3.fromRGB(255, 0, 0)   -- หลังกำแพง = แดง
+        -- Precompute colours and styling based off user settings.
+        local baseBoxColor      = ESPSettings.BoxColor or Color3.fromRGB(0, 255, 0)
+        local baseNameColor     = ESPSettings.NameColor or baseBoxColor
+        local baseTracerColor   = ESPSettings.TracerColor or baseBoxColor
+        local baseChamsColor    = ESPSettings.ChamsColor or baseBoxColor
+        local lineThick         = ESPSettings.LineThickness or 1
+        local textSize          = ESPSettings.TextSize or 13
+        local skeletonEnabled   = (ESPSettings.Skeleton == true)
+        local lookTracerEnabled = (ESPSettings.LookTracer == true)
+
+        -- Ensure FOVCircle thickness reflects the custom line thickness.
+        if hasDrawing and FOVCircle then
+            FOVCircle.Thickness = lineThick
+        end
 
         for plr, info in pairs(PlayerInfo) do
             local objs = getDrawObjects(plr)
@@ -1013,7 +1108,11 @@ return function(Exec, keydata, keycheck)
                 end
 
                 if not skip then
-                    local color = info.Visible and visibleColor or hiddenColor
+                    -- Determine colours for visible/hidden targets.
+                    local colorBox    = info.Visible and baseBoxColor    or Color3.fromRGB(255, 0, 0)
+                    local colorName   = info.Visible and baseNameColor   or Color3.fromRGB(255, 0, 0)
+                    local colorTracer = info.Visible and baseTracerColor or Color3.fromRGB(255, 0, 0)
+                    local colorCham   = info.Visible and baseChamsColor  or Color3.fromRGB(255, 0, 0)
 
                     -- Distance fade alpha
                     local alpha = 1
@@ -1036,8 +1135,8 @@ return function(Exec, keydata, keycheck)
                     if ESPSettings.UseHighlight then
                         local hl = getHighlight(info.Character)
                         if hl then
-                            hl.FillColor    = color
-                            hl.OutlineColor = color
+                            hl.FillColor    = colorCham
+                            hl.OutlineColor = colorCham
                             hl.FillTransparency    = 0.7 + (1 - alpha) * 0.2
                             hl.OutlineTransparency = 0 + (1 - alpha) * 0.3
                         end
@@ -1085,7 +1184,7 @@ return function(Exec, keydata, keycheck)
                                 objs.Offscreen.PointA  = p1
                                 objs.Offscreen.PointB  = p2
                                 objs.Offscreen.PointC  = p3
-                                objs.Offscreen.Color   = color
+                                objs.Offscreen.Color   = colorTracer
                                 objs.Offscreen.Transparency = 1 - alpha
                             end
                         else
@@ -1104,7 +1203,7 @@ return function(Exec, keydata, keycheck)
                         else
                             -- Reset all corners
                             for _, c in ipairs(objs.Corners) do
-                                c.Visible = false
+                                c.Visible      = false
                             end
                             objs.Box.Visible = false
 
@@ -1112,7 +1211,8 @@ return function(Exec, keydata, keycheck)
                                 objs.Box.Visible      = true
                                 objs.Box.Position     = topLeft
                                 objs.Box.Size         = boxSize
-                                objs.Box.Color        = color
+                                objs.Box.Color        = colorBox
+                                objs.Box.Thickness    = lineThick
                                 objs.Box.Transparency = 1 - alpha
                             elseif ESPSettings.BoxMode == "Corner" then
                                 local w, h = boxSize.X, boxSize.Y
@@ -1125,28 +1225,32 @@ return function(Exec, keydata, keycheck)
                                     corners[1].Visible      = true
                                     corners[1].From         = tl
                                     corners[1].To           = tl + Vector2.new(len, 0)
-                                    corners[1].Color        = color
+                                    corners[1].Color        = colorBox
+                                    corners[1].Thickness    = lineThick
                                     corners[1].Transparency = 1 - alpha
                                 end
                                 if corners[2] then
                                     corners[2].Visible      = true
                                     corners[2].From         = tl
                                     corners[2].To           = tl + Vector2.new(0, len)
-                                    corners[2].Color        = color
+                                    corners[2].Color        = colorBox
+                                    corners[2].Thickness    = lineThick
                                     corners[2].Transparency = 1 - alpha
                                 end
                                 if corners[3] then
                                     corners[3].Visible      = true
                                     corners[3].From         = tr
                                     corners[3].To           = tr + Vector2.new(-len, 0)
-                                    corners[3].Color        = color
+                                    corners[3].Color        = colorBox
+                                    corners[3].Thickness    = lineThick
                                     corners[3].Transparency = 1 - alpha
                                 end
                                 if corners[4] then
                                     corners[4].Visible      = true
                                     corners[4].From         = tr
                                     corners[4].To           = tr + Vector2.new(0, len)
-                                    corners[4].Color        = color
+                                    corners[4].Color        = colorBox
+                                    corners[4].Thickness    = lineThick
                                     corners[4].Transparency = 1 - alpha
                                 end
                             end
@@ -1157,7 +1261,8 @@ return function(Exec, keydata, keycheck)
                                 objs.Tracer.Visible      = true
                                 objs.Tracer.From         = fromPos
                                 objs.Tracer.To           = screenPos
-                                objs.Tracer.Color        = color
+                                objs.Tracer.Color        = colorTracer
+                                objs.Tracer.Thickness    = lineThick
                                 objs.Tracer.Transparency = 1 - alpha
                             else
                                 objs.Tracer.Visible = false
@@ -1177,7 +1282,8 @@ return function(Exec, keydata, keycheck)
                                 objs.Name.Visible      = true
                                 objs.Name.Text         = text
                                 objs.Name.Position     = Vector2.new(screenPos.X, topLeft.Y - 12)
-                                objs.Name.Color        = color
+                                objs.Name.Color        = colorName
+                                objs.Name.Size         = textSize
                                 objs.Name.Transparency = 1 - alpha
                             else
                                 objs.Name.Visible = false
@@ -1202,6 +1308,8 @@ return function(Exec, keydata, keycheck)
                                     math.floor(255 * r),
                                     0
                                 )
+                                -- Thickness of health bar scales with line thickness (minimum 1).
+                                objs.HealthBar.Thickness    = math.max(1, math.floor(lineThick * 3))
                                 objs.HealthBar.Transparency = 1 - alpha
                             else
                                 objs.HealthBar.Visible = false
@@ -1215,7 +1323,7 @@ return function(Exec, keydata, keycheck)
                                     objs.HeadDot.Visible     = true
                                     objs.HeadDot.Position    = Vector2.new(headView.X, headView.Y)
                                     objs.HeadDot.Radius      = 3
-                                    objs.HeadDot.Color       = color
+                                    objs.HeadDot.Color       = colorBox
                                     objs.HeadDot.Transparency = 1 - alpha
                                 else
                                     objs.HeadDot.Visible = false
@@ -1223,8 +1331,89 @@ return function(Exec, keydata, keycheck)
                             else
                                 objs.HeadDot.Visible = false
                             end
+                            -- Skeleton rendering
+                            if skeletonEnabled and objs.Skeleton and info.Character then
+                                local char = info.Character
+                                local cam = workspace.CurrentCamera
+                                local p = info.AimParts or {}
+                                -- gather relevant parts or fallback to char joints
+                                local head       = p.Head or char:FindFirstChild("Head")
+                                local upperTorso = p.UpperTorso or char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+                                local lowerTorso = p.LowerTorso or char:FindFirstChild("LowerTorso") or char:FindFirstChild("Torso")
+                                local lUpperArm  = p.LeftUpperArm or char:FindFirstChild("LeftUpperArm")
+                                local lLowerArm  = p.LeftLowerArm or char:FindFirstChild("LeftLowerArm")
+                                local rUpperArm  = p.RightUpperArm or char:FindFirstChild("RightUpperArm")
+                                local rLowerArm  = p.RightLowerArm or char:FindFirstChild("RightLowerArm")
+                                local lUpperLeg  = p.LeftUpperLeg or char:FindFirstChild("LeftUpperLeg")
+                                local lLowerLeg  = p.LeftLowerLeg or char:FindFirstChild("LeftLowerLeg")
+                                local rUpperLeg  = p.RightUpperLeg or char:FindFirstChild("RightUpperLeg")
+                                local rLowerLeg  = p.RightLowerLeg or char:FindFirstChild("RightLowerLeg")
+                                -- Build pairs for lines (up to 8 lines allocated)
+                                local pairsList = {
+                                    {head, upperTorso},
+                                    {upperTorso, lUpperArm},
+                                    {lUpperArm, lLowerArm},
+                                    {upperTorso, rUpperArm},
+                                    {rUpperArm, rLowerArm},
+                                    {upperTorso, lowerTorso},
+                                    {lowerTorso, lUpperLeg},
+                                    {lUpperLeg, lLowerLeg},
+                                }
+                                for i = 1, #objs.Skeleton do
+                                    local line = objs.Skeleton[i]
+                                    local pair = pairsList[i]
+                                    if pair then
+                                        local a, b = pair[1], pair[2]
+                                        if a and b then
+                                            local aPos3d, aOn = cam:WorldToViewportPoint(a.Position)
+                                            local bPos3d, bOn = cam:WorldToViewportPoint(b.Position)
+                                            if aOn and bOn then
+                                                line.Visible      = true
+                                                line.From         = Vector2.new(aPos3d.X, aPos3d.Y)
+                                                line.To           = Vector2.new(bPos3d.X, bPos3d.Y)
+                                                line.Color        = colorBox
+                                                line.Thickness    = lineThick
+                                                line.Transparency = 1 - alpha
+                                            else
+                                                line.Visible = false
+                                            end
+                                        else
+                                            line.Visible = false
+                                        end
+                                    else
+                                        line.Visible = false
+                                    end
+                                end
+                            else
+                                if objs.Skeleton then
+                                    for _, line in ipairs(objs.Skeleton) do
+                                        line.Visible = false
+                                    end
+                                end
+                            end
 
-                            -- Skeleton (stub – สามารถเพิ่มได้ในอนาคต)
+                            -- Look tracer rendering
+                            if lookTracerEnabled and objs.LookTracer and info.Head then
+                                local cam = workspace.CurrentCamera
+                                local headPos3d, onScr = cam:WorldToViewportPoint(info.Head.Position)
+                                local dir = info.Head.CFrame.LookVector
+                                local targetPos = info.Head.Position + dir * 30
+                                local target3d, onScr2 = cam:WorldToViewportPoint(targetPos)
+                                if onScr and onScr2 then
+                                    objs.LookTracer.Visible      = true
+                                    objs.LookTracer.From         = Vector2.new(headPos3d.X, headPos3d.Y)
+                                    objs.LookTracer.To           = Vector2.new(target3d.X, target3d.Y)
+                                    objs.LookTracer.Color        = colorTracer
+                                    objs.LookTracer.Thickness    = lineThick
+                                    objs.LookTracer.Transparency = 1 - alpha
+                                else
+                                    objs.LookTracer.Visible = false
+                                end
+                            else
+                                if objs.LookTracer then
+                                    objs.LookTracer.Visible = false
+                                end
+                            end
                         end
                     end
                 end
@@ -1248,6 +1437,10 @@ return function(Exec, keydata, keycheck)
         Fly              = false,
         FlySpeed         = 60,
         NoClip           = false,
+        -- Additional movement toggles
+        SpinBot          = false,
+        AntiAim          = false,
+        AutoRun          = false,
     }
 
     local DefaultWalkSpeed = 16
@@ -1260,6 +1453,10 @@ return function(Exec, keydata, keycheck)
             DefaultJumpPower = hum.JumpPower
         end
     end
+
+    -- Click teleport state (used for Ctrl+Click teleport feature)
+    local ClickTPEnabled = false
+    local ClickTPConn
 
     AddConnection(LocalPlayer.CharacterAdded:Connect(function(char)
         task.defer(function()
@@ -1338,6 +1535,37 @@ return function(Exec, keydata, keycheck)
         else
             if hum then
                 hum.PlatformStand = false
+            end
+        end
+
+        -- Additional movement behaviours
+        if root and hum then
+            -- SpinBot: rotate character's root part continuously
+            if MovementState.SpinBot then
+                -- spin speed in radians per frame
+                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(10), 0)
+            end
+
+            -- Anti-Aim: rotate character to look downwards or sideways
+            if MovementState.AntiAim then
+                local pos = root.Position
+                -- Keep constant rotation pointing downward
+                root.CFrame = CFrame.new(pos) * CFrame.Angles(math.rad(-90), 0, 0)
+            end
+
+            -- Auto Run: move character forward automatically
+            if MovementState.AutoRun and not MovementState.Fly then
+                local camDir = workspace.CurrentCamera and workspace.CurrentCamera.CFrame.LookVector or Vector3.new(0, 0, -1)
+                -- Remove vertical component
+                camDir = Vector3.new(camDir.X, 0, camDir.Z)
+                if camDir.Magnitude > 0 then
+                    camDir = camDir.Unit
+                    -- Apply a small forward force; adjust WalkSpeed to maintain constant speed
+                    hum:Move(camDir, false)
+                    if MovementState.WalkSpeedEnabled then
+                        hum.WalkSpeed = MovementState.WalkSpeedValue
+                    end
+                end
             end
         end
     end))
@@ -1659,6 +1887,49 @@ local Window = Library:CreateWindow({
         Notify("Movement reset", 3)
     end)
 
+    -- Additional movement toggles
+    MoveBox:AddToggle("Move_SpinBot", {
+        Text    = "SpinBot",
+        Default = false,
+        Callback = function(v)
+            -- Require VIP or higher for SpinBot
+            if v and not RoleAtLeast("vip") then
+                Notify("SpinBot requires VIP or higher", 3)
+                local opt = Library.Options.Move_SpinBot
+                if opt and opt.SetValue then
+                    opt:SetValue(false)
+                end
+                return
+            end
+            MovementState.SpinBot = v
+        end
+    })
+
+    MoveBox:AddToggle("Move_AntiAim", {
+        Text    = "Anti-Aim (Desync/Look down)",
+        Default = false,
+        Callback = function(v)
+            -- Require VIP or higher for Anti-Aim
+            if v and not RoleAtLeast("vip") then
+                Notify("Anti-Aim requires VIP or higher", 3)
+                local opt = Library.Options.Move_AntiAim
+                if opt and opt.SetValue then
+                    opt:SetValue(false)
+                end
+                return
+            end
+            MovementState.AntiAim = v
+        end
+    })
+
+    MoveBox:AddToggle("Move_AutoRun", {
+        Text    = "Auto Run",
+        Default = false,
+        Callback = function(v)
+            MovementState.AutoRun = v
+        end
+    })
+
     -- Teleport & Utility
     UtilBox:AddLabel("<b>Teleport to Player</b>", true)
     local function buildPlayerNameList()
@@ -1776,6 +2047,49 @@ local Window = Library:CreateWindow({
         end
     end)
 
+    -- Ctrl+Click Teleport
+    UtilBox:AddToggle("Util_ClickTP_Toggle", {
+        Text    = "Ctrl+Click Teleport",
+        Default = false,
+        Callback = function(v)
+            -- Require user role or higher
+            if v and not RoleAtLeast("user") then
+                Notify("Click Teleport requires User or higher", 3)
+                local opt = Library.Options.Util_ClickTP_Toggle
+                if opt and opt.SetValue then
+                    opt:SetValue(false)
+                end
+                return
+            end
+            ClickTPEnabled = v
+            -- Disconnect existing connection if toggling off
+            if ClickTPConn then
+                ClickTPConn:Disconnect()
+                ClickTPConn = nil
+            end
+            if v then
+                -- Bind teleport to mouse left click while holding LeftControl
+                ClickTPConn = UserInputService.InputBegan:Connect(function(input, gpe)
+                    if gpe then return end
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                        local mouse = LocalPlayer:GetMouse()
+                        if mouse then
+                            local hit = mouse.Hit
+                            if hit then
+                                local targetPos = hit.Position + Vector3.new(0, 3, 0)
+                                local root = GetRoot()
+                                if root then
+                                    root.CFrame = CFrame.new(targetPos)
+                                end
+                            end
+                        end
+                    end
+                end)
+                AddConnection(ClickTPConn)
+            end
+        end
+    })
+
     ----------------------------------------------------------------
     -- Tab: ESP & Visuals
     ----------------------------------------------------------------
@@ -1787,6 +2101,27 @@ local Window = Library:CreateWindow({
         Default = true,
         Callback = function(v)
             ESPSettings.Enabled = v
+            -- When disabling ESP, destroy all drawing objects and remove highlights.
+            if not v then
+                removeAllDraw()
+                -- Remove 3D highlights from all characters.
+                for plr, info in pairs(PlayerInfo) do
+                    if info.Character then
+                        removeHighlight(info.Character)
+                    end
+                end
+            else
+                -- When re-enabling, recreate FOV circle if needed.
+                if hasDrawing and not FOVCircle then
+                    local c = Drawing.new("Circle")
+                    c.Thickness = ESPSettings.LineThickness or 1
+                    c.Filled     = false
+                    c.Visible    = false
+                    c.Color      = Color3.fromRGB(255, 255, 255)
+                    c.Transparency = 1
+                    FOVCircle = c
+                end
+            end
         end
     })
 
@@ -1804,6 +2139,14 @@ local Window = Library:CreateWindow({
         Default = true,
         Callback = function(v)
             ESPSettings.UseHighlight = v
+            -- When turning off highlight, remove existing highlights on players.
+            if not v then
+                for plr, info in pairs(PlayerInfo) do
+                    if info.Character then
+                        removeHighlight(info.Character)
+                    end
+                end
+            end
         end
     })
 
@@ -2023,6 +2366,73 @@ local Window = Library:CreateWindow({
         refreshWhitelistValues()
     end))
 
+    -- Additional groupbox: Colours & Style for ESP customization
+    local ESPStyleBox = Tabs.ESP:AddLeftGroupbox("Colours & Style")
+    ESPStyleBox:AddLabel("<b>Colors</b>", true)
+    ESPStyleBox:AddColorPicker("ESP_BoxColor_Picker", {
+        Text     = "Box colour",
+        Default  = ESPSettings.BoxColor,
+        Callback = function(col)
+            ESPSettings.BoxColor = col
+        end
+    })
+    ESPStyleBox:AddColorPicker("ESP_NameColor_Picker", {
+        Text     = "Name colour",
+        Default  = ESPSettings.NameColor,
+        Callback = function(col)
+            ESPSettings.NameColor = col
+        end
+    })
+    ESPStyleBox:AddColorPicker("ESP_TracerColor_Picker", {
+        Text     = "Tracer colour",
+        Default  = ESPSettings.TracerColor,
+        Callback = function(col)
+            ESPSettings.TracerColor = col
+        end
+    })
+    ESPStyleBox:AddColorPicker("ESP_ChamsColor_Picker", {
+        Text     = "Chams colour",
+        Default  = ESPSettings.ChamsColor,
+        Callback = function(col)
+            ESPSettings.ChamsColor = col
+        end
+    })
+    ESPStyleBox:AddDivider()
+    ESPStyleBox:AddToggle("ESP_Skeleton_Toggle", {
+        Text    = "Show skeleton",
+        Default = false,
+        Callback = function(v)
+            ESPSettings.Skeleton = v
+        end
+    })
+    ESPStyleBox:AddToggle("ESP_LookTracer_Toggle", {
+        Text    = "Look tracer",
+        Default = false,
+        Callback = function(v)
+            ESPSettings.LookTracer = v
+        end
+    })
+    ESPStyleBox:AddSlider("ESP_TextSize_Slider", {
+        Text     = "Text size",
+        Default  = ESPSettings.TextSize,
+        Min      = 10,
+        Max      = 30,
+        Rounding = 0,
+        Callback = function(val)
+            ESPSettings.TextSize = val
+        end
+    })
+    ESPStyleBox:AddSlider("ESP_LineThickness_Slider", {
+        Text     = "Line thickness",
+        Default  = ESPSettings.LineThickness,
+        Min      = 1,
+        Max      = 5,
+        Rounding = 0,
+        Callback = function(val)
+            ESPSettings.LineThickness = val
+        end
+    })
+
     ----------------------------------------------------------------
     -- Tab: Combat & Aimbot
     ----------------------------------------------------------------
@@ -2106,6 +2516,16 @@ local Window = Library:CreateWindow({
         Max      = 100,
         Rounding = 0,
         Callback = function(val)
+            -- Limit access to HitChance slider for Premium tier and above
+            if not RoleAtLeast("premium") then
+                Notify("Hit chance customization requires Premium or higher", 3)
+                -- Revert to default value (100)
+                local opt = Library.Options.Aim_HitChance
+                if opt and opt.SetValue then
+                    opt:SetValue(100)
+                end
+                return
+            end
             AimSettings.HitChance = val
         end
     })
@@ -2159,6 +2579,15 @@ local Window = Library:CreateWindow({
             "RandomWeighted",
         },
         Callback = function(v)
+            if v == "RandomWeighted" and not RoleAtLeast("premium") then
+                Notify("RandomWeighted target selection requires Premium or higher", 3)
+                -- Revert to a valid option (Head)
+                local opt = Library.Options.Aim_Part
+                if opt and opt.SetValue then
+                    opt:SetValue("Head")
+                end
+                return
+            end
             AimSettings.AimPart = v
         end
     })
@@ -2171,6 +2600,15 @@ local Window = Library:CreateWindow({
         Max      = 100,
         Rounding = 0,
         Callback = function(val)
+            if not RoleAtLeast("premium") then
+                Notify("Editing aim weights requires Premium or higher", 3)
+                -- Revert to default 60
+                local opt = Library.Options.Aim_WHead
+                if opt and opt.SetValue then
+                    opt:SetValue(60)
+                end
+                return
+            end
             AimSettings.Weights.Head = val
         end
     })
@@ -2181,6 +2619,15 @@ local Window = Library:CreateWindow({
         Max      = 100,
         Rounding = 0,
         Callback = function(val)
+            if not RoleAtLeast("premium") then
+                Notify("Editing aim weights requires Premium or higher", 3)
+                -- Revert to default 25
+                local opt = Library.Options.Aim_WChest
+                if opt and opt.SetValue then
+                    opt:SetValue(25)
+                end
+                return
+            end
             AimSettings.Weights.Chest = val
         end
     })
@@ -2191,6 +2638,15 @@ local Window = Library:CreateWindow({
         Max      = 100,
         Rounding = 0,
         Callback = function(val)
+            if not RoleAtLeast("premium") then
+                Notify("Editing aim weights requires Premium or higher", 3)
+                -- Revert to default 10
+                local opt = Library.Options.Aim_WArms
+                if opt and opt.SetValue then
+                    opt:SetValue(10)
+                end
+                return
+            end
             AimSettings.Weights.Arms = val
         end
     })
@@ -2201,6 +2657,15 @@ local Window = Library:CreateWindow({
         Max      = 100,
         Rounding = 0,
         Callback = function(val)
+            if not RoleAtLeast("premium") then
+                Notify("Editing aim weights requires Premium or higher", 3)
+                -- Revert to default 5
+                local opt = Library.Options.Aim_WLegs
+                if opt and opt.SetValue then
+                    opt:SetValue(5)
+                end
+                return
+            end
             AimSettings.Weights.Legs = val
         end
     })
@@ -2236,13 +2701,11 @@ local Window = Library:CreateWindow({
 
     MiscLeft:AddButton("Panic (Unload Hub)", function()
         CleanupConnections()
+        -- Destroy all drawing objects and highlights completely
+        removeAllDraw()
         pcall(function()
             HighlightFolder:Destroy()
         end)
-        hideAllDraw()
-        if FOVCircle then
-            FOVCircle.Visible = false
-        end
         if FullbrightEnabled then
             restoreLighting()
         end
@@ -2301,13 +2764,11 @@ local Window = Library:CreateWindow({
     UIConfigBox:AddDivider()
     UIConfigBox:AddButton("Unload Hub", function()
         CleanupConnections()
+        -- Destroy all drawing objects and highlights completely
+        removeAllDraw()
         pcall(function()
             HighlightFolder:Destroy()
         end)
-        hideAllDraw()
-        if FOVCircle then
-            FOVCircle.Visible = false
-        end
         if FullbrightEnabled then
             restoreLighting()
         end
