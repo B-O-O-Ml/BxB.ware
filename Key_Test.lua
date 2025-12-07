@@ -156,9 +156,7 @@ do
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
         MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Rewrite.lua",
 
-        KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json",
-
-        KEYCHECK_TOKEN  = "BxB.ware-universal-private-*&^%$#$*#%&@#"
+        KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json"
     }
     ----------------------------------------------------------------
     -- HWID + Secure Hash (128-bit)
