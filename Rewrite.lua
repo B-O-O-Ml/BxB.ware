@@ -76,9 +76,9 @@ return function(Exec, UserData, IncomingToken)
     ----------------------------------------------------------------
     -- Config table pointing to the remote assets; adjust to your repo
     local Config = {
-        LIB_URL    = "https://raw.githubusercontent.com/violnes/LinoriaLib/main/Library.lua",
-        THEME_URL  = "https://raw.githubusercontent.com/violnes/LinoriaLib/main/addons/ThemeManager.lua",
-        SAVE_URL   = "https://raw.githubusercontent.com/violnes/LinoriaLib/main/addons/SaveManager.lua",
+        LIB_URL    = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/Library.lua",
+        THEME_URL  = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/addons/ThemeManager.lua",
+        SAVE_URL   = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/addons/SaveManager.lua",
         FolderName = "BxB_Ware/Premium"
     }
     
