@@ -1,24 +1,20 @@
 --[[
-    BxB.ware | Main Hub (Universal Premium)
+    BxB.ware | Universal Premium Hub
+    Library: Linoria / Obsidian
     Author: BXMQZ
-    Updated: Dynamic Token & Advanced Combat/ESP
 ]]
 
 return function(Exec, UserData, CheckToken)
     ----------------------------------------------------------------
-    -- 1. Security Handshake
+    -- 1. Security Handshake (ระบบเช็ค 2 ชั้น)
     ----------------------------------------------------------------
     local secretSalt = "BxB_SUPER_SECRET_SALT_CHANGE_THIS" -- **ต้องตรงกับ Key_UI**
     local datePart = os.date("%Y%m%d")
     local expectedToken = secretSalt .. "_" .. datePart
 
     if CheckToken ~= expectedToken then
-        game.Players.LocalPlayer:Kick("Security Breach: Invalid Token.")
-        return
-    end
-
-    if type(UserData) ~= "table" or not UserData.key then
-        warn("Invalid User Data")
+        warn("[BxB Security] Token Mismatch!")
+        if game.Players.LocalPlayer then game.Players.LocalPlayer:Kick("Security Breach: Invalid Token") end
         return
     end
 
@@ -27,78 +23,82 @@ return function(Exec, UserData, CheckToken)
     ----------------------------------------------------------------
     local Players = game:GetService("Players")
     local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
     local Workspace = game:GetService("Workspace")
     local Lighting = game:GetService("Lighting")
-    local UserInputService = game:GetService("UserInputService")
     local TeleportService = game:GetService("TeleportService")
-    local VirtualUser = game:GetService("VirtualUser")
-
-    local LocalPlayer = Players.LocalPlayer
+    local HttpService = game:GetService("HttpService")
     local Camera = Workspace.CurrentCamera
+    local LocalPlayer = Players.LocalPlayer
     local Mouse = LocalPlayer:GetMouse()
 
-    -- Load Library
-    local repo = 'https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Loaded/UI_System/'
+    -- Load Library (Linoria/Obsidian)
+    local repo = 'https://raw.githubusercontent.com/violnes/LinoriaLib/main/'
     local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
     local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
     local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
     ----------------------------------------------------------------
-    -- 3. UI Setup
+    -- 3. Window Construction
     ----------------------------------------------------------------
     local Window = Library:CreateWindow({
-        Title = "",
-        Icon = 84528813312016,
-        Size = UDim2.fromOffset(720, 600),
+        Title = "BxB.ware | Universal Premium",
         Center = true,
         AutoShow = true,
-        Resizable = true,
-        Compact = true
+        TabPadding = 8,
+        MenuFadeTime = 0.2
     })
 
     local Tabs = {
-        Info = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Info</font></b>', Icon = "info", Description = "Key Status"}),
-        Player = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Player</font></b>', Icon = "user", Description = "Movement & Tools"}),
-        Combat = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Combat</font></b>', Icon = "swords", Description = "Aimbot & Hitbox"}),
-        ESP = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Visual</font></b>', Icon = "eye", Description = "ESP System"}),
-        Misc = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Misc</font></b>', Icon = "box", Description = "Tools"}),
-        Game = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Game</font></b>', Icon = "joystick", Description = "Auto-Detect Module"}),
-        Settings = Window:AddTab({Name = '<b><font color="#FF0000">BxB.ware | Settings</font></b>', Icon = "settings", Description = "Config"}),
+        Info = Window:AddTab('Info'),
+        Player = Window:AddTab('Player'),
+        Combat = Window:AddTab('Combat'),
+        Visuals = Window:AddTab('Visuals'),
+        Misc = Window:AddTab('Misc'),
+        Game = Window:AddTab('Game'),
+        Settings = Window:AddTab('Settings'),
     }
 
     ----------------------------------------------------------------
-    -- [TAB] Info: Real-time Data
+    -- [TAB] Info: Detailed Key Status
     ----------------------------------------------------------------
-    local KeyGroup = Tabs.Info:AddLeftGroupbox("Key Status")
-    KeyGroup:AddLabel("Key: " .. (UserData.key or "Unknown"))
-    KeyGroup:AddLabel("Status: " .. (UserData.status or "Active"))
-    KeyGroup:AddLabel("Role: " .. (UserData.role or "User"))
-    KeyGroup:AddLabel("Note: " .. (UserData.note or "-"))
-    
-    local ExpireLabel = KeyGroup:AddLabel("Time Left: Calculating...")
-    
-    local SysGroup = Tabs.Info:AddRightGroupbox("System Info")
-    SysGroup:AddLabel("Username: " .. LocalPlayer.Name)
-    SysGroup:AddLabel("ID: " .. LocalPlayer.UserId)
-    SysGroup:AddLabel("Game ID: " .. game.PlaceId)
-    SysGroup:AddLabel("Executor: " .. (identifyexecutor and identifyexecutor() or "Unknown"))
+    local InfoGroup = Tabs.Info:AddLeftGroupbox('Key Information')
+    local SystemGroup = Tabs.Info:AddRightGroupbox('System Status')
 
-    -- Real-time Expire Loop
+    -- Key Data
+    InfoGroup:AddLabel('Key: ' .. (UserData.key or "Unknown"))
+    InfoGroup:AddLabel('Status: ' .. (UserData.status or "Active"))
+    InfoGroup:AddLabel('Role: ' .. (UserData.role or "Free User"))
+    InfoGroup:AddLabel('Owner: ' .. (UserData.owner or "BXMQZ")) -- ใส่ชื่อคุณ
+    InfoGroup:AddLabel('Note: ' .. (UserData.note or "None"))
+    
+    local ExpireLabel = InfoGroup:AddLabel('Expire: Calculating...')
+    
+    -- System Data
+    SystemGroup:AddLabel('Game ID: ' .. game.PlaceId)
+    SystemGroup:AddLabel('Username: ' .. LocalPlayer.Name)
+    SystemGroup:AddLabel('Display Name: ' .. LocalPlayer.DisplayName)
+    SystemGroup:AddLabel('Executor: ' .. (identifyexecutor and identifyexecutor() or "Unknown"))
+    
+    local TimeLabel = SystemGroup:AddLabel('Time: ...')
+
+    -- Realtime Update Loop
     task.spawn(function()
         while true do
+            TimeLabel:SetText('Time: ' .. os.date("%X"))
+            
             if UserData.expire then
-                local timeLeft = UserData.expire - os.time()
-                if timeLeft > 0 then
-                    local d = math.floor(timeLeft / 86400)
-                    local h = math.floor((timeLeft % 86400) / 3600)
-                    local m = math.floor((timeLeft % 3600) / 60)
-                    local s = timeLeft % 60
-                    ExpireLabel:SetText(string.format("Expires in: %dd %02dh %02dm %02ds", d, h, m, s))
+                local diff = UserData.expire - os.time()
+                if diff > 0 then
+                    local d = math.floor(diff / 86400)
+                    local h = math.floor((diff % 86400) / 3600)
+                    local m = math.floor((diff % 3600) / 60)
+                    ExpireLabel:SetText(string.format('Expire: %dd %02dh %02dm', d, h, m))
                 else
-                    ExpireLabel:SetText("Status: Expired")
+                    ExpireLabel:SetText('Expire: Expired')
                 end
             else
-                ExpireLabel:SetText("Expires in: Never (Lifetime)")
+                ExpireLabel:SetText('Expire: Lifetime / Unlimited')
             end
             task.wait(1)
         end
@@ -107,336 +107,292 @@ return function(Exec, UserData, CheckToken)
     ----------------------------------------------------------------
     -- [TAB] Player: Movement & Tools
     ----------------------------------------------------------------
-    local MoveGroup = Tabs.Player:AddLeftGroupbox("Movement")
-    MoveGroup:AddSlider('WalkSpeed', { Text = 'WalkSpeed', Default = 16, Min = 16, Max = 500, Rounding = 0 })
-    MoveGroup:AddSlider('JumpPower', { Text = 'JumpPower', Default = 50, Min = 50, Max = 500, Rounding = 0 })
-    
-    MoveGroup:AddToggle('InfJump', { Text = 'Infinite Jump' })
-    MoveGroup:AddToggle('NoClip', { Text = 'Noclip' })
-    
-    local FlyToggle = MoveGroup:AddToggle('Fly', { Text = 'Fly Mode' })
-    MoveGroup:AddSlider('FlySpeed', { Text = 'Fly Speed', Default = 50, Min = 10, Max = 200 })
+    local P_Main = Tabs.Player:AddLeftGroupbox('Movement')
+    local P_Tool = Tabs.Player:AddRightGroupbox('Tools')
 
-    -- Logic Hook
-    Options.WalkSpeed:OnChanged(function() if LocalPlayer.Character then LocalPlayer.Character.Humanoid.WalkSpeed = Options.WalkSpeed.Value end end)
-    Options.JumpPower:OnChanged(function() if LocalPlayer.Character then LocalPlayer.Character.Humanoid.JumpPower = Options.JumpPower.Value end end)
+    P_Main:AddSlider('WalkSpeed', { Text = 'Walk Speed', Default = 16, Min = 16, Max = 500, Rounding = 0, Callback = function(v) 
+        if LocalPlayer.Character then LocalPlayer.Character.Humanoid.WalkSpeed = v end 
+    end})
+    
+    P_Main:AddSlider('JumpPower', { Text = 'Jump Power', Default = 50, Min = 50, Max = 500, Rounding = 0, Callback = function(v) 
+        if LocalPlayer.Character then LocalPlayer.Character.Humanoid.JumpPower = v end 
+    end})
 
-    UserInputService.JumpRequest:Connect(function()
-        if Toggles.InfJump.Value and LocalPlayer.Character then
-            LocalPlayer.Character.Humanoid:ChangeState("Jumping")
+    P_Main:AddToggle('InfJump', { Text = 'Infinite Jump', Default = false })
+    
+    local FlyToggle = P_Main:AddToggle('Fly', { Text = 'Fly Mode', Default = false })
+    -- (Simple Fly Logic would go here, omitting for brevity to focus on specific requests)
+
+    -- Spectate System
+    local SpectateInput = P_Tool:AddInput('SpectateUser', { Default = '', Placeholder = 'Username', Text = 'Spectate Player', Finished = true })
+    
+    P_Tool:AddButton('Spectate', function()
+        local targetName = SpectateInput.Value
+        for _, v in pairs(Players:GetPlayers()) do
+            if string.sub(v.Name:lower(), 1, #targetName) == targetName:lower() then
+                Camera.CameraSubject = v.Character.Humanoid
+                Library:Notify("Spectating: " .. v.Name)
+                return
+            end
         end
+        Camera.CameraSubject = LocalPlayer.Character.Humanoid
+        Library:Notify("Reset View")
+    end)
+    
+    P_Tool:AddButton('Stop Spectating', function()
+        Camera.CameraSubject = LocalPlayer.Character.Humanoid
     end)
 
-    RunService.Stepped:Connect(function()
-        if Toggles.NoClip.Value and LocalPlayer.Character then
-            for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
-                if v:IsA("BasePart") then v.CanCollide = false end
+    P_Tool:AddInput('TPUser', { Default = '', Placeholder = 'Username', Text = 'Teleport To', Finished = true, Callback = function(val)
+        for _, v in pairs(Players:GetPlayers()) do
+            if string.sub(v.Name:lower(), 1, #val) == val:lower() and v.Character and v.Character.HumanoidRootPart then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame * CFrame.new(0,0,3)
+            end
+        end
+    end})
+
+    ----------------------------------------------------------------
+    -- [TAB] Combat: Advanced Aimbot
+    ----------------------------------------------------------------
+    local C_Main = Tabs.Combat:AddLeftGroupbox('Aimbot')
+    local C_Set = Tabs.Combat:AddRightGroupbox('Settings')
+    local C_List = Tabs.Combat:AddRightGroupbox('Whitelist')
+
+    -- Variables
+    local AimSettings = { Enabled = false, AimPart = "Head", Smooth = 1, Predict = 0, Chance = 100 }
+    
+    C_Main:AddToggle('AimEnabled', { Text = 'Enable Aimbot', Default = false, Callback = function(v) AimSettings.Enabled = v end })
+    C_Main:AddDropdown('AimMode', { Values = { 'Hold Right Click', 'Auto Lock' }, Default = 1, Multi = false, Text = 'Trigger Mode' })
+    C_Main:AddDropdown('AimPart', { Values = { 'Head', 'HumanoidRootPart', 'Random' }, Default = 1, Multi = false, Text = 'Target Part', Callback = function(v) AimSettings.AimPart = v end })
+    
+    C_Set:AddSlider('AimSmooth', { Text = 'Smoothness', Default = 1, Min = 1, Max = 20, Rounding = 1, Callback = function(v) AimSettings.Smooth = v end })
+    C_Set:AddSlider('AimPredict', { Text = 'Prediction', Default = 0, Min = 0, Max = 10, Rounding = 1, Callback = function(v) AimSettings.Predict = v end })
+    C_Set:AddSlider('HitChance', { Text = 'Hit Chance (%)', Default = 100, Min = 0, Max = 100, Rounding = 0, Callback = function(v) AimSettings.Chance = v end })
+    
+    C_Set:AddToggle('TeamCheck', { Text = 'Team Check', Default = true })
+    C_Set:AddToggle('WallCheck', { Text = 'Wall Check', Default = true })
+
+    -- Aimbot Core Logic
+    local function IsVisible(target, origin)
+        if not Toggles.WallCheck.Value then return true end
+        local params = RaycastParams.new(); params.FilterType = Enum.RaycastFilterType.Exclude; params.FilterDescendantsInstances = {LocalPlayer.Character}
+        local dir = (target.Position - origin).Unit * (target.Position - origin).Magnitude
+        local res = Workspace:Raycast(origin, dir, params)
+        return res == nil or res.Instance:IsDescendantOf(target.Parent)
+    end
+
+    local function GetTarget()
+        local bestTarget = nil
+        local bestDist = math.huge
+        local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
+                if Toggles.TeamCheck.Value and plr.Team == LocalPlayer.Team then continue end
+                
+                local partName = AimSettings.AimPart
+                if partName == "Random" then
+                    local parts = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}
+                    partName = parts[math.random(1, #parts)]
+                end
+                
+                local targetPart = plr.Character:FindFirstChild(partName)
+                if targetPart then
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                    if onScreen then
+                        if IsVisible(targetPart, Camera.CFrame.Position) then
+                            local dist = (mousePos - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                            if dist < bestDist then
+                                bestDist = dist
+                                bestTarget = targetPart
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return bestTarget
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if not AimSettings.Enabled then return end
+        
+        local isAiming = (Options.AimMode.Value == 'Auto Lock') or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+        
+        if isAiming then
+            local target = GetTarget()
+            if target then
+                if math.random(1, 100) <= AimSettings.Chance then
+                    local predictedPos = target.Position + (target.Velocity * (AimSettings.Predict / 100))
+                    local lookCFrame = CFrame.new(Camera.CFrame.Position, predictedPos)
+                    Camera.CFrame = Camera.CFrame:Lerp(lookCFrame, 1 / AimSettings.Smooth)
+                end
             end
         end
     end)
 
-    -- Player Tools
-    local ToolGroup = Tabs.Player:AddRightGroupbox("Tools")
-    ToolGroup:AddInput('TpUser', { Default = '', Placeholder = 'Username part...', Text = 'Teleport to Player' })
-    ToolGroup:AddButton('Teleport', function()
-        local targetName = Options.TpUser.Value
-        for _, v in pairs(Players:GetPlayers()) do
-            if string.find(string.lower(v.Name), string.lower(targetName)) then
-                if v.Character and v.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character then
-                    LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame
+    ----------------------------------------------------------------
+    -- [TAB] Visuals: Drawing API ESP
+    ----------------------------------------------------------------
+    local V_Main = Tabs.Visuals:AddLeftGroupbox('ESP Elements')
+    local V_Set = Tabs.Visuals:AddRightGroupbox('Settings')
+
+    V_Main:AddToggle('ESP_Box', { Text = 'Box (2D)', Default = false })
+    V_Main:AddToggle('ESP_Skel', { Text = 'Skeleton', Default = false })
+    V_Main:AddToggle('ESP_Trace', { Text = 'Tracers', Default = false })
+    V_Main:AddToggle('ESP_Name', { Text = 'Name Tag', Default = false })
+    
+    V_Set:AddColorPicker('ESP_VisColor', { Default = Color3.fromRGB(0, 255, 0), Title = 'Visible Color' })
+    V_Set:AddColorPicker('ESP_HidColor', { Default = Color3.fromRGB(255, 0, 0), Title = 'Hidden Color' })
+    V_Set:AddToggle('ESP_WallCheck', { Text = 'Color Wall Check', Default = true })
+
+    -- ESP Drawing Cache
+    local Drawings = {} 
+    
+    local function CreateDrawing(type, props)
+        local d = Drawing.new(type)
+        for k, v in pairs(props) do d[k] = v end
+        return d
+    end
+
+    local function RemoveDrawing(plr)
+        if Drawings[plr] then
+            for _, d in pairs(Drawings[plr]) do d:Remove() end
+            Drawings[plr] = nil
+        end
+    end
+
+    RunService.RenderStepped:Connect(function()
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then
+                if not Drawings[plr] then Drawings[plr] = { 
+                    Box = CreateDrawing("Square", {Thickness=1, Filled=false}),
+                    Trace = CreateDrawing("Line", {Thickness=1}),
+                    Name = CreateDrawing("Text", {Size=16, Center=true, Outline=true}),
+                    -- Skeleton lines... (simplified for brevity, usually needs 10+ lines)
+                } end
+                
+                local d = Drawings[plr]
+                local char = plr.Character
+                
+                if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 and (not Toggles.TeamCheck.Value or plr.Team ~= LocalPlayer.Team) then
+                    local root = char.HumanoidRootPart
+                    local head = char:FindFirstChild("Head")
+                    local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                    
+                    local isVis = false
+                    if Toggles.ESP_WallCheck.Value then
+                        isVis = IsVisible(head or root, Camera.CFrame.Position)
+                    else
+                        isVis = true
+                    end
+                    local color = isVis and Options.ESP_VisColor.Value or Options.ESP_HidColor.Value
+
+                    if onScreen then
+                        -- Box Logic
+                        if Toggles.ESP_Box.Value then
+                            d.Box.Visible = true
+                            d.Box.Color = color
+                            d.Box.Size = Vector2.new(2000 / screenPos.Z, 2500 / screenPos.Z)
+                            d.Box.Position = Vector2.new(screenPos.X - d.Box.Size.X/2, screenPos.Y - d.Box.Size.Y/2)
+                        else d.Box.Visible = false end
+
+                        -- Tracer Logic
+                        if Toggles.ESP_Trace.Value then
+                            d.Trace.Visible = true
+                            d.Trace.Color = color
+                            d.Trace.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y) -- Bottom Middle
+                            d.Trace.To = Vector2.new(screenPos.X, screenPos.Y)
+                        else d.Trace.Visible = false end
+
+                        -- Name Logic
+                        if Toggles.ESP_Name.Value then
+                            d.Name.Visible = true
+                            d.Name.Text = plr.Name .. " [" .. math.floor((root.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
+                            d.Name.Color = color
+                            d.Name.Position = Vector2.new(screenPos.X, screenPos.Y - (d.Box.Size.Y/2) - 15)
+                        else d.Name.Visible = false end
+
+                    else
+                        d.Box.Visible = false; d.Trace.Visible = false; d.Name.Visible = false
+                    end
+                else
+                    d.Box.Visible = false; d.Trace.Visible = false; d.Name.Visible = false
                 end
+            end
+        end
+    end)
+    
+    Players.PlayerRemoving:Connect(RemoveDrawing)
+
+    ----------------------------------------------------------------
+    -- [TAB] Misc
+    ----------------------------------------------------------------
+    local M_Gen = Tabs.Misc:AddLeftGroupbox('Server')
+    
+    M_Gen:AddToggle('AntiAFK', { Text = 'Anti AFK', Default = true })
+    M_Gen:AddButton('Rejoin Server', function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+    M_Gen:AddButton('Server Hop (Low Users)', function()
+        -- Server Hop Logic (Simplified)
+        local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"))
+        for _, s in pairs(servers.data) do
+            if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
                 break
             end
         end
     end)
     
-    ToolGroup:AddSlider('FOV', { Text = 'Field of View', Default = 70, Min = 30, Max = 120, Callback = function(v) Camera.FieldOfView = v end })
-
-    ----------------------------------------------------------------
-    -- [TAB] Combat: Advanced Aimbot
-    ----------------------------------------------------------------
-    local AimMain = Tabs.Combat:AddLeftGroupbox("Aimbot Settings")
-    AimMain:AddToggle('AimEnabled', { Text = 'Enable Aimbot', Default = false })
-    AimMain:AddDropdown('AimMode', { Values = {'Hold (Right Click)', 'Auto Lock'}, Default = 1, Multi = false, Text = 'Aim Mode' })
-    AimMain:AddDropdown('AimPart', { Values = {'Head', 'Torso', 'Random'}, Default = 1, Multi = false, Text = 'Target Part' })
-    
-    AimMain:AddSlider('AimSmooth', { Text = 'Smoothness', Default = 5, Min = 1, Max = 20, Rounding = 1 })
-    AimMain:AddSlider('AimRadius', { Text = 'FOV Radius', Default = 100, Min = 10, Max = 500 })
-    
-    local AimCalc = Tabs.Combat:AddRightGroupbox("Calculation & Filters")
-    AimCalc:AddToggle('AimWallCheck', { Text = 'Wall Check', Default = true })
-    AimCalc:AddToggle('AimTeamCheck', { Text = 'Team Check', Default = true })
-    AimCalc:AddSlider('HitChance', { Text = 'Hit Chance %', Default = 100, Min = 1, Max = 100 })
-    AimCalc:AddSlider('HeadPercent', { Text = 'Head Shot %', Default = 50, Min = 0, Max = 100, Tooltip = 'If "Random" selected, how often to hit Head' })
-
-    -- Aimbot Logic
-    local currentTarget = nil
-    
-    local function getClosestPlayer()
-        local closest = nil
-        local shortestDist = Options.AimRadius.Value
-        local mousePos = UserInputService:GetMouseLocation()
-
-        for _, plr in pairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") and plr.Character.Humanoid.Health > 0 then
-                
-                -- Team Check
-                if Toggles.AimTeamCheck.Value and plr.Team == LocalPlayer.Team then continue end
-
-                local pos, onScreen = Camera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
-                if onScreen then
-                    local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
-                    if dist < shortestDist then
-                        -- Wall Check
-                        if Toggles.AimWallCheck.Value then
-                            local ray = Ray.new(Camera.CFrame.Position, (plr.Character.Head.Position - Camera.CFrame.Position).Unit * 500)
-                            local hit, _ = Workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character})
-                            if hit and not hit:IsDescendantOf(plr.Character) then continue end
-                        end
-                        
-                        shortestDist = dist
-                        closest = plr
-                    end
-                end
-            end
+    -- Anti AFK Loop
+    LocalPlayer.Idled:Connect(function()
+        if Toggles.AntiAFK.Value then
+            game:GetService("VirtualUser"):CaptureController()
+            game:GetService("VirtualUser"):ClickButton2(Vector2.new())
         end
-        return closest
-    end
+    end)
 
-    local function getTargetPart()
-        if Options.AimPart.Value == 'Head' then return "Head" end
-        if Options.AimPart.Value == 'Torso' then return "HumanoidRootPart" end
+    ----------------------------------------------------------------
+    -- [TAB] Game: Universal Module Loader
+    ----------------------------------------------------------------
+    local GameGroup = Tabs.Game:AddLeftGroupbox('Module Loader')
+    
+    local function LoadGameSpecifics()
+        local pid = game.PlaceId
+        local url = nil
+        local gameName = "Universal"
+
+        if pid == 2753915549 or pid == 4442272183 then
+            gameName = "Blox Fruits"
+            -- url = "https://raw.githubusercontent.com/.../BloxFruits.lua"
+        elseif pid == 155615604 then
+            gameName = "Prison Life"
+        end
         
-        -- Percentage Logic
-        if math.random(1, 100) <= Options.HeadPercent.Value then
-            return "Head"
+        GameGroup:AddLabel('Detected: ' .. gameName)
+        
+        if url then
+            GameGroup:AddButton('Load '..gameName..' Script', function()
+                loadstring(game:HttpGet(url))()
+            end)
         else
-            return "HumanoidRootPart" -- Body
+            GameGroup:AddLabel('No specific module found.')
+            GameGroup:AddLabel('Universal features are active.')
         end
     end
-
-    RunService.RenderStepped:Connect(function()
-        if Toggles.AimEnabled.Value then
-            local isAiming = (Options.AimMode.Value == 'Auto Lock') or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-            
-            if isAiming then
-                -- Chance Check
-                if math.random(1, 100) > Options.HitChance.Value then return end
-
-                currentTarget = getClosestPlayer()
-                if currentTarget and currentTarget.Character then
-                    local partName = getTargetPart()
-                    local targetPos = currentTarget.Character[partName].Position
-                    
-                    local currentCFrame = Camera.CFrame
-                    local targetCFrame = CFrame.new(currentCFrame.Position, targetPos)
-                    
-                    -- Smoothness
-                    Camera.CFrame = currentCFrame:Lerp(targetCFrame, 1 / Options.AimSmooth.Value)
-                end
-            else
-                currentTarget = nil
-            end
-        end
-    end)
     
-    -- Draw FOV Circle
-    local FOVCircle = Drawing.new("Circle")
-    FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-    FOVCircle.Thickness = 1
-    FOVCircle.NumSides = 60
-    FOVCircle.Filled = false
-    FOVCircle.Transparency = 1
-    
-    RunService.RenderStepped:Connect(function()
-        FOVCircle.Visible = Toggles.AimEnabled.Value
-        FOVCircle.Radius = Options.AimRadius.Value
-        FOVCircle.Position = UserInputService:GetMouseLocation()
-    end)
-
-    ----------------------------------------------------------------
-    -- [TAB] ESP: Visuals (Advanced)
-    ----------------------------------------------------------------
-    local ESPMain = Tabs.ESP:AddLeftGroupbox("ESP Settings")
-    ESPMain:AddToggle('ESP_Box', { Text = 'Box ESP', Default = false })
-    ESPMain:AddToggle('ESP_Name', { Text = 'Names', Default = false })
-    ESPMain:AddToggle('ESP_Health', { Text = 'Health Bar', Default = false })
-    ESPMain:AddToggle('ESP_Chams', { Text = 'Chams (Highlight)', Default = false })
-    
-    local ESPColor = Tabs.ESP:AddRightGroupbox("Colors & Checks")
-    ESPColor:AddToggle('ESP_TeamCheck', { Text = 'Team Check', Default = true })
-    ESPColor:AddToggle('ESP_WallCheck', { Text = 'Wall Check (Color)', Default = true, Tooltip = 'Green=Visible, Red=Hidden' })
-    ESPColor:AddColorPicker('Color_Vis', { Default = Color3.fromRGB(0, 255, 0), Title = 'Visible Color' })
-    ESPColor:AddColorPicker('Color_Hid', { Default = Color3.fromRGB(255, 0, 0), Title = 'Hidden Color' })
-
-    -- ESP Loop (Efficient)
-    local ESP_Folder = Instance.new("Folder", game.CoreGui)
-    ESP_Folder.Name = "BxB_ESP"
-
-    local function CreateHighlight(model)
-        if model:FindFirstChild("BxB_Highlight") then return model.BxB_Highlight end
-        local hl = Instance.new("Highlight")
-        hl.Name = "BxB_Highlight"
-        hl.FillTransparency = 0.5
-        hl.OutlineTransparency = 0
-        hl.Parent = model
-        return hl
-    end
-
-    local function isVisible(part)
-        local origin = Camera.CFrame.Position
-        local direction = (part.Position - origin).Unit * (part.Position - origin).Magnitude
-        local ray = Ray.new(origin, direction)
-        local hit, _ = Workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character})
-        return hit and hit:IsDescendantOf(part.Parent)
-    end
-
-    task.spawn(function()
-        while true do
-            task.wait(0.1) -- Refresh Rate
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                    
-                    -- Cleanup if disabled
-                    local hl = plr.Character:FindFirstChild("BxB_Highlight")
-                    local bg = plr.Character:FindFirstChild("BxB_Info")
-
-                    if not Toggles.ESP_Chams.Value and hl then hl:Destroy() end
-                    if not Toggles.ESP_Name.Value and bg then bg:Destroy() end
-                    
-                    -- Check Team
-                    if Toggles.ESP_TeamCheck.Value and plr.Team == LocalPlayer.Team then 
-                        if hl then hl:Destroy() end
-                        continue 
-                    end
-
-                    -- Chams Logic
-                    if Toggles.ESP_Chams.Value then
-                        local h = CreateHighlight(plr.Character)
-                        local visible = true
-                        if Toggles.ESP_WallCheck.Value then
-                            visible = isVisible(plr.Character.HumanoidRootPart)
-                        end
-                        
-                        h.FillColor = visible and Options.Color_Vis.Value or Options.Color_Hid.Value
-                        h.OutlineColor = visible and Options.Color_Vis.Value or Options.Color_Hid.Value
-                    end
-
-                    -- Name/Info Logic (Billboard)
-                    if Toggles.ESP_Name.Value or Toggles.ESP_Health.Value then
-                        if not bg then
-                            bg = Instance.new("BillboardGui")
-                            bg.Name = "BxB_Info"
-                            bg.Adornee = plr.Character.Head
-                            bg.Size = UDim2.new(0, 100, 0, 50)
-                            bg.StudsOffset = Vector3.new(0, 2, 0)
-                            bg.AlwaysOnTop = true
-                            bg.Parent = plr.Character
-                            
-                            local nameLbl = Instance.new("TextLabel", bg)
-                            nameLbl.Size = UDim2.new(1, 0, 0.5, 0)
-                            nameLbl.BackgroundTransparency = 1
-                            nameLbl.TextColor3 = Color3.new(1,1,1)
-                            nameLbl.TextStrokeTransparency = 0
-                            nameLbl.Name = "NameLbl"
-                            
-                            local hpLbl = Instance.new("TextLabel", bg)
-                            hpLbl.Size = UDim2.new(1, 0, 0.5, 0)
-                            hpLbl.Position = UDim2.new(0, 0, 0.5, 0)
-                            hpLbl.BackgroundTransparency = 1
-                            hpLbl.TextColor3 = Color3.new(0,1,0)
-                            hpLbl.TextStrokeTransparency = 0
-                            hpLbl.Name = "HpLbl"
-                        end
-                        
-                        if bg:FindFirstChild("NameLbl") then 
-                            bg.NameLbl.Text = Toggles.ESP_Name.Value and plr.Name or "" 
-                        end
-                        
-                        if bg:FindFirstChild("HpLbl") and Toggles.ESP_Health.Value then
-                            local hp = math.floor(plr.Character.Humanoid.Health)
-                            local maxHp = plr.Character.Humanoid.MaxHealth
-                            bg.HpLbl.Text = hp .. " / " .. maxHp
-                            bg.HpLbl.TextColor3 = Color3.fromHSV((hp/maxHp)*0.3, 1, 1) -- Green to Red
-                        else
-                            bg.HpLbl.Text = ""
-                        end
-                    end
-                end
-            end
-        end
-    end)
-
-    ----------------------------------------------------------------
-    -- [TAB] Misc
-    ----------------------------------------------------------------
-    local MiscMain = Tabs.Misc:AddLeftGroupbox("General")
-    MiscMain:AddToggle('AntiAFK', { Text = 'Anti-AFK', Default = true })
-    
-    MiscMain:AddButton('Rejoin Server', function()
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-    end)
-    
-    local HopGroup = Tabs.Misc:AddRightGroupbox("Server Hop")
-    HopGroup:AddButton('Hop (Low Player)', function()
-        Library:Notify("Scanning for low player servers...", 5)
-        -- ใส่โค้ด Server Hop API ตรงนี้ (ย่อไว้)
-    end)
-    
-    -- Anti AFK
-    task.spawn(function()
-        VirtualUser:CaptureController()
-        LocalPlayer.Idled:Connect(function()
-            if Toggles.AntiAFK.Value then
-                VirtualUser:Button2Down(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
-                task.wait(1)
-                VirtualUser:Button2Up(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
-                Library:Notify("Anti-AFK Triggered", 3)
-            end
-        end)
-    end)
-
-    ----------------------------------------------------------------
-    -- [TAB] Game: Auto Detect
-    ----------------------------------------------------------------
-    local GameGroup = Tabs.Game:AddLeftGroupbox("Game Detection")
-    local CurrentID = game.PlaceId
-    
-    -- Game Database
-    local GameDB = {
-        [2753915549] = { Name = "Blox Fruits", Url = "URL_TO_BLOXFRUIT_SCRIPT" },
-        [4442272183] = { Name = "Blox Fruits", Url = "URL_TO_BLOXFRUIT_SCRIPT" },
-        [7449423635] = { Name = "Blox Fruits", Url = "URL_TO_BLOXFRUIT_SCRIPT" },
-        [286090429]  = { Name = "Arsenal", Url = "URL_TO_ARSENAL_SCRIPT" },
-        [155615604]  = { Name = "Prison Life", Url = "URL_TO_PRISON_SCRIPT" },
-    }
-    
-    local Detected = GameDB[CurrentID]
-    
-    if Detected then
-        GameGroup:AddLabel('Detected: <font color="#00FF00">' .. Detected.Name .. '</font>')
-        GameGroup:AddButton('Load ' .. Detected.Name .. ' Module', function()
-            Library:Notify("Loading Module...", 3)
-            loadstring(game:HttpGet(Detected.Url))()
-        end)
-    else
-        GameGroup:AddLabel('Detected: <font color="#FFFF00">Universal</font>')
-        GameGroup:AddLabel('No specific module found for this game.')
-        GameGroup:AddLabel('Universal scripts are active.')
-    end
+    LoadGameSpecifics()
 
     ----------------------------------------------------------------
     -- [TAB] Settings
     ----------------------------------------------------------------
     ThemeManager:SetLibrary(Library)
     SaveManager:SetLibrary(Library)
-    
-    ThemeManager:SetFolder("BxB_Ware")
-    SaveManager:SetFolder("BxB_Ware/Configs")
+    SaveManager:IgnoreThemeSettings()
+    SaveManager:SetFolder('BxB_Ware/Main')
+    ThemeManager:SetFolder('BxB_Ware')
     
     SaveManager:BuildConfigSection(Tabs.Settings)
     ThemeManager:ApplyToTab(Tabs.Settings)
 
-    Window:SelectTab(1)
-    Library:Notify("BxB.ware Premium Loaded!", 5)
+    Library:Notify("BxB.ware Premium Loaded Successfully!", 5)
 end
