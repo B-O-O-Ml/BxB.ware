@@ -1,204 +1,459 @@
 -- Main_Hub.lua
--- แนะนำ: เซฟไฟล์นี้บน GitHub raw แล้วชี้ Config.MAINHUB_URL มาที่ไฟล์นี้
+-- ถูกเรียกจาก Key UI: startFn(Exec, keydata, dynamicToken)
 
-----------------------------------------------------------------
--- Services / Locals
-----------------------------------------------------------------
-local HttpService = game:GetService("HttpService")
-local RbxAnalyticsService = game:GetService("RbxAnalyticsService")
+return function(Exec, UserData, IncomingToken)
+    ----------------------------------------------------------------
+    -- 0. Basic Services
+    ----------------------------------------------------------------
+    local Players         = game:GetService("Players")
+    local RunService      = game:GetService("RunService")
+    local UserInputService= game:GetService("UserInputService")
+    local Stats           = game:FindService("Stats") or game:GetService("Stats")
+    local HttpService     = game:GetService("HttpService")
+    local StarterGui      = game:GetService("StarterGui")
+    local Lighting        = game:GetService("Lighting")
+    local TeleportService = game:GetService("TeleportService")
 
-----------------------------------------------------------------
--- Config (ใส่ URL จริงตาม Key UI ของคุณ)
-----------------------------------------------------------------
-local Config = {
-    LIBRARY_URL      = "https://raw.githubusercontent.com/....../Library.lua",      -- TODO: แก้เป็นของจริง
-    THEME_URL        = "https://raw.githubusercontent.com/....../ThemeManager.lua", -- TODO
-    SAVEMANAGER_URL  = "https://raw.githubusercontent.com/....../SaveManager.lua",  -- TODO
+    local LocalPlayer     = Players.LocalPlayer
+    local Camera          = workspace.CurrentCamera
 
-    CONFIG_FOLDER    = "BxB.ware",
-    CONFIG_FILE      = "BxB_Universal_Config.json"
-}
+    ----------------------------------------------------------------
+    -- 1. Security Layer: Dynamic Token Check
+    ----------------------------------------------------------------
+    local secretSalt   = "BxB_SUPER_SECRET_SALT_CHANGE_THIS" -- ต้องตรงกับ Key UI
+    local datePart     = os.date("%Y%m%d")
+    local expectedToken= secretSalt .. "_" .. datePart
 
-----------------------------------------------------------------
--- HWID / Hash (ให้คุณ copy มาจาก Key UI เพื่อให้ hash ตรงกัน)
-----------------------------------------------------------------
+    if IncomingToken ~= expectedToken then
+        warn("[BxB Security] Invalid Security Token!")
 
--- TODO: copy ฟังก์ชัน secureHWIDHash, rotl32 และส่วนที่ใช้ bit32 จาก Key UI มาวางตรงนี้
--- ตัวอย่าง placeholder (ห้ามใช้จริง เพราะจะ hash ไม่ตรง keydata.hwid_hash)
-local function secureHWIDHash(str)
-    -- ใส่โค้ดเดียวกับ Key UI ตรงนี้
-    return str  -- placeholder เฉย ๆ
-end
+        if LocalPlayer then
+            LocalPlayer:Kick("Security Breach: Invalid Token (Please re-login via Key UI)")
+        end
 
-local function getCurrentHWID()
-    local ok, clientId = pcall(function()
-        return RbxAnalyticsService:GetClientId()
-    end)
-
-    if not ok or not clientId then
-        warn("[MainHub] Failed to get HWID:", clientId)
-        return nil
+        return
     end
 
-    return clientId
-end
+    ----------------------------------------------------------------
+    -- 2. Security Layer: UserData Check
+    ----------------------------------------------------------------
+    if type(UserData) ~= "table" or type(UserData.key) ~= "string" then
+        warn("[BxB Security] Invalid UserData from Key UI")
+        return
+    end
 
-----------------------------------------------------------------
--- Dynamic Token (ต้องตรงกับ Key UI)
-----------------------------------------------------------------
+    -- helper ปลอดภัยเวลาหา field
+    local function safe(t, k, default)
+        if type(t) ~= "table" then
+            return default
+        end
+        local v = t[k]
+        if v == nil then
+            return default
+        end
+        return v
+    end
 
-local SECRET_SALT = "BxB_SUPER_SECRET_SALT_CHANGE_THIS"  -- ต้อง = secretSalt ฝั่ง Key UI
+    local keyValue   = safe(UserData, "key", "UNKNOWN_KEY")
+    local keyStatus  = safe(UserData, "status", "unknown")
+    local keyRole    = safe(UserData, "role", "user")
+    local keyOwner   = safe(UserData, "owner", "N/A")
+    local keyNote    = safe(UserData, "note", "No note")
+    local keyCreated = safe(UserData, "timestamp", nil)  -- แนะนำให้เป็น os.time() จากฝั่ง keydata
+    local keyExpire  = safe(UserData, "expire", nil)     -- แนะนำให้เป็น os.time() หมดอายุ
 
-local function buildExpectedToken()
-    -- ใช้ pattern เดียวกับ Key UI
-    local datePart = os.date("%Y%m%d")
-    return SECRET_SALT .. "_" .. datePart
-end
+    print(("[BxB] Access Granted. Key: %s | Role: %s"):format(keyValue, keyRole))
 
-----------------------------------------------------------------
--- Obsidian Loader สำหรับ Main Hub
-----------------------------------------------------------------
+    ----------------------------------------------------------------
+    -- 3. Config: URL ของ Obsidian / Theme / Save
+    ----------------------------------------------------------------
+    local Config = {
+        LIB_URL      = "https://raw.githubusercontent.com/your-user/your-repo/main/Library.lua",
+        THEME_URL    = "https://raw.githubusercontent.com/your-user/your-repo/main/ThemeManager.lua",
+        SAVE_URL     = "https://raw.githubusercontent.com/your-user/your-repo/main/SaveManager.lua",
+        FOLDER_NAME  = "BxB.ware",  -- สำหรับ SaveManager
+    }
 
-local function loadObsidian(Exec)
-    -- Load Library
-    local libSrc = Exec.HttpGet(Config.LIBRARY_URL)
-    local libChunk, err = loadstring(libSrc)
+    local function safeHttpGet(url)
+        local ok, res = pcall(function()
+            return Exec.HttpGet(url)
+        end)
+        if not ok then
+            warn("[BxB] HttpGet failed for: " .. tostring(url) .. " | " .. tostring(res))
+            return nil
+        end
+        return res
+    end
+
+    ----------------------------------------------------------------
+    -- 4. Load Obsidian Library + ThemeManager + SaveManager
+    ----------------------------------------------------------------
+    local librarySrc = safeHttpGet(Config.LIB_URL)
+    if not librarySrc then
+        warn("[BxB] Cannot load Library.lua")
+        return
+    end
+
+    local libChunk, libErr = loadstring(librarySrc)
     if not libChunk then
-        warn("[MainHub] Failed to load Library:", err)
-        return nil
+        warn("[BxB] Library chunk error: " .. tostring(libErr))
+        return
     end
 
     local Library = libChunk()
-
-    -- Load ThemeManager
-    local themeSrc = Exec.HttpGet(Config.THEME_URL)
-    local themeChunk, err2 = loadstring(themeSrc)
-    if not themeChunk then
-        warn("[MainHub] Failed to load ThemeManager:", err2)
-        return nil
-    end
-
-    local ThemeManager = themeChunk()
-
-    -- Load SaveManager
-    local saveSrc = Exec.HttpGet(Config.SAVEMANAGER_URL)
-    local saveChunk, err3 = loadstring(saveSrc)
-    if not saveChunk then
-        warn("[MainHub] Failed to load SaveManager:", err3)
-        return nil
-    end
-
-    local SaveManager = saveChunk()
-
-    return Library, ThemeManager, SaveManager
-end
-
-----------------------------------------------------------------
--- Entry Point: จะถูกเรียกจาก Key UI
---   pcall(startFn, Exec, keydata, dynamicToken)
-----------------------------------------------------------------
-return function(Exec, keydata, dynamicToken)
-    ----------------------------------------------------------------
-    -- 1) ตรวจ dynamicToken ให้ตรงรูปแบบที่คาดหวัง
-    ----------------------------------------------------------------
-    local expectedToken = buildExpectedToken()
-    if dynamicToken ~= expectedToken then
-        warn("[MainHub] Invalid dynamic token! Loader mismatch or wrong date.")
-        return
-    end
-
-    ----------------------------------------------------------------
-    -- 2) ตรวจรูปแบบ keydata เบื้องต้น
-    ----------------------------------------------------------------
-    if type(keydata) ~= "table" or type(keydata.key) ~= "string" then
-        warn("[MainHub] Invalid keydata structure")
-        return
-    end
-
-    -- ตัวอย่าง field ที่คาดหวัง (แล้วแต่ที่คุณใช้ใน Key UI)
-    -- keydata.key        : string
-    -- keydata.hwid_hash  : string
-    -- keydata.role       : "user"/"premium"/"staff"/"owner"
-    -- keydata.expire_ts  : timestamp หมดอายุ (optional)
-    -- keydata.status     : "active"/"banned"/ฯลฯ (optional)
-
-    ----------------------------------------------------------------
-    -- 3) (ตัวเลือก) Re-check HWID จากเครื่องจริง
-    --    ตรงนี้จะทำงานได้ต้อง copy secureHWIDHash จาก Key UI มาแทน placeholder ด้านบน
-    ----------------------------------------------------------------
-    local hwid = getCurrentHWID()
-    if not hwid then
-        warn("[MainHub] Cannot verify HWID")
-        return
-    end
-
-    local currentHash = secureHWIDHash(hwid)
-
-    if keydata.hwid_hash and currentHash and keydata.hwid_hash ~= currentHash then
-        warn("[MainHub] HWID mismatch: key is not bound to this device")
-        return
-    end
-
-    ----------------------------------------------------------------
-    -- 4) (ตัวเลือก) ตรวจ role / expire / status เพิ่มเติม
-    ----------------------------------------------------------------
-    -- ตัวอย่าง: ถ้ามี expire_ts เป็น timestamp วินาที
-    -- local now = os.time()
-    -- if keydata.expire_ts and now > keydata.expire_ts then
-    --     warn("[MainHub] Key expired")
-    --     return
-    -- end
-    --
-    -- if keydata.status and keydata.status ~= "active" then
-    --     warn("[MainHub] Key status is not active:", keydata.status)
-    --     return
-    -- end
-
-    ----------------------------------------------------------------
-    -- 5) โหลด Obsidian Library สำหรับ Main Hub UI
-    ----------------------------------------------------------------
-    local Library, ThemeManager, SaveManager = loadObsidian(Exec)
     if not Library then
+        warn("[BxB] Library returned nil")
         return
     end
 
-    -- ตั้งค่าเบื้องต้น (ตัวอย่าง)
-    local window = Library:CreateWindow({
-        Title = "BxB.ware | Universal Hub",
+    local ThemeManager, SaveManager
+
+    do
+        local themeSrc = Config.THEME_URL and safeHttpGet(Config.THEME_URL)
+        if themeSrc then
+            local ok, mod = pcall(loadstring(themeSrc))
+            if ok and type(mod) == "table" then
+                ThemeManager = mod
+                if ThemeManager.SetLibrary then
+                    ThemeManager:SetLibrary(Library)
+                end
+            else
+                warn("[BxB] Failed to init ThemeManager: " .. tostring(mod))
+            end
+        end
+
+        local saveSrc = Config.SAVE_URL and safeHttpGet(Config.SAVE_URL)
+        if saveSrc then
+            local ok, mod = pcall(loadstring(saveSrc))
+            if ok and type(mod) == "table" then
+                SaveManager = mod
+                if SaveManager.SetLibrary then
+                    SaveManager:SetLibrary(Library)
+                end
+                if SaveManager.SetFolder then
+                    SaveManager:SetFolder(Config.FOLDER_NAME .. "/Config")
+                end
+            else
+                warn("[BxB] Failed to init SaveManager: " .. tostring(mod))
+            end
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- 5. Create Window & Tabs (ตามโครงที่คุณกำหนด)
+    ----------------------------------------------------------------
+    local Window = Library:CreateWindow({
+        Title = "",
+        Icon = 84528813312016,
+        Size = UDim2.fromOffset(720, 600),
         Center = true,
         AutoShow = true,
-        TabPadding = 8,
-        MenuFadeTime = 0.2,
-        Size = UDim2.fromOffset(650, 400),
-        NoResize = false,
-        ShowSideBar = true
+        Resizable = true,
+        Compact = true
     })
 
-    -- คุณสามารถใช้ keydata.role มาคุมสิทธิ์ตรงนี้ได้
-    -- ตัวอย่าง: Tab หลัก ๆ
-    local tabHome      = window:AddTab("Home")
-    local tabUniversal = window:AddTab("Universal")
-    local tabSettings  = window:AddTab("Settings")
+    local Tabs = {
+        Info = Window:AddTab({
+            Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>',
+            Icon = "database",
+            Description = "Key Status / Info"
+        }),
+        Player = Window:AddTab({
+            Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>',
+            Icon = "users",
+            Description = "Player Tool"
+        }),
+        Combat = Window:AddTab({
+            Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>',
+            Icon = "eye",
+            Description = "Combat Client"
+        }),
+        ESP = Window:AddTab({
+            Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>',
+            Icon = "crosshair",
+            Description = "ESP Client"
+        }),
+        Misc = Window:AddTab({
+            Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>',
+            Icon = "crosshair",
+            Description = "Misc Client"
+        }),
+        Game = Window:AddTab({
+            Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>',
+            Icon = "joystick",
+            Description = "Game Module"
+        }),
+        Settings = Window:AddTab({
+            Name = '<b><font color="#FF0000">BxB.ware | Premium</font></b>',
+            Icon = "settings",
+            Description = "UI/UX Settings"
+        }),
+    }
 
-    -- แค่ตัวอย่าง groupbox/label เปิดหัว
-    local gbInfo = tabHome:AddLeftGroupbox("Key Info")
-    gbInfo:AddLabel(("Key: %s"):format(keydata.key or "N/A"))
-    gbInfo:AddLabel(("Role: %s"):format(keydata.role or "user"))
-    gbInfo:AddLabel(("HWID Hash: %s"):format(keydata.hwid_hash or "N/A"))
+    ----------------------------------------------------------------
+    -- 6. Info Tab: Key Status + System Info (Skeleton + Countdown)
+    ----------------------------------------------------------------
+    local KeyBox = Tabs.Info:AddLeftGroupbox("Key Status")
+    local SysBox = Tabs.Info:AddRightGroupbox("System / Session")
 
-    -- TODO: เพิ่มฟังก์ชัน Universal ต่าง ๆ ใน tabUniversal
-    -- TODO: ใส่ ThemeManager/SaveManager ใน tabSettings
-
-    -- ตัวอย่าง hook Theme/Save (ตาม pattern เดิมของ Obsidian/Example)
-    if ThemeManager then
-        ThemeManager:SetLibrary(Library)
-        ThemeManager:LoadDefault() -- หรือ ThemeManager:ApplyToTab(...)
+    -- แสดงค่าคีย์แบบ mask นิดหน่อย
+    local function maskKey(key)
+        key = tostring(key)
+        if #key <= 6 then
+            return key
+        end
+        return key:sub(1, 3) .. string.rep("*", math.max(0, #key - 6)) .. key:sub(#key-2, #key)
     end
 
-    if SaveManager then
-        SaveManager:SetLibrary(Library)
-        SaveManager:BuildConfigSection(tabSettings)
+    KeyBox:AddLabel("Key : " .. maskKey(keyValue))
+    KeyBox:AddLabel("Status : " .. tostring(keyStatus))
+    KeyBox:AddLabel("Role : " .. tostring(keyRole))
+    KeyBox:AddLabel("Owner : " .. tostring(keyOwner))
+    KeyBox:AddLabel("Note : " .. tostring(keyNote))
+
+    local createdLabel = KeyBox:AddLabel("Created : " .. (keyCreated and os.date("%Y-%m-%d %H:%M:%S", keyCreated) or "N/A"))
+    local expireLabel  = KeyBox:AddLabel("Expire : " .. (keyExpire and os.date("%Y-%m-%d %H:%M:%S", keyExpire) or "N/A"))
+    local remainLabel  = KeyBox:AddLabel("Time Left : calculating...")
+
+    -- helper แปลง seconds -> string
+    local function formatDuration(sec)
+        if not sec or sec < 0 then
+            return "Expired"
+        end
+        local d = math.floor(sec / 86400)
+        sec = sec % 86400
+        local h = math.floor(sec / 3600)
+        sec = sec % 3600
+        local m = math.floor(sec / 60)
+        local s = sec % 60
+
+        local parts = {}
+        if d > 0 then table.insert(parts, d .. "d") end
+        if h > 0 then table.insert(parts, h .. "h") end
+        if m > 0 then table.insert(parts, m .. "m") end
+        table.insert(parts, s .. "s")
+
+        return table.concat(parts, " ")
     end
 
-    -- จากตรงนี้ไป คุณค่อยเติมฟังก์ชัน Universal / ESP / Tools ตามที่ต้องการ
+    -- อัปเดต countdown ทุกวินาที
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if not keyExpire or type(keyExpire) ~= "number" then
+                remainLabel:SetText("Time Left : N/A")
+            else
+                local now = os.time()
+                local remain = keyExpire - now
+                remainLabel:SetText("Time Left : " .. formatDuration(remain))
+            end
+        end
+    end)
+
+    -- System / Session info
+    local function getPing()
+        local network = Stats and Stats:FindFirstChild("Network")
+        local serverStats = network and network:FindFirstChild("ServerStatsItem")
+        local dataPing = serverStats and serverStats:FindFirstChild("Data Ping")
+        return dataPing and math.floor(dataPing:GetValue()) or nil
+    end
+
+    local function getFPS()
+        -- วิธีง่าย ๆ: วัดด้วย RenderStepped ในที่อื่นก็ได้
+        return nil
+    end
+
+    local gameInfoLabel   = SysBox:AddLabel("Game ID : " .. tostring(game.PlaceId))
+    local jobIdLabel      = SysBox:AddLabel("Job ID : " .. tostring(game.JobId))
+    SysBox:AddLabel("Game Name : " .. (game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name or "Unknown"))
+
+    SysBox:AddDivider()
+
+    local userLabel       = SysBox:AddLabel("User : " .. (LocalPlayer and LocalPlayer.Name or "N/A"))
+    local displayLabel    = SysBox:AddLabel("Display : " .. (LocalPlayer and LocalPlayer.DisplayName or "N/A"))
+    local ageLabel        = SysBox:AddLabel("Account Age : " .. (LocalPlayer and tostring(LocalPlayer.AccountAge) .. " days" or "N/A"))
+
+    SysBox:AddDivider()
+
+    local pingLabel       = SysBox:AddLabel("Ping : N/A")
+    local fpsLabel        = SysBox:AddLabel("FPS : N/A")
+
+    -- loop อัปเดต Ping/FPS
+    task.spawn(function()
+        local lastTime = tick()
+        local frames = 0
+        while true do
+            RunService.RenderStepped:Wait()
+            frames = frames + 1
+            local now = tick()
+            if now - lastTime >= 1 then
+                local fps = frames / (now - lastTime)
+                frames = 0
+                lastTime = now
+
+                fpsLabel:SetText("FPS : " .. tostring(math.floor(fps)))
+
+                local ping = getPing()
+                if ping then
+                    pingLabel:SetText("Ping : " .. tostring(ping) .. " ms")
+                end
+            end
+        end
+    end)
+
+    ----------------------------------------------------------------
+    -- 7. Player Tab: Movement / Tools (Skeleton)
+    ----------------------------------------------------------------
+    local MoveBox = Tabs.Player:AddLeftGroupbox("Movement")
+    local ToolBox = Tabs.Player:AddRightGroupbox("Player Tools")
+
+    -- WalkSpeed / JumpPower basic
+    local defaultWalkSpeed = 16
+    local defaultJumpPower = 50
+
+    local function getHumanoid()
+        local char = LocalPlayer and LocalPlayer.Character
+        if not char then return nil end
+        return char:FindFirstChildOfClass("Humanoid")
+    end
+
+    MoveBox:AddSlider("BxB_WalkSpeed", {
+        Text = "WalkSpeed",
+        Default = defaultWalkSpeed,
+        Min = 0,
+        Max = 200,
+        Rounding = 0,
+        Compact = false
+    }):OnChanged(function(value)
+        local hum = getHumanoid()
+        if hum then
+            hum.WalkSpeed = value
+        end
+    end)
+
+    MoveBox:AddSlider("BxB_JumpPower", {
+        Text = "JumpPower",
+        Default = defaultJumpPower,
+        Min = 0,
+        Max = 200,
+        Rounding = 0,
+        Compact = false
+    }):OnChanged(function(value)
+        local hum = getHumanoid()
+        if hum then
+            hum.JumpPower = value
+        end
+    end)
+
+    -- Inf Jump (ตัวอย่าง logic เบื้องต้น)
+    local InfJumpToggle = MoveBox:AddToggle("BxB_InfJump", {
+        Text = "Infinite Jump",
+        Default = false
+    })
+
+    do
+        local infJumpEnabled = false
+
+        InfJumpToggle:OnChanged(function(value)
+            infJumpEnabled = value
+        end)
+
+        UserInputService.JumpRequest:Connect(function()
+            if infJumpEnabled then
+                local hum = getHumanoid()
+                if hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end
+        end)
+    end
+
+    -- TODO: Fly, Noclip, ฯลฯ จะใส่ในรอบถัดไป
+
+    -- Player Tools (skeleton)
+    local playerList = {}
+    local function refreshPlayers()
+        table.clear(playerList)
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then
+                table.insert(playerList, plr.Name)
+            end
+        end
+    end
+
+    refreshPlayers()
+    Players.PlayerAdded:Connect(refreshPlayers)
+    Players.PlayerRemoving:Connect(refreshPlayers)
+
+    local SpectateDropdown = ToolBox:AddDropdown("BxB_SpectateTarget", {
+        Text = "Spectate Player",
+        Values = playerList,
+        Default = 1,
+        Multi = false
+    })
+
+    local spectating = nil
+
+    ToolBox:AddToggle("BxB_SpectateToggle", {
+        Text = "Enable Spectate",
+        Default = false
+    }):OnChanged(function(on)
+        if on then
+            local targetName = SpectateDropdown.Value
+            spectating = Players:FindFirstChild(targetName)
+        else
+            spectating = nil
+            if Camera then
+                Camera.CameraSubject = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            end
+        end
+    end)
+
+    SpectateDropdown:OnChanged(function(value)
+        if value then
+            spectating = Players:FindFirstChild(value)
+        end
+    end)
+
+    RunService.RenderStepped:Connect(function()
+        if spectating and spectating.Character and Camera then
+            local hum = spectating.Character:FindFirstChildOfClass("Humanoid")
+            if hum then
+                Camera.CameraSubject = hum
+            end
+        end
+    end)
+
+    ToolBox:AddButton("Teleport to Player", function()
+        local targetName = SpectateDropdown.Value
+        local target = Players:FindFirstChild(targetName or "")
+        if target and target.Character and LocalPlayer and LocalPlayer.Character then
+            local hrpTarget = target.Character:FindFirstChild("HumanoidRootPart")
+            local hrpLocal  = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrpTarget and hrpLocal then
+                hrpLocal.CFrame = hrpTarget.CFrame + Vector3.new(0, 2, 0)
+            end
+        end
+    end)
+
+    -- TODO: Free Camera / Fly / Noclip / ฯลฯ
+
+    ----------------------------------------------------------------
+    -- 8. TODO: Combat / ESP / Misc / Game / Settings Skeleton
+    ----------------------------------------------------------------
+    -- ในรอบถัดไป เราจะมาสร้างโครง:
+    -- - Tabs.Combat:AddLeftGroupbox("Aimbot") ...
+    -- - Tabs.ESP:AddLeftGroupbox("ESP / Visuals") ...
+    -- - Tabs.Misc:AddLeftGroupbox("Server / Game Tools") ...
+    -- - Tabs.Game ใช้ Game Detection + Module Loader
+    -- - Tabs.Settings ผูก ThemeManager + SaveManager + Unload
+
+    ----------------------------------------------------------------
+    -- 9. Notification เมื่อโหลดเสร็จ
+    ----------------------------------------------------------------
+    StarterGui:SetCore("SendNotification", {
+        Title = "BxB.ware Loaded",
+        Text = "Main Hub initialized successfully.",
+        Duration = 5
+    })
 end
