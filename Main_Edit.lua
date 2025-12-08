@@ -1426,7 +1426,6 @@ local Window = Library:CreateWindow({
         Size = UDim2.fromOffset(720, 600),  
         Center = true,
         AutoShow = true,
-        Resizable = true,  
         Compact = true
     })
 
