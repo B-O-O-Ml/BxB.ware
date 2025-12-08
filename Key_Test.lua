@@ -769,11 +769,12 @@ do
             Title = "",
             Center = true,
             AutoShow = true,
-            Icon = "icon-rss",
+            Icon = "84528813312016",
+            Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module/Client</font></b>',
             CornerRadius = 6,
             ShowCustomCursor = true,
             Resizable = false, 
-            Size = UDim2.fromOffset(550, 300),
+            Size = UDim2.fromOffset(600, 300),
             DisableSearch = true,   
             Compact = true,
         })
@@ -792,6 +793,13 @@ do
         ----------------------------------------------------------------
         -- WarningBox: Typewriter effect
         ----------------------------------------------------------------
+        Tabs.Key:UpdateWarningBox({
+                Title = '<b><font color="#8370FF">BxB.ware</font> | Announcement </b>',
+                Text = 'Free <font color="#FF0000">Premium</font> Key 1 Month!! (1/08/26 00:00:00) \nKEY : <b>BxB-Ware-PremiumFree</b>', 
+                IsNormal = true,
+                Visible = true,
+                LockSize = true,
+            })
         Tabs.Info:UpdateWarningBox({
             Title = "",
             Text = "",
