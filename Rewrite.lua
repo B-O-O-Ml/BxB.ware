@@ -444,20 +444,22 @@ local function MainHub(Exec, keydata, authToken)
     --------------------------------------------------------
     -- 2. PLAYER TAB (Movement / Teleport / View)
     --------------------------------------------------------
-    local PlayerTab = Tabs.Player
+   local PlayerTab = Tabs.Player
 
     ------------------------------------------------
     -- 2.1 Left: Player Movement
     ------------------------------------------------
     local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
 
-    MoveBox:AddLabel("Control your character movement"):AddColorPicker("dummy_moveinfo", {
-        Default = Color3.fromRGB(255, 255, 255),
-        Title = " ", Hidden = true
-    }) -- ทริกเล็ก ๆ ให้ groupbox ดูไม่โล่ง (จะไม่ใช้จริงก็ได้)
-
-    -- WalkSpeed Slider
+    -- WalkSpeed + Toggle
     local defaultWalkSpeed = 16
+    local walkSpeedEnabled = false
+
+    local WalkSpeedToggle = MoveBox:AddToggle("bxw_walkspeed_toggle", {
+        Text = "Enable WalkSpeed",
+        Default = false,
+        Tooltip = "Enable custom WalkSpeed",
+    })
 
     local WalkSpeedSlider = MoveBox:AddSlider("bxw_walkspeed", {
         Text = "WalkSpeed",
@@ -467,6 +469,9 @@ local function MainHub(Exec, keydata, authToken)
         Rounding = 0,
         Compact = false,
         Callback = function(value)
+            if not walkSpeedEnabled then
+                return
+            end
             local hum = getHumanoid()
             if hum then
                 hum.WalkSpeed = value
@@ -474,17 +479,37 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- เพิ่มปุ่ม Reset WalkSpeed
+    WalkSpeedToggle:OnChanged(function(state)
+        walkSpeedEnabled = state
+
+        if WalkSpeedSlider.SetDisabled then
+            WalkSpeedSlider:SetDisabled(not state)
+        end
+
+        local hum = getHumanoid()
+        if hum then
+            hum.WalkSpeed = state and WalkSpeedSlider.Value or defaultWalkSpeed
+        end
+    end)
+
     MoveBox:AddButton("Reset WalkSpeed", function()
         local hum = getHumanoid()
         if hum then
             hum.WalkSpeed = defaultWalkSpeed
         end
         WalkSpeedSlider:SetValue(defaultWalkSpeed)
+        WalkSpeedToggle:SetValue(false)
     end)
 
-    -- JumpPower Slider
+    -- JumpPower + Toggle
     local defaultJumpPower = 50
+    local jumpPowerEnabled = false
+
+    local JumpPowerToggle = MoveBox:AddToggle("bxw_jumppower_toggle", {
+        Text = "Enable JumpPower",
+        Default = false,
+        Tooltip = "Enable custom JumpPower",
+    })
 
     local JumpPowerSlider = MoveBox:AddSlider("bxw_jumppower", {
         Text = "JumpPower",
@@ -494,9 +519,12 @@ local function MainHub(Exec, keydata, authToken)
         Rounding = 0,
         Compact = false,
         Callback = function(value)
+            if not jumpPowerEnabled then
+                return
+            end
+
             local hum = getHumanoid()
             if hum then
-                -- รองรับทั้ง JumpPower และใช้ UseJumpPower
                 pcall(function()
                     hum.UseJumpPower = true
                 end)
@@ -504,6 +532,22 @@ local function MainHub(Exec, keydata, authToken)
             end
         end,
     })
+
+    JumpPowerToggle:OnChanged(function(state)
+        jumpPowerEnabled = state
+
+        if JumpPowerSlider.SetDisabled then
+            JumpPowerSlider:SetDisabled(not state)
+        end
+
+        local hum = getHumanoid()
+        if hum then
+            pcall(function()
+                hum.UseJumpPower = true
+            end)
+            hum.JumpPower = state and JumpPowerSlider.Value or defaultJumpPower
+        end
+    end)
 
     MoveBox:AddButton("Reset JumpPower", function()
         local hum = getHumanoid()
@@ -514,6 +558,7 @@ local function MainHub(Exec, keydata, authToken)
             hum.JumpPower = defaultJumpPower
         end
         JumpPowerSlider:SetValue(defaultJumpPower)
+        JumpPowerToggle:SetValue(false)
     end)
 
     MoveBox:AddDivider()
@@ -545,48 +590,88 @@ local function MainHub(Exec, keydata, authToken)
         end
     end)
 
-    -- Fly (simple fly)
+    -- Smooth Fly (BodyVelocity + BodyGyro)
     local flyConn
+    local flyBV, flyBG
     local flyEnabled = false
     local flySpeed = 60
 
     local FlyToggle = MoveBox:AddToggle("bxw_fly", {
-        Text = "Fly",
+        Text = "Fly (Smooth)",
         Default = false,
-        Tooltip = "Simple client-side fly",
+        Tooltip = "Smooth fly with locked rotation",
     })
 
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
+
+        local char = getCharacter()
+        local root = getRootPart()
+        local hum  = getHumanoid()
+        local cam  = Workspace.CurrentCamera
 
         if not state then
             if flyConn then
                 flyConn:Disconnect()
                 flyConn = nil
             end
-            local hum = getHumanoid()
+
+            if flyBV then
+                flyBV:Destroy()
+                flyBV = nil
+            end
+
+            if flyBG then
+                flyBG:Destroy()
+                flyBG = nil
+            end
+
             if hum then
                 hum.PlatformStand = false
             end
+
             return
         end
 
-        local hum = getHumanoid()
-        if hum then
-            hum.PlatformStand = true
+        if not (root and hum and cam) then
+            if Library and Library.Notify then
+                Library:Notify("Cannot start fly: character not loaded", 3)
+            end
+            FlyToggle:SetValue(false)
+            return
         end
+
+        hum.PlatformStand = true
+
+        -- ตัวดันความเร็ว
+        flyBV = Instance.new("BodyVelocity")
+        flyBV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+        flyBV.Velocity = Vector3.zero
+        flyBV.P = 9e4
+        flyBV.Parent = root
+
+        -- ตัวล็อคทิศ/หมุน
+        flyBG = Instance.new("BodyGyro")
+        flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+        flyBG.CFrame = root.CFrame
+        flyBG.P = 9e4
+        flyBG.Parent = root
 
         if flyConn then
             flyConn:Disconnect()
         end
 
-        flyConn = AddConnection(RunService.RenderStepped:Connect(function(dt)
-            if not flyEnabled then return end
+        flyConn = AddConnection(RunService.RenderStepped:Connect(function()
+            if not flyEnabled then
+                return
+            end
 
-            local hum = getHumanoid()
             local root = getRootPart()
-            local cam = Workspace.CurrentCamera
-            if not hum or not root or not cam then return end
+            local hum  = getHumanoid()
+            local cam  = Workspace.CurrentCamera
+            if not (root and hum and cam and flyBV and flyBG) then
+                return
+            end
 
             local moveDir = Vector3.new(0, 0, 0)
 
@@ -605,14 +690,19 @@ local function MainHub(Exec, keydata, authToken)
             if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
                 moveDir = moveDir + Vector3.new(0, 1, 0)
             end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+                or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
                 moveDir = moveDir - Vector3.new(0, 1, 0)
             end
 
             if moveDir.Magnitude > 0 then
                 moveDir = moveDir.Unit
-                root.CFrame = root.CFrame + (moveDir * flySpeed * dt)
+                flyBV.Velocity = moveDir * flySpeed
+            else
+                flyBV.Velocity = Vector3.zero
             end
+
+            flyBG.CFrame = CFrame.new(root.Position, root.Position + cam.CFrame.LookVector)
         end))
     end)
 
@@ -656,9 +746,6 @@ local function MainHub(Exec, keydata, authToken)
             end
         end))
     end)
-
-    MoveBox:AddDivider()
-    MoveBox:AddLabel("More features (sprint, custom fly, etc.) can be added later.")
 
     ------------------------------------------------
     -- 2.2 Right: Teleport / Utility
@@ -717,47 +804,56 @@ local function MainHub(Exec, keydata, authToken)
 
     UtilBox:AddDivider()
 
-    -- Spectate player
-    local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate", {
-        Text = "Spectate Player",
+    -- Spectate: toggle แทนปุ่ม start/stop
+    local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate_target", {
+        Text = "Spectate Target",
         Values = playerNames,
         Default = "",
         Multi = false,
         AllowNull = true,
+        Tooltip = "Select player to spectate",
     })
 
-    UtilBox:AddButton("Start Spectate", function()
-        local name = SpectateDropdown.Value
+    local SpectateToggle = UtilBox:AddToggle("bxw_spectate_toggle", {
+        Text = "Spectate Player",
+        Default = false,
+        Tooltip = "Toggle camera spectate",
+    })
+
+    SpectateToggle:OnChanged(function(state)
         local cam = Workspace.CurrentCamera
         if not cam then
             return
         end
 
-        if not name or name == "" then
-            Library:Notify("Select player to spectate", 2)
-            return
-        end
+        if state then
+            local name = SpectateDropdown.Value
+            if not name or name == "" then
+                Library:Notify("Select player to spectate", 2)
+                SpectateToggle:SetValue(false)
+                return
+            end
 
-        local target = Players:FindFirstChild(name)
-        if not target or not target.Character then
-            Library:Notify("Target not found", 2)
-            return
-        end
+            local target = Players:FindFirstChild(name)
+            if not target or not target.Character then
+                Library:Notify("Target not found", 2)
+                SpectateToggle:SetValue(false)
+                return
+            end
 
-        local hum = target.Character:FindFirstChildOfClass("Humanoid")
-        if not hum then
-            Library:Notify("Target humanoid not found", 2)
-            return
-        end
+            local hum = target.Character:FindFirstChildOfClass("Humanoid")
+            if not hum then
+                Library:Notify("Target humanoid not found", 2)
+                SpectateToggle:SetValue(false)
+                return
+            end
 
-        cam.CameraSubject = hum
-    end)
-
-    UtilBox:AddButton("Stop Spectate", function()
-        local cam = Workspace.CurrentCamera
-        local hum = getHumanoid()
-        if cam and hum then
             cam.CameraSubject = hum
+        else
+            local hum = getHumanoid()
+            if hum then
+                cam.CameraSubject = hum
+            end
         end
     end)
 
@@ -791,8 +887,7 @@ local function MainHub(Exec, keydata, authToken)
     end)
 
     UtilBox:AddDivider()
-    UtilBox:AddLabel("More utilities (fly presets, camera tools, etc.) can be added later.")
-
+    UtilBox:AddLabel("More utilities will be added later.")
     ------------------------------------------------
     -- 4.4 Theme / SaveManager (optional) ไว้ทำใน Tab Settings ภายหลัง
     ------------------------------------------------
