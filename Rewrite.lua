@@ -1,127 +1,27 @@
---// BxB.ware MainHub - Skeleton (ตามโครง Obsidian Example) + Mock data
---// ใช้ทดสอบ UI / Layout ไม่ต้องผ่าน Key UI ก่อน
+--====================================================
+-- 0. Services
+--====================================================
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local Stats              = game:GetService("Stats")
+local MarketplaceService = game:GetService("MarketplaceService")
 
-------------------------------------------------------------
--- 0. Exec abstraction (ใช้แทนการเรียก executor API ตรง ๆ)
-------------------------------------------------------------
+local LocalPlayer = Players.LocalPlayer
 
-local function CreateExec()
-    local Exec = {}
-
-    function Exec.HttpGet(url)
-        local ok, res
-
-        if syn and syn.request then
-            ok, res = pcall(function()
-                return syn.request({ Url = url, Method = "GET" })
-            end)
-            if ok and res and res.Body then
-                return res.Body
-            end
-        end
-
-        if http_request and type(http_request) == "function" then
-            ok, res = pcall(function()
-                return http_request({ Url = url, Method = "GET" })
-            end)
-            if ok and res and res.Body then
-                return res.Body
-            end
-        end
-
-        if request and type(request) == "function" then
-            ok, res = pcall(function()
-                return request({ Url = url, Method = "GET" })
-            end)
-            if ok and res and res.Body then
-                return res.Body
-            end
-        end
-
-        if game and game.HttpGet then
-            ok, res = pcall(function()
-                return game:HttpGet(url)
-            end)
-            if ok and res then
-                return res
-            end
-        end
-
-        warn("[Exec] HttpGet failed for:", url)
-        return ""
+-- เก็บ connection ไว้เผื่ออยาก cleanup ตอน Unload
+local Connections = {}
+local function AddConnection(conn)
+    if conn then
+        table.insert(Connections, conn)
     end
-
-    function Exec.HttpRequest(options)
-        local req = syn and syn.request or http_request or request
-        if not req then
-            warn("[Exec] HttpRequest not available")
-            return nil
-        end
-
-        local ok, res = pcall(req, options)
-        if not ok then
-            warn("[Exec] HttpRequest error:", res)
-            return nil
-        end
-        return res
-    end
-
-    function Exec.WriteFile(path, data)
-        if writefile then
-            local ok, err = pcall(writefile, path, data)
-            if not ok then
-                warn("[Exec] WriteFile error:", err)
-            end
-        else
-            warn("[Exec] writefile not available")
-        end
-    end
-
-    function Exec.ReadFile(path)
-        if readfile then
-            local ok, res = pcall(readfile, path)
-            if ok then
-                return res
-            else
-                warn("[Exec] ReadFile error:", res)
-            end
-        else
-            warn("[Exec] readfile not available")
-        end
-        return nil
-    end
-
-    function Exec.IsFile(path)
-        if isfile then
-            local ok, res = pcall(isfile, path)
-            if ok then
-                return res
-            end
-        end
-        return false
-    end
-
-    function Exec.SetClipboard(text)
-        if setclipboard then
-            local ok, err = pcall(setclipboard, text)
-            if not ok then
-                warn("[Exec] SetClipboard error:", err)
-            end
-        else
-            warn("[Exec] setclipboard not available")
-        end
-    end
-
-    return Exec
+    return conn
 end
 
-local Exec = CreateExec()
+--====================================================
+-- 1. Secret + Token Verify (ต้องแมพกับ KeyUI.lua)
+--====================================================
 
-------------------------------------------------------------
--- 1. Secure token verify (ต้องใช้ค่าเดียวกับ KeyUI.startMainHub)
-------------------------------------------------------------
-
-local SECRET_PEPPER = "BxB.ware-Universal@#$)_%@#^()$@%_)+%(@"  -- ต้องเหมือนฝั่ง KeyUI
+local SECRET_PEPPER = "BxB.ware-Universal@#$)_%@#^()$@%_)+%(@"  -- ต้องเหมือนใน KeyUI.lua
 
 local bit = bit32 or bit
 
@@ -137,9 +37,8 @@ local function fnv1a32(str)
 end
 
 local function buildExpectedToken(keydata)
-    -- เดาโครง keydata: ปรับชื่อให้ตรงของจริงได้
     local k    = tostring(keydata.key or keydata.Key or "")
-    local hw   = tostring(keydata.hwid_hash or keydata.HWID or "")
+    local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
     local role = tostring(keydata.role or "user")
     local datePart = os.date("%Y%m%d") -- ต้องใช้ format เดียวกับฝั่ง KeyUI
 
@@ -156,122 +55,142 @@ local function buildExpectedToken(keydata)
     return ("%08X"):format(h)
 end
 
-------------------------------------------------------------
--- 2. MainHub ฟังก์ชันหลัก (จะใช้ Exec + keydata)
-------------------------------------------------------------
+--====================================================
+-- 2. Role System (ใช้ได้ทั้ง Info tab และ tab อื่นในอนาคต)
+--====================================================
 
-local function MainHub(ExecObj, keydata, authToken)
-    --------------------------------------------------------
-    -- 2.1 ตรวจ authToken + Exec + keydata แบบเบื้องต้น
-    --------------------------------------------------------
-    if type(authToken) ~= "string" then
-        warn("[MainHub] Missing auth token, abort")
+local RolePriority = {
+    free    = 0,
+    user    = 1,
+    premium = 2,
+    vip     = 3,
+    staff   = 4,
+    owner   = 5,
+}
+
+local function NormalizeRole(role)
+    role = tostring(role or ""):lower()
+    if RolePriority[role] then
+        return role
+    end
+    return "free"
+end
+
+local function RoleAtLeast(haveRole, needRole)
+    local have  = NormalizeRole(haveRole)
+    local need  = NormalizeRole(needRole)
+    local hPrio = RolePriority[have] or 0
+    local nPrio = RolePriority[need] or 999
+    return hPrio >= nPrio
+end
+
+local function GetRoleLabel(role)
+    role = NormalizeRole(role)
+
+    if role == "free" then
+        return '<font color="#A0A0A0">Free</font>'
+    elseif role == "user" then
+        return '<font color="#FFFFFF">User</font>'
+    elseif role == "premium" then
+        return '<font color="#FFD700">Premium</font>'
+    elseif role == "vip" then
+        return '<font color="#FF00FF">VIP</font>'
+    elseif role == "staff" then
+        return '<font color="#00FFFF">Staff</font>'
+    elseif role == "owner" then
+        return '<font color="#FF4444">Owner</font>'
+    end
+
+    return '<font color="#A0A0A0">Unknown</font>'
+end
+
+--====================================================
+-- 3. Helper format เวลา/ข้อความ
+--====================================================
+
+local function formatUnixTime(ts)
+    if not ts or ts <= 0 then
+        return "Lifetime"
+    end
+
+    local dt = os.date("*t", ts)
+    return string.format("%04d-%02d-%02d %02d:%02d:%02d",
+        dt.year, dt.month, dt.day, dt.hour, dt.min, dt.sec
+    )
+end
+
+local function formatTimeLeft(expireTs)
+    if not expireTs or expireTs <= 0 then
+        return "Lifetime"
+    end
+
+    local now = os.time()
+    local diff = expireTs - now
+    if diff <= 0 then
+        return "Expired"
+    end
+
+    local d = math.floor(diff / 86400)
+    diff = diff % 86400
+    local h = math.floor(diff / 3600)
+    diff = diff % 3600
+    local m = math.floor(diff / 60)
+    local s = diff % 60
+
+    if d > 0 then
+        return string.format("%dd %02dh %02dm %02ds", d, h, m, s)
+    else
+        return string.format("%02dh %02dm %02ds", h, m, s)
+    end
+end
+
+local function safeRichLabel(groupbox, text)
+    local lbl = groupbox:AddLabel(text, true)
+    if lbl and lbl.TextLabel then
+        lbl.TextLabel.RichText = true
+    end
+    return lbl
+end
+
+--====================================================
+-- 4. ฟังก์ชันหลักของ MainHub
+--     (เรียกจาก KeyUI: startFn(Exec, keydata, authToken))
+--====================================================
+
+local function MainHub(Exec, keydata, authToken)
+    ---------------------------------------------
+    -- 4.1 ตรวจ Exec + keydata + token
+    ---------------------------------------------
+    if type(Exec) ~= "table" or type(Exec.HttpGet) ~= "function" then
+        warn("[MainHub] Exec invalid")
         return
     end
 
-    if type(keydata) ~= "table" then
-        warn("[MainHub] keydata invalid (not table)")
+    if type(keydata) ~= "table" or type(keydata.key) ~= "string" then
+        warn("[MainHub] keydata invalid")
         return
     end
 
-    -- สร้าง token ที่ "ควรจะเป็น" จาก keydata เดียวกัน
     local expected = buildExpectedToken(keydata)
-
     if authToken ~= expected then
         warn("[MainHub] Invalid auth token, abort")
         return
     end
 
-    if type(ExecObj) ~= "table" or type(ExecObj.HttpGet) ~= "function" then
-        warn("[MainHub] Exec invalid")
-        return
-    end
-
-    if type(keydata.key) ~= "string" then
-        warn("[MainHub] keydata.key invalid")
-        return
-    end
-
-    local Exec = ExecObj
-
-    --------------------------------------------------------
-    -- 2.2 Role system (ตาม spec: free < user < premium < vip < staff < owner)
-    --------------------------------------------------------
-    local RolePriority = {
-        free    = 0,
-        user    = 1,
-        premium = 2,
-        vip     = 3,
-        staff   = 4,
-        owner   = 5,
-    }
-
-    local function NormalizeRole(role)
-        role = tostring(role or ""):lower()
-        if RolePriority[role] then
-            return role
-        end
-        return "free"
-    end
-
+    -- normalize role
     keydata.role = NormalizeRole(keydata.role)
 
-    local function RoleAtLeast(requiredRole)
-        local have  = NormalizeRole(keydata.role)
-        local need  = NormalizeRole(requiredRole)
-        local hPrio = RolePriority[have] or 0
-        local nPrio = RolePriority[need] or 999
-        return hPrio >= nPrio
-    end
-
-    local function GetRoleLabel(role)
-        role = NormalizeRole(role)
-        if role == "free" then
-            return "<font color=\"#A0A0A0\">Free</font>"
-        elseif role == "user" then
-            return "<font color=\"#FFFFFF\">User</font>"
-        elseif role == "premium" then
-            return "<font color=\"#FFD700\">Premium</font>"
-        elseif role == "vip" then
-            return "<font color=\"#FF00FF\">VIP</font>"
-        elseif role == "staff" then
-            return "<font color=\"#00FFFF\">Staff</font>"
-        elseif role == "owner" then
-            return "<font color=\"#FF4444\">Owner</font>"
-        end
-        return "<font color=\"#A0A0A0\">Unknown</font>"
-    end
-
-    --------------------------------------------------------
-    -- 3. โหลด Library / ThemeManager / SaveManager (ผ่าน Exec)
-    --    ตรงนี้ยึดโครงของ Example_All เป็นหลัก :contentReference[oaicite:4]{index=4}
-    --------------------------------------------------------
-    -- TODO: เปลี่ยน repo ให้เป็นของคุณเองในภายหลัง
+    ---------------------------------------------
+    -- 4.2 โหลด Obsidian Library + Theme/Save
+    --     (บล็อคนี้คือโครง noedit.lua ที่ห้ามเปลี่ยนโครงสร้าง)
+    ---------------------------------------------
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 
     local Library = loadstring(Exec.HttpGet(repo .. "Library.lua"))()
     local ThemeManager = loadstring(Exec.HttpGet(repo .. "addons/ThemeManager.lua"))()
     local SaveManager  = loadstring(Exec.HttpGet(repo .. "addons/SaveManager.lua"))()
 
-    local Options = Library.Options
-    local Toggles = Library.Toggles
-
-    --------------------------------------------------------
-    -- 3.1 DPI / MinSize / CornerRadius (mobile-friendly) :contentReference[oaicite:5]{index=5}
-    --------------------------------------------------------
-    if Library.IsMobile then
-        Library.DPIScale = 1.1
-        Library.MinSize = Vector2.new(480, 260)
-    else
-        Library.DPIScale = 1
-        Library.MinSize = Vector2.new(480, 360)
-    end
-
-    Library.CornerRadius = 4
-
-    --------------------------------------------------------
-    -- 3.2 สร้าง Window หลัก (ใช้เมธอด/option แบบเดียวกับ Example_All) :contentReference[oaicite:6]{index=6}
-    --------------------------------------------------------
+    -- 1) สร้าง Window (ตาม noedit.lua)
     local Window = Library:CreateWindow({
         Title  = "",
         Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module/Client</font></b>',
@@ -304,9 +223,7 @@ local function MainHub(ExecObj, keydata, authToken)
         end,
     })
 
-    --------------------------------------------------------
-    -- 4. Tabs
-    --------------------------------------------------------
+    -- 2) Tabs (ตาม noedit.lua)
     local Tabs = {
         Info = Window:AddTab({
             Name        = "Info",
@@ -345,656 +262,190 @@ local function MainHub(ExecObj, keydata, authToken)
         }),
     }
 
-    --------------------------------------------------------
-    -- 5. Core State (ใช้ต่อยอดภายหลัง)
-    --------------------------------------------------------
-    local State = {
-        Player = {
-            WalkSpeedEnabled = false,
-            WalkSpeedValue   = 16,
-            JumpEnabled      = false,
-            JumpValue        = 50,
-            InfiniteJump     = false,
-            Fly              = false,
-            FlySpeed         = 60,
-            NoClip           = false,
-            SpinBot          = false, -- VIP+
-            AntiAim          = false, -- VIP+
-            AutoRun          = false,
-            ClickTP          = false, -- User+
-        },
-
-        ESP = {
-            Enabled        = false,
-            Distance       = 200,
-            MaxDistance    = 200,
-            Box            = true,
-            Name           = true,
-            Health         = true,
-            Tracer         = true,
-            UseHighlight   = false,
-            Skeleton       = false,
-            HeadDot        = false,
-            LookTracer     = false,
-            TeamCheck      = true,
-            VisibleOnly    = false,
-            WallCheck      = false,
-
-            ColorMain   = Color3.fromRGB(255, 255, 0),
-            BoxColor    = Color3.fromRGB(255, 255, 255),
-            NameColor   = Color3.fromRGB(255, 255, 255),
-            TracerColor = Color3.fromRGB(255, 255, 255),
-            ChamsColor  = Color3.fromRGB(0, 255, 255),
-        },
-
-        Aim = {
-            Enabled       = false,
-            Mode          = "Legit",
-            AimType       = "Hold",
-            AimPart       = "Head",
-            FOVRadius     = 150,
-            ShowFOV       = true,
-            Smooth        = 0.1,
-            HitChance     = 100, -- Premium+
-            TeamCheck     = true,
-            VisibleOnly   = true,
-            IgnoreFriends = true,
-            MaxDistance   = 300,
-
-            Weights = {
-                Head  = 50,
-                Chest = 30,
-                Arms  = 10,
-                Legs  = 10,
-            },
-        },
-
-        Misc = {
-            AntiAFK    = false,
-            Fullbright = false,
-        },
-    }
-
-    --------------------------------------------------------
-    -- 6. Tab: Info (Key / Role / System / ScriptInfo skeleton)
-    --------------------------------------------------------
-    local InfoLeft  = Tabs.Info:AddLeftGroupbox("Key / Role", "key")
-    local InfoRight = Tabs.Info:AddRightGroupbox("Game / System / Script", "info")
-
-    InfoLeft:AddLabel({
-        Text = ("<b>Key:</b> %s"):format(keydata.key or "N/A"),
-        DoesWrap = true,
-    })
-
-    InfoLeft:AddLabel({
-        Text = "Role: " .. GetRoleLabel(keydata.role),
-        DoesWrap = true,
-    })
-
-    InfoLeft:AddLabel({
-        Text = ("Status: <b>%s</b>"):format(tostring(keydata.status or "unknown")),
-        DoesWrap = true,
-    })
-
-    InfoLeft:AddLabel({
-        Text = ("HWID Mode: <b>%s</b>"):format(keydata.bind_hwid and "HWID-locked" or "Free"),
-        DoesWrap = true,
-    })
-
-    InfoLeft:AddDivider()
-
-    InfoLeft:AddLabel({
-        Text = "Expire: <i>(TODO: format expire / time left)</i>",
-        DoesWrap = true,
-    })
-
-    InfoLeft:AddLabel({
-        Text = "Note: <i>" .. tostring(keydata.note or "N/A") .. "</i>",
-        DoesWrap = true,
-    })
-
-    InfoRight:AddLabel({
-        Text = "<b>Game / System info</b>",
-        Size = 18,
-        DoesWrap = true,
-    })
-
-    InfoRight:AddLabel({
-        Text = "Game: <i>(TODO: MarketplaceService:GetProductInfo)</i>",
-        DoesWrap = true,
-    })
-
-    InfoRight:AddLabel({
-        Text = "FPS / Ping / Memory: <i>(TODO: update loop)</i>",
-        DoesWrap = true,
-    })
-
-    InfoRight:AddDivider()
-
-    InfoRight:AddLabel({
-        Text = "<b>Script Info</b>",
-        Size = 16,
-        DoesWrap = true,
-    })
-
-    InfoRight:AddLabel({
-        Text = "<i>TODO: ดึง SCRIPTINFO_URL, แปลง JSON → RichText</i>",
-        DoesWrap = true,
-    })
-
-    InfoRight:AddDivider()
-
-    InfoRight:AddLabel({
-        Text = "<b>Changelog</b>",
-        Size = 16,
-        DoesWrap = true,
-    })
-
-    InfoRight:AddLabel({
-        Text = "<i>TODO: ดึง CHANGELOG_URL, แสดง entry ล่าสุด</i>",
-        DoesWrap = true,
-    })
-
-    --------------------------------------------------------
-    -- 7. Tab: Player (Movement / Teleport / View skeleton)
-    --------------------------------------------------------
-    local PlayerLeft  = Tabs.Player:AddLeftGroupbox("Movement & Character", "user")
-    local PlayerRight = Tabs.Player:AddRightGroupbox("Teleport / View / Server", "map")
-
-    PlayerLeft:AddLabel({
-        Text = "<b>Movement</b>",
-        Size = 18,
-        DoesWrap = true,
-    })
-
-    local WalkSpeedToggle = PlayerLeft:AddToggle("Move_WalkSpeedToggle", {
-        Text    = "Custom WalkSpeed",
-        Default = false,
-        Tooltip = "เปิดแล้วใช้ค่า WalkSpeed จาก Slider ด้านล่าง",
-    })
-
-    WalkSpeedToggle:AddKeyPicker("Move_WalkSpeedKeybind", {
-        Text         = "WalkSpeed Key",
-        Default      = "F",
-        Mode         = "Toggle",
-        SyncToggleState = true,
-    })
-
-    PlayerLeft:AddSlider("Move_WalkSpeedValue", {
-        Text    = "WalkSpeed",
-        Default = 16,
-        Min     = 8,
-        Max     = 60,
-        Rounding = 0,
-        Suffix   = " stud/s",
-        Tooltip  = "ค่าความเร็วเดินของ player",
-    })
-
-    PlayerLeft:AddToggle("Move_JumpToggle", {
-        Text    = "Custom JumpPower",
-        Default = false,
-        Tooltip = "เปิดแล้วใช้ JumpPower จาก input ด้านล่าง",
-    })
-
-    PlayerLeft:AddInput("Move_JumpValue", {
-        Text       = "JumpPower",
-        Default    = "50",
-        Numeric    = true,
-        Finished   = true,
-        Placeholder = "50",
-        Tooltip    = "กำหนด JumpPower ของ player",
-    })
-
-    PlayerLeft:AddToggle("Move_InfiniteJump", {
-        Text    = "Infinite Jump",
-        Default = false,
-    })
-
-    PlayerLeft:AddToggle("Move_Fly", {
-        Text    = "Fly",
-        Default = false,
-    })
-
-    PlayerLeft:AddSlider("Move_FlySpeed", {
-        Text    = "Fly Speed",
-        Default = 60,
-        Min     = 10,
-        Max     = 200,
-        Rounding = 0,
-    })
-
-    PlayerLeft:AddToggle("Move_NoClip", {
-        Text    = "NoClip",
-        Default = false,
-    })
-
-    PlayerLeft:AddDivider()
-
-    PlayerLeft:AddToggle("Move_SpinBot", {
-        Text    = "SpinBot (VIP+)",
-        Default = false,
-        Tooltip = "ใช้เฉพาะผู้ใช้ VIP ขึ้นไป",
-    })
-
-    PlayerLeft:AddToggle("Move_AntiAim", {
-        Text    = "Anti-Aim / Desync (VIP+)",
-        Default = false,
-        Tooltip = "ใช้เฉพาะผู้ใช้ VIP ขึ้นไป",
-    })
-
-    PlayerLeft:AddButton({
-        Text = "Reset movement",
-        Func = function()
-            -- TODO: reset WalkSpeed / JumpPower / flags ทั้งหมด
-        end,
-    })
-
-    PlayerRight:AddLabel({
-        Text = "<b>Teleport / View</b>",
-        Size = 18,
-        DoesWrap = true,
-    })
-
-    PlayerRight:AddToggle("Move_AutoRun", {
-        Text    = "Auto Run",
-        Default = false,
-    })
-
-    PlayerRight:AddToggle("Move_ClickTP", {
-        Text    = "Click TP (Ctrl+Click) [User+]",
-        Default = false,
-    })
-
-    PlayerRight:AddDropdown("TP_PlayerList", {
-        Text    = "Teleport to player",
-        Values  = { "TODO: Fill with players" },
-        Default = "TODO: Fill with players",
-        Multi   = false,
-        Searchable = true,
-    })
-
-    PlayerRight:AddButton({
-        Text = "Teleport",
-        Func = function()
-            -- TODO: TP ไปยัง player ที่เลือก
-        end,
-    })
-
-    PlayerRight:AddButton({
-        Text = "Refresh players",
-        Func = function()
-            -- TODO: refresh รายชื่อ player ใน dropdown
-        end,
-    })
-
-    PlayerRight:AddDivider()
-
-    PlayerRight:AddToggle("View_FOVToggle", {
-        Text    = "FOV Changer",
-        Default = false,
-    })
-
-    PlayerRight:AddSlider("View_FOVValue", {
-        Text    = "Field of View",
-        Default = 70,
-        Min     = 50,
-        Max     = 120,
-    })
-
-    PlayerRight:AddToggle("Misc_Fullbright", {
-        Text    = "Fullbright",
-        Default = false,
-    })
-
-    PlayerRight:AddDivider()
-
-    PlayerRight:AddButton({
-        Text = "Rejoin",
-        Func = function()
-            -- TODO: รียูส TeleportService ไป server เดิม
-        end,
-    })
-
-    PlayerRight:AddButton({
-        Text = "Server Hop",
-        Func = function()
-            -- TODO: หา server ใหม่แบบง่าย ๆ แล้ว teleport
-        end,
-    })
-
-    --------------------------------------------------------
-    -- 8. Tab: ESP & Visuals (AddColorPicker ผ่าน Toggle เท่านั้น)
-    --------------------------------------------------------
-    local ESPLeft  = Tabs.ESP:AddLeftGroupbox("Player ESP", "eye")
-    local ESPRight = Tabs.ESP:AddRightGroupbox("Filter / Visual", "sliders")
-
-    ESPLeft:AddLabel({
-        Text = "<b>ESP core</b>",
-        Size = 18,
-        DoesWrap = true,
-    })
-
-    local ESPEnabled = ESPLeft:AddToggle("ESP_Enabled", {
-        Text    = "Enable ESP",
-        Default = false,
-        Tooltip = "เปิด/ปิด ESP (logic คุณเขียนเอง)",
-    })
-
-    -- ColorPicker หลักผูกกับ Toggle ตามโครง Example_All :contentReference[oaicite:7]{index=7}
-    ESPEnabled:AddColorPicker("ESP_ColorMain", {
-        Title   = "Main ESP color",
-        Default = State.ESP.ColorMain,
-    })
-
-    ESPLeft:AddSlider("ESP_Distance", {
-        Text    = "ESP Distance",
-        Default = State.ESP.Distance,
-        Min     = 50,
-        Max     = 500,
-        Rounding = 0,
-        Suffix   = " studs",
-    })
-
-    ESPLeft:AddDivider()
-
-    ESPLeft:AddToggle("ESP_Box",    { Text = "Box",    Default = true  })
-    ESPLeft:AddToggle("ESP_Name",   { Text = "Name",   Default = true  })
-    ESPLeft:AddToggle("ESP_Health", { Text = "Health", Default = true  })
-    ESPLeft:AddToggle("ESP_Tracer", { Text = "Tracer", Default = true  })
-
-    ESPLeft:AddDivider()
-
-    ESPLeft:AddToggle("ESP_Skeleton",  { Text = "Skeleton",   Default = false })
-    ESPLeft:AddToggle("ESP_HeadDot",   { Text = "Head Dot",   Default = false })
-    ESPLeft:AddToggle("ESP_LookTrace", { Text = "Look Tracer",Default = false })
-
-    ESPRight:AddLabel({
-        Text = "<b>Filter / Visual</b>",
-        Size = 18,
-        DoesWrap = true,
-    })
-
-    ESPRight:AddToggle("ESP_TeamCheck", {
-        Text    = "Team check",
-        Default = true,
-    })
-
-    ESPRight:AddToggle("ESP_VisibleOnly", {
-        Text    = "Visible only",
-        Default = false,
-    })
-
-    ESPRight:AddToggle("ESP_WallCheck", {
-        Text    = "Wall check",
-        Default = false,
-    })
-
-    ESPRight:AddSlider("ESP_MaxDistance", {
-        Text    = "Max distance",
-        Default = State.ESP.MaxDistance,
-        Min     = 50,
-        Max     = 2000,
-        Rounding = 0,
-    })
-
-    ESPRight:AddDivider()
-
-    -- ถ้าต้องมีสีแยก Box / Name / Tracer / Chams → ผูก ColorPicker กับ Toggle แทน Groupbox
-    local ESPBoxToggle    = ESPRight:AddToggle("ESP_BoxColorToggle",    { Text = "Custom Box color",    Default = false })
-    local ESPNameToggle   = ESPRight:AddToggle("ESP_NameColorToggle",   { Text = "Custom Name color",   Default = false })
-    local ESPTracerToggle = ESPRight:AddToggle("ESP_TracerColorToggle", { Text = "Custom Tracer color", Default = false })
-    local ESPChamsToggle  = ESPRight:AddToggle("ESP_ChamsColorToggle",  { Text = "Custom Chams color",  Default = false })
-
-    ESPBoxToggle:AddColorPicker("ESP_BoxColor", {
-        Title   = "Box color",
-        Default = State.ESP.BoxColor,
-    })
-
-    ESPNameToggle:AddColorPicker("ESP_NameColor", {
-        Title   = "Name color",
-        Default = State.ESP.NameColor,
-    })
-
-    ESPTracerToggle:AddColorPicker("ESP_TracerColor", {
-        Title   = "Tracer color",
-        Default = State.ESP.TracerColor,
-    })
-
-    ESPChamsToggle:AddColorPicker("ESP_ChamsColor", {
-        Title   = "Chams color",
-        Default = State.ESP.ChamsColor,
-    })
-
-    --------------------------------------------------------
-    -- 9. Tab: Combat & Aimbot (Advanced skeleton)
-    --------------------------------------------------------
-    local CombatLeft  = Tabs.Combat:AddLeftGroupbox("Aimbot Core", "target")
-    local CombatRight = Tabs.Combat:AddRightGroupbox("Targeting / Advanced", "crosshair")
-
-    CombatLeft:AddLabel({
-        Text = "<b>Aimbot core</b>",
-        Size = 18,
-        DoesWrap = true,
-    })
-
-    local AimToggle = CombatLeft:AddToggle("Aim_Enabled", {
-        Text    = "Enable Aimbot",
-        Default = false,
-    })
-
-    AimToggle:AddKeyPicker("Aim_Keybind", {
-        Text    = "Aimbot Key",
-        Default = "Q",
-        Mode    = "Hold",
-    })
-
-    CombatLeft:AddDropdown("Aim_Mode", {
-        Text    = "Mode",
-        Values  = { "Legit", "Rage" },
-        Default = "Legit",
-        Multi   = false,
-    })
-
-    CombatLeft:AddDropdown("Aim_Type", {
-        Text    = "Aim type",
-        Values  = { "Hold", "Toggle" },
-        Default = "Hold",
-        Multi   = false,
-    })
-
-    CombatLeft:AddSlider("Aim_FOVRadius", {
-        Text    = "Aimbot FOV",
-        Default = State.Aim.FOVRadius,
-        Min     = 10,
-        Max     = 500,
-        Rounding = 0,
-    })
-
-    CombatLeft:AddToggle("Aim_ShowFOV", {
-        Text    = "Show FOV circle",
-        Default = true,
-    })
-
-    CombatLeft:AddSlider("Aim_Smooth", {
-        Text    = "Smooth",
-        Default = 0.1,
-        Min     = 0.01,
-        Max     = 1,
-        Rounding = 2,
-    })
-
-    CombatLeft:AddSlider("Aim_HitChance", {
-        Text    = "Hit chance (%) [Premium+]",
-        Default = State.Aim.HitChance,
-        Min     = 0,
-        Max     = 100,
-        Rounding = 0,
-    })
-
-    CombatLeft:AddDivider()
-
-    CombatLeft:AddToggle("Aim_TeamCheck", {
-        Text    = "Team check",
-        Default = true,
-    })
-
-    CombatLeft:AddToggle("Aim_VisibleOnly", {
-        Text    = "Visible only",
-        Default = true,
-    })
-
-    CombatLeft:AddToggle("Aim_IgnoreFriends", {
-        Text    = "Ignore friends",
-        Default = true,
-    })
-
-    CombatLeft:AddSlider("Aim_MaxDistance", {
-        Text    = "Max distance",
-        Default = State.Aim.MaxDistance,
-        Min     = 50,
-        Max     = 2000,
-        Rounding = 0,
-    })
-
-    CombatRight:AddLabel({
-        Text = "<b>Target selection</b>",
-        Size = 18,
-        DoesWrap = true,
-    })
-
-    CombatRight:AddDropdown("Aim_PartMode", {
-        Text    = "Aim part mode",
-        Values  = { "Head", "Chest", "Arms", "Legs", "Closest", "RandomWeighted" },
-        Default = "Head",
-        Multi   = false,
-    })
-
-    CombatRight:AddLabel({
-        Text = "<b>Weighted targeting (Premium+)</b>",
-        Size = 16,
-        DoesWrap = true,
-    })
-
-    CombatRight:AddSlider("Aim_WHead", {
-        Text    = "Head weight",
-        Default = State.Aim.Weights.Head,
-        Min     = 0,
-        Max     = 100,
-    })
-
-    CombatRight:AddSlider("Aim_WChest", {
-        Text    = "Chest weight",
-        Default = State.Aim.Weights.Chest,
-        Min     = 0,
-        Max     = 100,
-    })
-
-    CombatRight:AddSlider("Aim_WArms", {
-        Text    = "Arms weight",
-        Default = State.Aim.Weights.Arms,
-        Min     = 0,
-        Max     = 100,
-    })
-
-    CombatRight:AddSlider("Aim_WLegs", {
-        Text    = "Legs weight",
-        Default = State.Aim.Weights.Legs,
-        Min     = 0,
-        Max     = 100,
-    })
-
-    CombatRight:AddDivider()
-
-    CombatRight:AddLabel({
-        Text = "<b>Extras</b>\n<i>TODO: Silent Aim / Triggerbot / Prediction</i>",
-        DoesWrap = true,
-    })
-
-    --------------------------------------------------------
-    -- 10. Tab: Misc & System
-    --------------------------------------------------------
-    local MiscLeft  = Tabs.Misc:AddLeftGroupbox("Misc", "tool")
-    local MiscRight = Tabs.Misc:AddRightGroupbox("System / Panic", "alert-triangle")
-
-    MiscLeft:AddToggle("Misc_AntiAFK", {
-        Text    = "Anti-AFK",
-        Default = false,
-    })
-
-    MiscLeft:AddButton({
-        Text = "Copy Discord",
-        Func = function()
-            Exec.SetClipboard("https://discord.gg/YOUR_SERVER")
-        end,
-    })
-
-    MiscLeft:AddButton({
-        Text = "Copy GitHub",
-        Func = function()
-            Exec.SetClipboard("https://github.com/YOUR_REPO")
-        end,
-    })
-
-    MiscRight:AddButton({
-        Text = "Panic (Unload Hub)",
-        Func = function()
-            -- TODO: หยุด loop, ลบ Drawing/Highlight, Library:OnUnload ฯลฯ
-        end,
-    })
-
-    MiscRight:AddLabel({
-        Text = "<i>TODO: Dev tools / logger / debug overlay</i>",
-        DoesWrap = true,
-    })
-
-    --------------------------------------------------------
-    -- 11. Tab: Settings (ThemeManager / SaveManager skeleton)
-    --------------------------------------------------------
-    local SettingsLeft  = Tabs.Settings:AddLeftGroupbox("Theme", "palette")
-    local SettingsRight = Tabs.Settings:AddRightGroupbox("Config / Keybinds", "settings")
-
-    ThemeManager:SetLibrary(Library)
-    ThemeManager:SetFolder("BxBware")
-
-    SaveManager:SetLibrary(Library)
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetFolder("BxBware/UniversalHub")
-
-    SettingsLeft:AddLabel({
-        Text = "<b>Theme</b>\n<i>TODO: ThemeManager:ApplyToTab(Tabs.Settings)</i>",
-        DoesWrap = true,
-    })
-
-    SettingsRight:AddLabel({
-        Text = "<b>Config / Keybinds</b>\n<i>TODO: SaveManager:BuildConfigSection(Tabs.Settings)</i>",
-        DoesWrap = true,
-    })
-
-    SettingsRight:AddButton({
-        Text = "Unload Hub",
-        Func = function()
-            -- TODO: เรียก Panic logic
-        end,
-    })
-
-    --------------------------------------------------------
-    -- 12. Watermark / Notify (แบบใน Example_All) :contentReference[oaicite:8]{index=8}
-    --------------------------------------------------------
-    Library:SetWatermarkVisibility(true)
-    Library:SetWatermark("BxB.ware MainHub Skeleton | Loading...")
-
-    Library:Notify("BxB.ware MainHub (Mock Skeleton) loaded", 4)
-
-    Library:OnUnload(function()
-        print("[MainHub] Unloaded")
+    ------------------------------------------------
+    -- 4.3 TAB 1: Info [Key / Game]
+    ------------------------------------------------
+
+    local InfoTab = Tabs.Info
+
+    --=== 4.3.1 Key Info (Left Groupbox) =========================
+    local KeyBox = InfoTab:AddLeftGroupbox("Key Info", "key-round")
+
+    safeRichLabel(KeyBox, '<font size="14"><b>Key Information</b></font>')
+    KeyBox:AddDivider()
+
+    -- mask key นิดหน่อย
+    local rawKey = tostring(keydata.key or "N/A")
+    local maskedKey
+    if #rawKey > 4 then
+        maskedKey = string.format("%s-****%s", rawKey:sub(1, 4), rawKey:sub(-3))
+    else
+        maskedKey = rawKey
+    end
+
+    local roleHtml   = GetRoleLabel(keydata.role)
+    local statusText = tostring(keydata.status or "active")
+    local noteText   = tostring(keydata.note or "-")
+
+    local createdAtText = formatUnixTime(keydata.timestamp)
+    local expireTs      = tonumber(keydata.expire) or 0
+
+    safeRichLabel(KeyBox, string.format("<b>Key:</b> %s", maskedKey))
+    safeRichLabel(KeyBox, string.format("<b>Role:</b> %s", roleHtml))
+    safeRichLabel(KeyBox, string.format("<b>Status:</b> %s", statusText))
+
+    -- Tier: ตอนนี้ยังไม่มีใน keydata, ใช้ role แทน (คุณจะมา map เพิ่มทีหลังก็ได้)
+    local tierText = string.upper(keydata.role or "free")
+    safeRichLabel(KeyBox, string.format("<b>Tier:</b> %s", tierText))
+
+    safeRichLabel(KeyBox, string.format("<b>Note:</b> %s", noteText))
+    safeRichLabel(KeyBox, string.format("<b>Created at:</b> %s", createdAtText))
+
+    local ExpireLabel   = safeRichLabel(KeyBox, string.format("<b>Expire:</b> %s", formatUnixTime(expireTs)))
+    local TimeLeftLabel = safeRichLabel(KeyBox, string.format("<b>Time left:</b> %s", formatTimeLeft(expireTs)))
+
+    -- อัปเดต Expire / Time left แบบ realtime (ทุก ~1 วินาที)
+    do
+        local acc = 0
+        AddConnection(RunService.Heartbeat:Connect(function(dt)
+            acc = acc + dt
+            if acc < 1 then
+                return
+            end
+            acc = 0
+
+            local nowExpire = tonumber(keydata.expire) or expireTs
+            local expireStr = formatUnixTime(nowExpire)
+            local leftStr   = formatTimeLeft(nowExpire)
+
+            if ExpireLabel and ExpireLabel.TextLabel then
+                ExpireLabel.TextLabel.Text = string.format("<b>Expire:</b> %s", expireStr)
+            end
+
+            if TimeLeftLabel and TimeLeftLabel.TextLabel then
+                TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", leftStr)
+            end
+        end))
+    end
+
+    --=== 4.3.2 Game Info (Right Groupbox) =======================
+    local GameBox = InfoTab:AddRightGroupbox("Game Info", "info")
+
+    safeRichLabel(GameBox, '<font size="14"><b>Game / Server Information</b></font>')
+    GameBox:AddDivider()
+
+    local placeId = game.PlaceId or 0
+    local jobId   = tostring(game.JobId or "N/A")
+
+    local GameNameLabel   = safeRichLabel(GameBox, "<b>Game:</b> Loading...")
+    local PlaceIdLabel    = safeRichLabel(GameBox, string.format("<b>PlaceId:</b> %d", placeId))
+    local JobIdLabel      = safeRichLabel(GameBox, string.format("<b>JobId:</b> %s", jobId))
+    local PlayersLabel    = safeRichLabel(GameBox, "<b>Players:</b> -/-")
+    local PerfLabel       = safeRichLabel(GameBox, "<b>Perf:</b> FPS: - | Ping: - ms | Mem: - MB")
+    local ServerTimeLabel = safeRichLabel(GameBox, "<b>Server Time:</b> -")
+
+    -- ดึงชื่อเกมจาก MarketplaceService (ครั้งเดียว)
+    task.spawn(function()
+        local gameName = "Unknown Place"
+        local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, placeId)
+        if ok and info and info.Name then
+            gameName = info.Name
+        end
+
+        if GameNameLabel and GameNameLabel.TextLabel then
+            GameNameLabel.TextLabel.Text = string.format("<b>Game:</b> %s", gameName)
+        end
     end)
+
+    -- ฟังก์ชันอัปเดตจำนวนผู้เล่น
+    local function updatePlayersLabel()
+        local current = #Players:GetPlayers()
+        local max = Players.MaxPlayers or "-"
+        if PlayersLabel and PlayersLabel.TextLabel then
+            PlayersLabel.TextLabel.Text = string.format("<b>Players:</b> %d / %s", current, tostring(max))
+        end
+    end
+
+    updatePlayersLabel()
+    AddConnection(Players.PlayerAdded:Connect(updatePlayersLabel))
+    AddConnection(Players.PlayerRemoving:Connect(updatePlayersLabel))
+
+    -- FPS / Ping / Memory + ServerTime อัปเดตทุก ~0.5s
+    do
+        local acc = 0
+        AddConnection(RunService.Heartbeat:Connect(function(dt)
+            acc = acc + dt
+            if acc < 0.5 then
+                return
+            end
+            acc = 0
+
+            local fps = math.floor(1 / math.max(dt, 1/240))
+
+            local pingMs = 0
+            local memMb  = 0
+
+            -- Ping ms
+            local okPing, pingItem = pcall(function()
+                return Stats.Network.ServerStatsItem["Data Ping"]
+            end)
+
+            if okPing and pingItem and pingItem.GetValue then
+                local v = pingItem:GetValue()
+                if typeof(v) == "number" then
+                    pingMs = math.floor(v)
+                end
+            end
+
+            -- Memory
+            local okMem, mem = pcall(function()
+                return Stats:GetTotalMemoryUsageMb()
+            end)
+            if okMem and type(mem) == "number" then
+                memMb = math.floor(mem)
+            end
+
+            if PerfLabel and PerfLabel.TextLabel then
+                PerfLabel.TextLabel.Text = string.format(
+                    "<b>Perf:</b> FPS: %d | Ping: %d ms | Mem: %d MB",
+                    fps, pingMs, memMb
+                )
+            end
+
+            if ServerTimeLabel and ServerTimeLabel.TextLabel then
+                ServerTimeLabel.TextLabel.Text = string.format(
+                    "<b>Server Time:</b> %s",
+                    os.date("%H:%M:%S")
+                )
+            end
+        end))
+    end
+
+    ------------------------------------------------
+    -- 4.4 Theme / SaveManager (optional) ไว้ทำใน Tab Settings ภายหลัง
+    ------------------------------------------------
+    -- คุณสามารถโยก ThemeManager/SaveManager ไปผูกกับ Tabs.Settings ทีหลังได้
+
+    ------------------------------------------------
+    -- 4.5 Cleanup เมื่อ Unload
+    ------------------------------------------------
+    if Library and type(Library.OnUnload) == "function" then
+        Library:OnUnload(function()
+            for _, conn in ipairs(Connections) do
+                pcall(function()
+                    conn:Disconnect()
+                end)
+            end
+        end)
+    end
 end
 
+--====================================================
+-- 5. Return function สำหรับ KeyUI.startMainHub
+--====================================================
 return function(Exec, keydata, authToken)
-    MainHub(Exec, keydata, authToken)
+    local ok, err = pcall(MainHub, Exec, keydata, authToken)
+    if not ok then
+        warn("[MainHub] Fatal error:", err)
+    end
 end
-
--- ถ้าเอาไปใช้ร่วมกับ Key UI จริง:
--- return function(Exec, keydata, keycheck)
---     MainHub(Exec, keydata, keycheck)
--- end
