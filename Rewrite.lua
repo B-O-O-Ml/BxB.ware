@@ -139,7 +139,7 @@ return function(Exec, UserData, IncomingToken)
         Size       = UDim2.fromOffset(720, 600),
         Center     = true,
         AutoShow   = true,
-        Resizable  = true,
+        Resizable  = false,
         Compact    = true,
     })
 
