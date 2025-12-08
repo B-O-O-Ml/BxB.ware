@@ -508,10 +508,6 @@ local function MainHub(Exec, keydata, authToken)
         end
     })
 
-    WSBox:SetupDependencies({
-        { Toggles.Move_WalkSpeedToggle, true },
-    })
-
     ----------------------------------------------------
     -- 2.2 PLAYER: JumpPower (Toggle + DependencyBox)
     ----------------------------------------------------
@@ -556,9 +552,6 @@ local function MainHub(Exec, keydata, authToken)
         end
     })
 
-    JPBox:SetupDependencies({
-        { Toggles.Move_JumpToggle, true },
-    })
 
     ----------------------------------------------------
     -- 2.3 PLAYER: Infinite Jump
@@ -614,10 +607,6 @@ local function MainHub(Exec, keydata, authToken)
         Max      = 200,
         Rounding = 0,
         Tooltip  = "ความเร็วตอนบิน (ยังไม่ผูก logic)",
-    })
-
-    FlyBox:SetupDependencies({
-        { Toggles.Move_FlyToggle, true },
     })
 
     ----------------------------------------------------
@@ -726,9 +715,6 @@ local function MainHub(Exec, keydata, authToken)
         end
     })
 
-    FOVBox:SetupDependencies({
-        { Toggles.View_FOVToggle, true },
-    })
     ------------------------------------------------
     -- 4.4 Theme / SaveManager (optional) ไว้ทำใน Tab Settings ภายหลัง
     ------------------------------------------------
