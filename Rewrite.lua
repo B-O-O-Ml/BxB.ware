@@ -17,39 +17,25 @@ local function AddConnection(conn)
     end
     return conn
 end
--- ช่วยดึง Character / Humanoid / Root
-local function getCharHumanoidRoot()
-    local char = LocalPlayer and LocalPlayer.Character
+
+local function getCharacter()
+    local plr = LocalPlayer
+    if not plr then return end
+    local char = plr.Character or plr.CharacterAdded:Wait()
+    return char
+end
+
+local function getHumanoid()
+    local char = getCharacter()
     if not char then return end
-
-    local hum  = char:FindFirstChildOfClass("Humanoid")
-    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-
-    return char, hum, root
+    return char:FindFirstChildOfClass("Humanoid")
 end
 
--- ค่า default movement (จะ sync อีกทีตอนเข้าเกม / character spawn)
-local DefaultWalkSpeed = 16
-local DefaultJumpPower = 50
-
-local function syncDefaultsFromHumanoid()
-    local _, hum = getCharHumanoidRoot()
-    if hum then
-        DefaultWalkSpeed = hum.WalkSpeed or 16
-
-        if hum.UseJumpPower ~= false and hum.JumpPower then
-            DefaultJumpPower = hum.JumpPower
-        elseif hum.JumpHeight then
-            DefaultJumpPower = hum.JumpHeight * 7.2
-        end
-    end
+local function getRootPart()
+    local char = getCharacter()
+    if not char then return end
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
 end
-
--- sync เวลา character spawn ใหม่
-AddConnection(LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    syncDefaultsFromHumanoid()
-end))
 
 --====================================================
 -- 1. Secret + Token Verify (ต้องแมพกับ KeyUI.lua)
@@ -458,303 +444,355 @@ local function MainHub(Exec, keydata, authToken)
     --------------------------------------------------------
     -- 2. PLAYER TAB (Movement / Teleport / View)
     --------------------------------------------------------
--- Movement state
-local InfiniteJumpEnabled = false
-local FlyEnabled          = false
-local NoclipEnabled       = false
-local FlySpeed            = 60
-
-local InfiniteJumpConn
-local FlyConn
-local NoclipConn
-
--- Infinite Jump
-local function setInfiniteJump(enabled)
-    InfiniteJumpEnabled = enabled
-
-    if enabled and not InfiniteJumpConn then
-        InfiniteJumpConn = AddConnection(UserInputService.JumpRequest:Connect(function()
-            if not InfiniteJumpEnabled then return end
-            local _, hum = getCharHumanoidRoot()
-            if hum then
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            end
-        end))
-    end
-end
-
--- Noclip
-local function setNoclip(enabled)
-    NoclipEnabled = enabled
-
-    if not NoclipConn then
-        NoclipConn = AddConnection(RunService.Stepped:Connect(function()
-            if not NoclipEnabled then return end
-
-            local char = LocalPlayer.Character
-            if not char then return end
-
-            for _, part in ipairs(char:GetChildren()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-            end
-        end))
-    end
-end
-
--- Fly (basic, ใช้ WASD + Space + Ctrl)
-local function setFly(enabled)
-    FlyEnabled = enabled
-
-    local _, hum = getCharHumanoidRoot()
-    if hum then
-        hum.PlatformStand = enabled
-    end
-
-    if enabled and not FlyConn then
-        FlyConn = AddConnection(RunService.RenderStepped:Connect(function(dt)
-            if not FlyEnabled then return end
-
-            local _, hum, root = getCharHumanoidRoot()
-            local cam = workspace.CurrentCamera
-            if not (hum and root and cam) then return end
-
-            local dir = Vector3.zero
-
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                dir += cam.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                dir -= cam.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                dir += cam.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                dir -= cam.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                dir += Vector3.new(0, 1, 0)
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-                dir -= Vector3.new(0, 1, 0)
-            end
-
-            if dir.Magnitude > 0 then
-                dir = dir.Unit
-                root.CFrame = root.CFrame + dir * (FlySpeed * dt)
-            end
-        end))
-    end
-
-    if not enabled then
-        local _, hum2 = getCharHumanoidRoot()
-        if hum2 then
-            hum2.PlatformStand = false
-        end
-    end
-end
-
--- list player เอาไว้ให้ dropdown ใช้
-local function getPlayerList()
-    local list = {}
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            table.insert(list, plr.Name)
-        end
-    end
-    table.sort(list)
-    return list
-end
-  local PlayerTab = Tabs.Player
+    local PlayerTab = Tabs.Player
 
     ------------------------------------------------
-    -- 4.4.1 Left: Player / Movement
+    -- 2.1 Left: Player Movement
     ------------------------------------------------
-    local MoveBox = PlayerTab:AddLeftGroupbox("Player / Movement", "user")
-    safeRichLabel(MoveBox, '<font size="14"><b>Movement</b></font>')
-    MoveBox:AddDivider()
+    local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
 
-    -- sync default speed/jump จาก Humanoid ปัจจุบัน
-    syncDefaultsFromHumanoid()
+    MoveBox:AddLabel("Control your character movement"):AddColorPicker("dummy_moveinfo", {
+        Default = Color3.fromRGB(255, 255, 255),
+        Title = " ", Hidden = true
+    }) -- ทริกเล็ก ๆ ให้ groupbox ดูไม่โล่ง (จะไม่ใช้จริงก็ได้)
 
-    -- WalkSpeed slider
-    local WalkSpeedSlider = MoveBox:AddSlider("WalkSpeedSlider", {
-        Text    = "WalkSpeed",
-        Default = DefaultWalkSpeed,
-        Min     = 8,
-        Max     = 200,
+    -- WalkSpeed Slider
+    local defaultWalkSpeed = 16
+
+    local WalkSpeedSlider = MoveBox:AddSlider("bxw_walkspeed", {
+        Text = "WalkSpeed",
+        Default = defaultWalkSpeed,
+        Min = 0,
+        Max = 120,
         Rounding = 0,
+        Compact = false,
         Callback = function(value)
-            local _, hum = getCharHumanoidRoot()
+            local hum = getHumanoid()
             if hum then
                 hum.WalkSpeed = value
             end
         end,
     })
 
-    -- JumpPower slider
-    local JumpPowerSlider = MoveBox:AddSlider("JumpPowerSlider", {
-        Text    = "JumpPower",
-        Default = DefaultJumpPower,
-        Min     = 20,
-        Max     = 200,
-        Rounding = 0,
-        Callback = function(value)
-            local _, hum = getCharHumanoidRoot()
-            if not hum then return end
-
-            if hum.UseJumpPower ~= false then
-                hum.JumpPower = value
-            else
-                hum.JumpHeight = value / 7.2
-            end
-        end,
-    })
-
-    MoveBox:AddDivider()
-
-    -- Infinite Jump toggle
-    local InfJumpToggle = MoveBox:AddToggle("InfiniteJumpToggle", {
-        Text    = "Infinite Jump",
-        Default = false,
-        Callback = function(state)
-            setInfiniteJump(state)
-        end,
-    })
-
-    -- Fly toggle
-    local FlyToggle = MoveBox:AddToggle("FlyToggle", {
-        Text    = "Fly (WASD + Space/Ctrl)",
-        Default = false,
-        Callback = function(state)
-            setFly(state)
-        end,
-    })
-
-    -- Fly speed slider (แค่เปลี่ยนค่าตัวแปร FlySpeed)
-    local FlySpeedSlider = MoveBox:AddSlider("FlySpeedSlider", {
-        Text    = "Fly Speed",
-        Default = FlySpeed,
-        Min     = 10,
-        Max     = 200,
-        Rounding = 0,
-        Callback = function(value)
-            FlySpeed = value
-        end,
-    })
-
-    -- Noclip toggle
-    local NoclipToggle = MoveBox:AddToggle("NoclipToggle", {
-        Text    = "Noclip",
-        Default = false,
-        Callback = function(state)
-            setNoclip(state)
-        end,
-    })
-
-    MoveBox:AddDivider()
-
-    -- Reset movement
-    MoveBox:AddButton("Reset Movement", function()
-        syncDefaultsFromHumanoid()
-
-        local _, hum = getCharHumanoidRoot()
+    -- เพิ่มปุ่ม Reset WalkSpeed
+    MoveBox:AddButton("Reset WalkSpeed", function()
+        local hum = getHumanoid()
         if hum then
-            hum.WalkSpeed = DefaultWalkSpeed
-            if hum.UseJumpPower ~= false then
-                hum.JumpPower = DefaultJumpPower
-            else
-                hum.JumpHeight = DefaultJumpPower / 7.2
-            end
+            hum.WalkSpeed = defaultWalkSpeed
         end
-
-        setInfiniteJump(false)
-        setFly(false)
-        setNoclip(false)
-
-        if InfJumpToggle and InfJumpToggle.SetValue then InfJumpToggle:SetValue(false) end
-        if FlyToggle and FlyToggle.SetValue     then FlyToggle:SetValue(false)     end
-        if NoclipToggle and NoclipToggle.SetValue then NoclipToggle:SetValue(false) end
+        WalkSpeedSlider:SetValue(defaultWalkSpeed)
     end)
 
-    ------------------------------------------------
-    -- 4.4.2 Right: Teleport / Utility
-    ------------------------------------------------
-    local UtilBox = PlayerTab:AddRightGroupbox("Teleport / Utility", "map-pin")
-    safeRichLabel(UtilBox, '<font size="14"><b>Teleport / Utility</b></font>')
-    UtilBox:AddDivider()
+    -- JumpPower Slider
+    local defaultJumpPower = 50
 
-    -- Teleport Player dropdown
-    local TeleportDropdown
-
-    TeleportDropdown = UtilBox:AddDropdown("TeleportPlayerDropdown", {
-        Text   = "Teleport to Player",
-        Values = getPlayerList(),
-        Multi  = false,
-        Callback = function(selected)
-            if not selected or selected == "" then return end
-
-            local target = Players:FindFirstChild(selected)
-            if not target or not target.Character then return end
-
-            local targetRoot = target.Character:FindFirstChild("HumanoidRootPart")
-                              or target.Character:FindFirstChild("Torso")
-            local _, _, myRoot = getCharHumanoidRoot()
-            if myRoot and targetRoot then
-                myRoot.CFrame = targetRoot.CFrame + targetRoot.CFrame.LookVector * 3
+    local JumpPowerSlider = MoveBox:AddSlider("bxw_jumppower", {
+        Text = "JumpPower",
+        Default = defaultJumpPower,
+        Min = 0,
+        Max = 200,
+        Rounding = 0,
+        Compact = false,
+        Callback = function(value)
+            local hum = getHumanoid()
+            if hum then
+                -- รองรับทั้ง JumpPower และใช้ UseJumpPower
+                pcall(function()
+                    hum.UseJumpPower = true
+                end)
+                hum.JumpPower = value
             end
         end,
+    })
+
+    MoveBox:AddButton("Reset JumpPower", function()
+        local hum = getHumanoid()
+        if hum then
+            pcall(function()
+                hum.UseJumpPower = true
+            end)
+            hum.JumpPower = defaultJumpPower
+        end
+        JumpPowerSlider:SetValue(defaultJumpPower)
+    end)
+
+    MoveBox:AddDivider()
+
+    -- Infinite Jump
+    local infJumpConn
+    local InfJumpToggle = MoveBox:AddToggle("bxw_infjump", {
+        Text = "Infinite Jump",
+        Default = false,
+        Tooltip = "Allow you to jump in the air forever",
+    })
+
+    InfJumpToggle:OnChanged(function(state)
+        if state then
+            if infJumpConn then
+                infJumpConn:Disconnect()
+            end
+            infJumpConn = AddConnection(UserInputService.JumpRequest:Connect(function()
+                local hum = getHumanoid()
+                if hum then
+                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end))
+        else
+            if infJumpConn then
+                infJumpConn:Disconnect()
+                infJumpConn = nil
+            end
+        end
+    end)
+
+    -- Fly (simple fly)
+    local flyConn
+    local flyEnabled = false
+    local flySpeed = 60
+
+    local FlyToggle = MoveBox:AddToggle("bxw_fly", {
+        Text = "Fly",
+        Default = false,
+        Tooltip = "Simple client-side fly",
+    })
+
+    FlyToggle:OnChanged(function(state)
+        flyEnabled = state
+
+        if not state then
+            if flyConn then
+                flyConn:Disconnect()
+                flyConn = nil
+            end
+            local hum = getHumanoid()
+            if hum then
+                hum.PlatformStand = false
+            end
+            return
+        end
+
+        local hum = getHumanoid()
+        if hum then
+            hum.PlatformStand = true
+        end
+
+        if flyConn then
+            flyConn:Disconnect()
+        end
+
+        flyConn = AddConnection(RunService.RenderStepped:Connect(function(dt)
+            if not flyEnabled then return end
+
+            local hum = getHumanoid()
+            local root = getRootPart()
+            local cam = Workspace.CurrentCamera
+            if not hum or not root or not cam then return end
+
+            local moveDir = Vector3.new(0, 0, 0)
+
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                moveDir = moveDir + cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                moveDir = moveDir - cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                moveDir = moveDir - cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                moveDir = moveDir + cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                moveDir = moveDir + Vector3.new(0, 1, 0)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                moveDir = moveDir - Vector3.new(0, 1, 0)
+            end
+
+            if moveDir.Magnitude > 0 then
+                moveDir = moveDir.Unit
+                root.CFrame = root.CFrame + (moveDir * flySpeed * dt)
+            end
+        end))
+    end)
+
+    -- Noclip
+    local noclipConn
+    local NoclipToggle = MoveBox:AddToggle("bxw_noclip", {
+        Text = "Noclip",
+        Default = false,
+        Tooltip = "Walk through walls",
+    })
+
+    NoclipToggle:OnChanged(function(state)
+        if not state then
+            if noclipConn then
+                noclipConn:Disconnect()
+                noclipConn = nil
+            end
+
+            local char = getCharacter()
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = true
+                    end
+                end
+            end
+            return
+        end
+
+        if noclipConn then
+            noclipConn:Disconnect()
+        end
+
+        noclipConn = AddConnection(RunService.Stepped:Connect(function()
+            local char = getCharacter()
+            if not char then return end
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end))
+    end)
+
+    MoveBox:AddDivider()
+    MoveBox:AddLabel("More features (sprint, custom fly, etc.) can be added later.")
+
+    ------------------------------------------------
+    -- 2.2 Right: Teleport / Utility
+    ------------------------------------------------
+    local UtilBox = PlayerTab:AddRightGroupbox("Teleport / Utility", "map")
+
+    local playerNames = {}
+    local function refreshPlayerList()
+        table.clear(playerNames)
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer then
+                table.insert(playerNames, plr.Name)
+            end
+        end
+    end
+
+    refreshPlayerList()
+
+    local TeleportDropdown = UtilBox:AddDropdown("bxw_tpplayer", {
+        Text = "Teleport to Player",
+        Values = playerNames,
+        Default = "",
+        Multi = false,
+        AllowNull = true,
+        Tooltip = "Select a player to teleport to",
     })
 
     UtilBox:AddButton("Refresh Player List", function()
-        if TeleportDropdown and TeleportDropdown.SetValues then
-            TeleportDropdown:SetValues(getPlayerList())
-        end
+        refreshPlayerList()
+        TeleportDropdown:SetValues(playerNames)
     end)
 
-    -- auto refresh เมื่อมีคนเข้า/ออก
-    AddConnection(Players.PlayerAdded:Connect(function()
-        if TeleportDropdown and TeleportDropdown.SetValues then
-            TeleportDropdown:SetValues(getPlayerList())
+    UtilBox:AddButton("Teleport", function()
+        local targetName = TeleportDropdown.Value
+        if not targetName or targetName == "" then
+            Library:Notify("Select player first", 2)
+            return
         end
-    end))
-    AddConnection(Players.PlayerRemoving:Connect(function()
-        if TeleportDropdown and TeleportDropdown.SetValues then
-            TeleportDropdown:SetValues(getPlayerList())
+
+        local target = Players:FindFirstChild(targetName)
+        local root = getRootPart()
+        if not target or not root then
+            Library:Notify("Target/Your character not found", 2)
+            return
         end
-    end))
+
+        local tChar = target.Character
+        local tRoot = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
+        if not tRoot then
+            Library:Notify("Target has no root part", 2)
+            return
+        end
+
+        root.CFrame = tRoot.CFrame + Vector3.new(0, 3, 0)
+    end)
 
     UtilBox:AddDivider()
 
-    -- FOV changer
-    local cam = workspace.CurrentCamera
-    local DefaultFOV = cam and cam.FieldOfView or 70
+    -- Spectate player
+    local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate", {
+        Text = "Spectate Player",
+        Values = playerNames,
+        Default = "",
+        Multi = false,
+        AllowNull = true,
+    })
 
-    local FOVSlider = UtilBox:AddSlider("FOVSlider", {
-        Text    = "Field of View",
-        Min     = 40,
-        Max     = 120,
-        Default = DefaultFOV,
+    UtilBox:AddButton("Start Spectate", function()
+        local name = SpectateDropdown.Value
+        local cam = Workspace.CurrentCamera
+        if not cam then
+            return
+        end
+
+        if not name or name == "" then
+            Library:Notify("Select player to spectate", 2)
+            return
+        end
+
+        local target = Players:FindFirstChild(name)
+        if not target or not target.Character then
+            Library:Notify("Target not found", 2)
+            return
+        end
+
+        local hum = target.Character:FindFirstChildOfClass("Humanoid")
+        if not hum then
+            Library:Notify("Target humanoid not found", 2)
+            return
+        end
+
+        cam.CameraSubject = hum
+    end)
+
+    UtilBox:AddButton("Stop Spectate", function()
+        local cam = Workspace.CurrentCamera
+        local hum = getHumanoid()
+        if cam and hum then
+            cam.CameraSubject = hum
+        end
+    end)
+
+    UtilBox:AddDivider()
+
+    -- FOV Changer
+    local camera = Workspace.CurrentCamera
+    local defaultFov = camera and camera.FieldOfView or 70
+
+    local FovSlider = UtilBox:AddSlider("bxw_fov", {
+        Text = "FOV",
+        Default = defaultFov,
+        Min = 40,
+        Max = 120,
         Rounding = 0,
+        Compact = false,
         Callback = function(value)
-            local currentCam = workspace.CurrentCamera
-            if currentCam then
-                currentCam.FieldOfView = value
+            local cam = Workspace.CurrentCamera
+            if cam then
+                cam.FieldOfView = value
             end
         end,
     })
 
     UtilBox:AddButton("Reset FOV", function()
-        local currentCam = workspace.CurrentCamera
-        if currentCam then
-            currentCam.FieldOfView = DefaultFOV
+        local cam = Workspace.CurrentCamera
+        if cam then
+            cam.FieldOfView = defaultFov
         end
-        if FOVSlider and FOVSlider.SetValue then
-            FOVSlider:SetValue(DefaultFOV)
-        end
+        FovSlider:SetValue(defaultFov)
     end)
+
+    UtilBox:AddDivider()
+    UtilBox:AddLabel("More utilities (fly presets, camera tools, etc.) can be added later.")
+
     ------------------------------------------------
     -- 4.4 Theme / SaveManager (optional) ไว้ทำใน Tab Settings ภายหลัง
     ------------------------------------------------
