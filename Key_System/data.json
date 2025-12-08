@@ -4,6 +4,16 @@
   "version": "1.2.0",
   "last_update": "2025-12-05 14:30:00",
   "keys": [
+      {
+      "key": "BxB-Ware-PremiumFree",
+      "role": "premium",
+      "status": "active",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/05/25 00:00:00",
+      "expire": "1/08/26 00:00:00",
+      "note": "Global free key (no HWID binding, 1 Month!!)"
+    },
     {
       "key": "FREE",
       "role": "free",
