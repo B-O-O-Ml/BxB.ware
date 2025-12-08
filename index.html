@@ -239,12 +239,19 @@
                                 <pre class="font-mono text-sm text-lavender whitespace-nowrap selection:bg-lavender selection:text-black">loadstring(game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_Loaded.lua"))()</pre>
                             </div>
                             
-                            <!-- Copy Button Overlay -->
-                            <div class="mt-4">
-                                <button onclick="copyScript(this)" class="w-full bg-white text-black hover:bg-lavender hover:scale-[1.02] active:scale-[0.98] transition-all font-bold py-3 rounded-lg flex items-center justify-center gap-2 group">
+                            <!-- Action Buttons (Updated) -->
+                            <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                                <!-- Copy Button -->
+                                <button onclick="copyScript(this)" class="flex-1 bg-white text-black hover:bg-gray-200 hover:scale-[1.02] active:scale-[0.98] transition-all font-bold py-3 rounded-lg flex items-center justify-center gap-2 group shadow-lg shadow-white/10">
                                     <i data-lucide="copy" class="w-4 h-4"></i>
                                     <span>Copy Script</span>
                                 </button>
+                                
+                                <!-- Get Key Button -->
+                                <a href="getkey.html" target="_blank" class="flex-1 bg-lavender text-black hover:bg-purple-400 hover:scale-[1.02] active:scale-[0.98] transition-all font-bold py-3 rounded-lg flex items-center justify-center gap-2 group shadow-lg shadow-lavender/20">
+                                    <i data-lucide="key" class="w-4 h-4"></i>
+                                    <span>Get Key Link</span>
+                                </a>
                             </div>
                         </div>
                     </div>
