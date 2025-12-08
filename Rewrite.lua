@@ -6,9 +6,9 @@ return function(Exec, UserData, IncomingToken)
     -- 0. Basic Config (ใส่ URL จริงของคุณเอง)
     ----------------------------------------------------------------
     local Config = {
-        LIB_URL   = "https://raw.githubusercontent.com/YourUser/YourRepo/main/Library.lua",
-        THEME_URL = "https://raw.githubusercontent.com/YourUser/YourRepo/main/ThemeManager.lua",
-        SAVE_URL  = "https://raw.githubusercontent.com/YourUser/YourRepo/main/SaveManager.lua",
+        LIB_URL    = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/Library.lua",
+        THEME_URL  = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/addons/ThemeManager.lua",
+        SAVE_URL   = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/addons/SaveManager.lua",
 
         FolderName = "BxB.ware/Configs"
     }
