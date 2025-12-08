@@ -6,6 +6,9 @@
     <title>BxB.ware | Universal Script Nexus</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Three.js for 3D Model -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
     
     <script>
@@ -31,6 +34,7 @@
                     animation: {
                         'float': 'float 6s ease-in-out infinite',
                         'pulse-glow': 'pulseGlow 3s infinite',
+                        'scroll': 'scroll 20s linear infinite',
                     },
                     keyframes: {
                         float: {
@@ -40,6 +44,10 @@
                         pulseGlow: {
                             '0%, 100%': { boxShadow: '0 0 10px rgba(192, 132, 252, 0.2)' },
                             '50%': { boxShadow: '0 0 25px rgba(192, 132, 252, 0.6)' },
+                        },
+                        scroll: {
+                            '0%': { transform: 'translateX(0)' },
+                            '100%': { transform: 'translateX(-50%)' },
                         }
                     }
                 }
@@ -95,9 +103,68 @@
             stroke: #c084fc;
             fill: rgba(192, 132, 252, 0.1);
         }
+
+        /* 3D Canvas Container */
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            border-radius: 1rem;
+            overflow: hidden;
+            position: relative;
+        }
+        canvas { outline: none; }
+        
+        /* Active ESP Button State */
+        .esp-btn.active {
+            background-color: #c084fc;
+            color: black;
+            border-color: #c084fc;
+            box-shadow: 0 0 15px rgba(192, 132, 252, 0.4);
+        }
+
+        /* ESP Overlays (Simulating Roblox GUI) */
+        .esp-overlay-text {
+            position: absolute;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; /* Black Outline */
+            pointer-events: none;
+            transform: translate(-50%, -100%); /* Center above point */
+            white-space: nowrap;
+            display: none; /* Hidden by default */
+            z-index: 20;
+        }
+        
+        .esp-healthbar {
+            position: absolute;
+            width: 3px;
+            height: 50px; /* Dynamic */
+            background-color: #000;
+            display: none;
+            z-index: 19;
+            transform: translate(0, -50%); /* Centered vertically relative to torso */
+        }
+        .esp-healthbar-inner {
+            width: 100%;
+            height: 100%; /* Dynamic fill */
+            background-color: #00ff00;
+            bottom: 0;
+            position: absolute;
+        }
+
+        /* Step Card Number */
+        .step-number {
+            -webkit-text-stroke: 1px rgba(192, 132, 252, 0.3);
+            color: transparent;
+        }
     </style>
 </head>
 <body class="bg-dark-bg text-white overflow-x-hidden relative min-h-screen flex flex-col">
+
+    <!-- Particle Canvas -->
+    <canvas id="particles-bg" class="fixed top-0 left-0 w-full h-full pointer-events-none z-0 opacity-40"></canvas>
 
     <!-- Ambient Background -->
     <div class="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
@@ -147,6 +214,12 @@
                         The most advanced universal script hub. 
                         Optimized for performance, designed for domination.
                     </p>
+                    
+                    <div class="flex gap-4">
+                         <a href="#install-guide" class="px-6 py-3 rounded-lg border border-white/10 hover:bg-white/5 transition-all flex items-center gap-2 text-sm font-bold">
+                            How to Install <i data-lucide="arrow-down" class="w-4 h-4"></i>
+                         </a>
+                    </div>
                 </div>
 
                 <!-- Code Editor Style Copy Bar -->
@@ -173,6 +246,83 @@
                                     <span>Copy Script</span>
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D VISUAL PREVIEW SECTION -->
+            <div class="mb-24 flex flex-col items-center">
+                <div class="flex items-center gap-4 mb-6">
+                    <h2 class="text-2xl font-bold">Visual Engine Preview</h2>
+                    <span class="text-xs font-mono text-lavender bg-lavender/10 px-2 py-1 rounded border border-lavender/20">INTERACTIVE DEMO</span>
+                </div>
+                
+                <div class="glass-panel p-2 rounded-2xl relative w-full max-w-lg h-[400px] flex flex-col items-center justify-center shadow-2xl border-lavender/20">
+                    
+                    <!-- 3D Canvas -->
+                    <div id="canvas-container">
+                        <!-- ESP Overlays (Injected Logic) -->
+                        <div id="esp-nametag" class="esp-overlay-text">Dummy_Player [Lvl 100]</div>
+                        <div id="esp-distance" class="esp-overlay-text text-gray-300 !text-[8px]" style="margin-top: 12px;">15m</div>
+                        <div id="esp-healthbar" class="esp-healthbar"><div class="esp-healthbar-inner"></div></div>
+                    </div>
+                    
+                    <!-- Controls -->
+                    <div class="absolute bottom-6 z-20 flex flex-wrap justify-center gap-2 bg-black/60 backdrop-blur-md p-2 rounded-xl border border-white/10 max-w-[95%]">
+                        <button onclick="toggleESP('chams', this)" class="esp-btn px-2.5 py-1.5 text-[9px] md:text-[10px] font-mono font-bold rounded transition-colors text-white border border-white/20 hover:bg-white/10">CHAMS</button>
+                        <button onclick="toggleESP('box', this)" class="esp-btn px-2.5 py-1.5 text-[9px] md:text-[10px] font-mono font-bold rounded transition-colors text-white border border-white/20 hover:bg-white/10">BOX</button>
+                        <button onclick="toggleESP('skeleton', this)" class="esp-btn px-2.5 py-1.5 text-[9px] md:text-[10px] font-mono font-bold rounded transition-colors text-white border border-white/20 hover:bg-white/10">SKEL</button>
+                        <button onclick="toggleESP('headDot', this)" class="esp-btn px-2.5 py-1.5 text-[9px] md:text-[10px] font-mono font-bold rounded transition-colors text-white border border-white/20 hover:bg-white/10">DOT</button>
+                        
+                        <!-- New Features -->
+                        <button onclick="toggleESP('nametag', this)" class="esp-btn px-2.5 py-1.5 text-[9px] md:text-[10px] font-mono font-bold rounded transition-colors text-white border border-white/20 hover:bg-white/10">NAME</button>
+                        <button onclick="toggleESP('healthbar', this)" class="esp-btn px-2.5 py-1.5 text-[9px] md:text-[10px] font-mono font-bold rounded transition-colors text-white border border-white/20 hover:bg-white/10">HP</button>
+                         <button onclick="toggleESP('distance', this)" class="esp-btn px-2.5 py-1.5 text-[9px] md:text-[10px] font-mono font-bold rounded transition-colors text-white border border-white/20 hover:bg-white/10">DIST</button>
+                    </div>
+
+                    <!-- FPS Overlay -->
+                    <div class="absolute top-4 left-4 z-20 pointer-events-none">
+                        <span id="fps-counter" class="text-green-500 text-[10px] font-mono font-bold">FPS: 60</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INSTALLATION GUIDE (NEW) -->
+            <div id="install-guide" class="mb-24 scroll-mt-24">
+                <h2 class="text-2xl font-bold mb-10 text-center">How to Install</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Step 1 -->
+                    <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+                        <div class="absolute -right-4 -bottom-6 text-9xl font-bold step-number opacity-20">1</div>
+                        <div class="relative z-10">
+                            <div class="w-10 h-10 bg-lavender/10 rounded-lg flex items-center justify-center text-lavender mb-4">
+                                <i data-lucide="copy" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-lg font-bold mb-2">Copy Script</h3>
+                            <p class="text-sm text-gray-400">Click the copy button above to get the latest loader code.</p>
+                        </div>
+                    </div>
+                    <!-- Step 2 -->
+                    <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+                        <div class="absolute -right-4 -bottom-6 text-9xl font-bold step-number opacity-20">2</div>
+                        <div class="relative z-10">
+                            <div class="w-10 h-10 bg-lavender/10 rounded-lg flex items-center justify-center text-lavender mb-4">
+                                <i data-lucide="play" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-lg font-bold mb-2">Inject & Execute</h3>
+                            <p class="text-sm text-gray-400">Paste into Solara, Wave, or Delta and press Execute.</p>
+                        </div>
+                    </div>
+                    <!-- Step 3 -->
+                    <div class="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+                        <div class="absolute -right-4 -bottom-6 text-9xl font-bold step-number opacity-20">3</div>
+                        <div class="relative z-10">
+                            <div class="w-10 h-10 bg-lavender/10 rounded-lg flex items-center justify-center text-lavender mb-4">
+                                <i data-lucide="key" class="w-5 h-5"></i>
+                            </div>
+                            <h3 class="text-lg font-bold mb-2">Get Key</h3>
+                            <p class="text-sm text-gray-400">Complete the short link steps to get your 24h key.</p>
                         </div>
                     </div>
                 </div>
@@ -236,6 +386,51 @@
                 </div>
             </div>
 
+            <!-- TESTIMONIALS (NEW) -->
+            <div class="mb-24 overflow-hidden relative">
+                <div class="flex items-center gap-4 mb-6 justify-center">
+                    <h2 class="text-xl font-bold">Community Feedback</h2>
+                </div>
+                <!-- Gradient Mask -->
+                <div class="absolute left-0 top-0 h-full w-20 bg-gradient-to-r from-dark-bg to-transparent z-10"></div>
+                <div class="absolute right-0 top-0 h-full w-20 bg-gradient-to-l from-dark-bg to-transparent z-10"></div>
+                
+                <div class="flex gap-6 w-max animate-scroll">
+                    <!-- Reviews -->
+                    <div class="glass-panel p-4 rounded-xl w-64 flex-shrink-0">
+                        <div class="text-yellow-400 text-xs mb-2">★★★★★</div>
+                        <p class="text-sm text-gray-300">"Best free script for Blox Fruits. Auto farm is super fast."</p>
+                        <div class="mt-2 text-xs text-gray-500">- User123</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl w-64 flex-shrink-0">
+                        <div class="text-yellow-400 text-xs mb-2">★★★★★</div>
+                        <p class="text-sm text-gray-300">"ESP is very clean and doesn't lag my game. Love the UI."</p>
+                        <div class="mt-2 text-xs text-gray-500">- SilentKiller</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl w-64 flex-shrink-0">
+                        <div class="text-yellow-400 text-xs mb-2">★★★★★</div>
+                        <p class="text-sm text-gray-300">"Undetected on Wave for 2 months now. Great work!"</p>
+                        <div class="mt-2 text-xs text-gray-500">- H3ckerPro</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl w-64 flex-shrink-0">
+                        <div class="text-yellow-400 text-xs mb-2">★★★★☆</div>
+                        <p class="text-sm text-gray-300">"Key system is fair. Script works perfectly on mobile too."</p>
+                        <div class="mt-2 text-xs text-gray-500">- MobileGamer</div>
+                    </div>
+                    <div class="glass-panel p-4 rounded-xl w-64 flex-shrink-0">
+                        <div class="text-yellow-400 text-xs mb-2">★★★★★</div>
+                        <p class="text-sm text-gray-300">"The aimbot prediction is insane for Rivals. Highly recommend."</p>
+                        <div class="mt-2 text-xs text-gray-500">- AimGod</div>
+                    </div>
+                     <!-- Duplicate for loop -->
+                     <div class="glass-panel p-4 rounded-xl w-64 flex-shrink-0">
+                        <div class="text-yellow-400 text-xs mb-2">★★★★★</div>
+                        <p class="text-sm text-gray-300">"Best free script for Blox Fruits. Auto farm is super fast."</p>
+                        <div class="mt-2 text-xs text-gray-500">- User123</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Credits Section with Socials -->
             <div class="mb-10">
                 <h2 class="text-2xl font-bold mb-8 text-center">Development Team</h2>
@@ -262,11 +457,9 @@
                                 <i data-lucide="github" class="w-5 h-5"></i>
                             </a>
                             <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="Line">
-                                <!-- Custom Line SVG -->
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.48 2 2 5.96 2 10.85c0 2.5 1.5 4.8 3.85 6.4-.3.9-1 2.3-1.15 2.55-.05.15.05.3.2.3.15 0 2.5-1.5 3.5-2.15.5.15 1.05.2 1.6.2 5.52 0 10-3.96 10-8.85S17.52 2 12 2z"/></svg>
                             </a>
                             <a href="#" class="social-link text-gray-400 hover:text-lavender transition-colors" title="TikTok">
-                                <!-- Custom TikTok SVG -->
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
                             </a>
                         </div>
@@ -454,6 +647,311 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
+
+        /* -----------------------------------------------------------
+           3D VISUAL ENGINE (Three.js ESP Simulation)
+           ----------------------------------------------------------- */
+        let scene, camera, renderer, characterGroup, boxHelper;
+        let skeletonHelper, headDotMesh;
+        let nametagEl, distanceEl, healthbarEl;
+        
+        let espState = {
+            chams: false,
+            box: false,
+            skeleton: false,
+            headDot: false,
+            nametag: false,
+            healthbar: false,
+            distance: false
+        };
+
+        let materials = {
+            normal: new THREE.MeshLambertMaterial({ color: 0x888888 }), 
+            chams: new THREE.MeshBasicMaterial({ color: 0xc084fc, depthTest: false, transparent: true, opacity: 0.6 }),
+        };
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            nametagEl = document.getElementById('esp-nametag');
+            distanceEl = document.getElementById('esp-distance');
+            healthbarEl = document.getElementById('esp-healthbar');
+            
+            // Scene Setup
+            scene = new THREE.Scene();
+            
+            // Camera
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.z = 8;
+            camera.position.y = 1;
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 2); 
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 2).normalize();
+            scene.add(directionalLight);
+
+            // Build R15 Character (Simulated)
+            characterGroup = new THREE.Group();
+
+            const createLimb = (w, h, d, x, y, z, name) => {
+                const geometry = new THREE.BoxGeometry(w, h, d);
+                const mesh = new THREE.Mesh(geometry, materials.normal);
+                mesh.position.set(x, y, z);
+                mesh.name = name;
+                return mesh;
+            };
+
+            const head = createLimb(1, 1, 1, 0, 2.5, 0, 'Head');
+            const torso = createLimb(1.6, 1.8, 0.8, 0, 1, 0, 'Torso');
+            const leftArm = createLimb(0.8, 2, 0.8, -1.3, 1, 0, 'LeftArm');
+            const rightArm = createLimb(0.8, 2, 0.8, 1.3, 1, 0, 'RightArm');
+            const leftLeg = createLimb(0.7, 2, 0.8, -0.4, -1.1, 0, 'LeftLeg');
+            const rightLeg = createLimb(0.7, 2, 0.8, 0.4, -1.1, 0, 'RightLeg');
+
+            characterGroup.add(head, torso, leftArm, rightArm, leftLeg, rightLeg);
+            scene.add(characterGroup);
+
+            // 1. Box Helper
+            boxHelper = new THREE.Box3Helper(new THREE.Box3().setFromObject(characterGroup), 0xffffff);
+            boxHelper.visible = false;
+            scene.add(boxHelper);
+
+            // 2. Head Dot
+            const dotGeo = new THREE.SphereGeometry(0.15, 16, 16);
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0xff0000, depthTest: false, transparent: true });
+            headDotMesh = new THREE.Mesh(dotGeo, dotMat);
+            headDotMesh.position.set(0, 2.5, 0); 
+            headDotMesh.visible = false;
+            characterGroup.add(headDotMesh);
+
+            // 3. Skeleton Helper
+            const skeletonMat = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true });
+            const points = [
+                new THREE.Vector3(0, 2.5, 0), new THREE.Vector3(0, 1, 0),  // Head -> Torso
+                new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1.3, 1, 0), // Torso -> LArm
+                new THREE.Vector3(0, 1, 0), new THREE.Vector3(1.3, 1, 0),  // Torso -> RArm
+                new THREE.Vector3(0, 1, 0), new THREE.Vector3(-0.4, -1.1, 0), // Torso -> LLeg
+                new THREE.Vector3(0, 1, 0), new THREE.Vector3(0.4, -1.1, 0)  // Torso -> RLeg
+            ];
+            const skeletonGeo = new THREE.BufferGeometry().setFromPoints(points);
+            skeletonHelper = new THREE.LineSegments(skeletonGeo, skeletonMat);
+            skeletonHelper.visible = false;
+            characterGroup.add(skeletonHelper);
+
+            // Handle Resize
+            window.addEventListener('resize', () => {
+                if(!container) return;
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            animate();
+        }
+
+        // Screen Projection Helper
+        function toScreenPosition(obj, camera, container) {
+            const vector = new THREE.Vector3();
+            obj.updateMatrixWorld(); // force update
+            vector.setFromMatrixPosition(obj.matrixWorld);
+            vector.project(camera);
+
+            const widthHalf = container.clientWidth / 2;
+            const heightHalf = container.clientHeight / 2;
+
+            vector.x = (vector.x * widthHalf) + widthHalf;
+            vector.y = -(vector.y * heightHalf) + heightHalf;
+
+            return { x: vector.x, y: vector.y };
+        }
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            if (characterGroup) {
+                characterGroup.rotation.y += 0.01; 
+                
+                // Update HTML Overlays
+                updateScreenOverlays();
+
+                // Update Box
+                if(espState.box || espState.healthbar) {
+                    boxHelper.box.setFromObject(characterGroup);
+                }
+            }
+            renderer.render(scene, camera);
+        }
+
+        function updateScreenOverlays() {
+            const container = document.getElementById('canvas-container');
+            if(!container) return;
+
+            // 1. Nametag & Distance (Follow Head)
+            if (espState.nametag || espState.distance) {
+                // Get Head Position (approx top of head)
+                const headPos3D = new THREE.Object3D();
+                headPos3D.position.set(0, 3.2, 0); // Offset above head
+                characterGroup.add(headPos3D); // Add briefly to get world transform relative to group
+                
+                const screenPos = toScreenPosition(headPos3D, camera, container);
+                characterGroup.remove(headPos3D); // Clean up
+
+                if (espState.nametag) {
+                    nametagEl.style.display = 'block';
+                    nametagEl.style.left = `${screenPos.x}px`;
+                    nametagEl.style.top = `${screenPos.y}px`;
+                } else {
+                    nametagEl.style.display = 'none';
+                }
+
+                if (espState.distance) {
+                    distanceEl.style.display = 'block';
+                    distanceEl.style.left = `${screenPos.x}px`;
+                    distanceEl.style.top = `${screenPos.y}px`; // CSS margin handles spacing
+                } else {
+                    distanceEl.style.display = 'none';
+                }
+            } else {
+                nametagEl.style.display = 'none';
+                distanceEl.style.display = 'none';
+            }
+
+            // 2. Healthbar (Follow Box Left)
+            if (espState.healthbar) {
+                // We need the bounding box 2D projection min/max
+                // Simplified: Calculate Leftmost edge of Torso/Box
+                // A robust way involves projecting all 8 corners of the Box3
+                const min = boxHelper.box.min.clone();
+                const max = boxHelper.box.max.clone();
+                
+                // Get Corners
+                const corners = [
+                    new THREE.Vector3(min.x, min.y, min.z),
+                    new THREE.Vector3(min.x, min.y, max.z),
+                    new THREE.Vector3(min.x, max.y, min.z),
+                    new THREE.Vector3(min.x, max.y, max.z),
+                    new THREE.Vector3(max.x, min.y, min.z),
+                    new THREE.Vector3(max.x, min.y, max.z),
+                    new THREE.Vector3(max.x, max.y, min.z),
+                    new THREE.Vector3(max.x, max.y, max.z),
+                ];
+
+                let minX = Infinity, minY = Infinity, maxY = -Infinity;
+                
+                corners.forEach(p => {
+                    p.applyMatrix4(characterGroup.matrixWorld); // Apply rotation
+                    const s = p.project(camera);
+                    const x = (s.x * container.clientWidth / 2) + container.clientWidth / 2;
+                    const y = -(s.y * container.clientHeight / 2) + container.clientHeight / 2;
+                    if(x < minX) minX = x;
+                    if(y < minY) minY = y;
+                    if(y > maxY) maxY = y;
+                });
+
+                const height = maxY - minY;
+
+                healthbarEl.style.display = 'block';
+                healthbarEl.style.left = `${minX - 6}px`; // Offset left
+                healthbarEl.style.top = `${minY + height/2}px`;
+                healthbarEl.style.height = `${height}px`;
+            } else {
+                healthbarEl.style.display = 'none';
+            }
+        }
+
+        // Toggle ESP Features
+        function toggleESP(feature, btn) {
+            espState[feature] = !espState[feature];
+            
+            if(espState[feature]) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+
+            updateVisuals();
+        }
+
+        function updateVisuals() {
+            // Chams
+            characterGroup.children.forEach(child => {
+                if (child.isMesh && child !== headDotMesh) {
+                    child.material = espState.chams ? materials.chams : materials.normal;
+                }
+            });
+
+            // Box
+            boxHelper.visible = espState.box;
+
+            // Skeleton
+            skeletonHelper.visible = espState.skeleton;
+
+            // Head Dot
+            headDotMesh.visible = espState.headDot;
+            
+            // Nametag/Healthbar/Dist handled in animate() loop via HTML
+        }
+
+        // Init 3D on Load
+        window.addEventListener('DOMContentLoaded', init3D);
+
+        // PARTICLE SYSTEM (Optimized for Dark Theme)
+        const canvas = document.getElementById('particles-bg');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeParticles() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeParticles);
+        resizeParticles();
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 0.3;
+                this.vy = (Math.random() - 0.5) * 0.3;
+                this.size = Math.random() * 2;
+                this.alpha = Math.random() * 0.5;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+            }
+
+            draw() {
+                ctx.fillStyle = `rgba(192, 132, 252, ${this.alpha})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 60; i++) particles.push(new Particle());
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
     </script>
 </body>
 </html>
