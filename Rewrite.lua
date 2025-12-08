@@ -421,6 +421,314 @@ local function MainHub(Exec, keydata, authToken)
         end))
     end
 
+    --------------------------------------------------------
+    -- 2. PLAYER TAB (Movement / Teleport / View)
+    --------------------------------------------------------
+
+    local PlayerTab   = Tabs.Player
+    local PlayerLeft  = PlayerTab:AddLeftGroupbox("Player Movement & Character", "user")
+    local PlayerRight = PlayerTab:AddRightGroupbox("Teleport / Utility / View", "compass")
+
+    -- Services
+    local Players          = game:GetService("Players")
+    local RunService       = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
+    local LocalPlayer      = Players.LocalPlayer
+
+    -- Helper: Character / Humanoid / Root
+    local function GetCharacter()
+        local char = LocalPlayer.Character
+        if not char then
+            char = LocalPlayer.CharacterAdded:Wait()
+        end
+        return char
+    end
+
+    local function GetHumanoid()
+        local char = GetCharacter()
+        if not char then return nil end
+        return char:FindFirstChildOfClass("Humanoid")
+    end
+
+    local function GetRoot()
+        local char = GetCharacter()
+        if not char then return nil end
+        return char:FindFirstChild("HumanoidRootPart")
+    end
+
+    -- State สำหรับ Movement/FOV/Noclip/InfJump
+    local MovementState = {
+        BaseWalkSpeed   = 16,
+        BaseJumpPower   = 50,
+        BaseJumpHeight  = 7.2,
+        BaseFOV         = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView or 70,
+
+        Connections = {
+            InfJump = nil,
+            Noclip  = nil,
+        }
+    }
+
+    ----------------------------------------------------
+    -- 2.1 PLAYER: WalkSpeed (Toggle + DependencyBox)
+    ----------------------------------------------------
+    PlayerLeft:AddToggle("Move_WalkSpeedToggle", {
+        Text    = "WalkSpeed Modifier",
+        Tooltip = "ปรับความเร็ววิ่งของตัวละคร",
+        Default = false
+    }):OnChanged(function()
+        local hum = GetHumanoid()
+        if not hum then return end
+
+        if Toggles.Move_WalkSpeedToggle.Value then
+            -- เปิดใช้ -> เซฟค่าเดิม แล้วเซ็ตค่าใหม่จาก Slider
+            MovementState.BaseWalkSpeed = hum.WalkSpeed
+            local newSpeed = Options.Move_WalkSpeed.Value or 16
+            hum.WalkSpeed = newSpeed
+        else
+            -- ปิดใช้ -> คืนค่าเดิม
+            hum.WalkSpeed = MovementState.BaseWalkSpeed or 16
+        end
+    end)
+
+    local WSBox = PlayerLeft:AddDependencyBox()
+    WSBox:AddSlider("Move_WalkSpeed", {
+        Text     = "WalkSpeed",
+        Default  = 16,
+        Min      = 4,
+        Max      = 120,
+        Rounding = 0,
+        Tooltip  = "ความเร็วเดิน/วิ่ง (default ประมาณ 16)",
+        Callback = function(value)
+            if not Toggles.Move_WalkSpeedToggle.Value then return end
+            local hum = GetHumanoid()
+            if hum then
+                hum.WalkSpeed = value
+            end
+        end
+    })
+
+    WSBox:SetupDependencies({
+        { Toggles.Move_WalkSpeedToggle, true },
+    })
+
+    ----------------------------------------------------
+    -- 2.2 PLAYER: JumpPower (Toggle + DependencyBox)
+    ----------------------------------------------------
+    PlayerLeft:AddToggle("Move_JumpToggle", {
+        Text    = "JumpPower Modifier",
+        Tooltip = "ปรับความสูงการกระโดด",
+        Default = false
+    }):OnChanged(function()
+        local hum = GetHumanoid()
+        if not hum then return end
+
+        if Toggles.Move_JumpToggle.Value then
+            -- เซฟค่าเดิม
+            MovementState.BaseJumpPower  = hum.JumpPower
+            MovementState.BaseJumpHeight = hum.JumpHeight
+
+            local value = Options.Move_JumpPower.Value or 50
+            hum.JumpPower  = value
+            hum.JumpHeight = value / 7 -- ค่าแบบคร่าว ๆ เผื่อเกมใช้ JumpHeight
+        else
+            -- คืนค่าเดิม
+            hum.JumpPower  = MovementState.BaseJumpPower  or hum.JumpPower
+            hum.JumpHeight = MovementState.BaseJumpHeight or hum.JumpHeight
+        end
+    end)
+
+    local JPBox = PlayerLeft:AddDependencyBox()
+    JPBox:AddSlider("Move_JumpPower", {
+        Text     = "Jump Power",
+        Default  = 50,
+        Min      = 10,
+        Max      = 200,
+        Rounding = 0,
+        Tooltip  = "ความสูง/แรงกระโดด",
+        Callback = function(value)
+            if not Toggles.Move_JumpToggle.Value then return end
+            local hum = GetHumanoid()
+            if hum then
+                hum.JumpPower  = value
+                hum.JumpHeight = value / 7
+            end
+        end
+    })
+
+    JPBox:SetupDependencies({
+        { Toggles.Move_JumpToggle, true },
+    })
+
+    ----------------------------------------------------
+    -- 2.3 PLAYER: Infinite Jump
+    ----------------------------------------------------
+    local function UpdateInfJumpConnection()
+        -- เคลียร์ของเก่า
+        if MovementState.Connections.InfJump then
+            MovementState.Connections.InfJump:Disconnect()
+            MovementState.Connections.InfJump = nil
+        end
+
+        if not (Toggles.Move_InfJump and Toggles.Move_InfJump.Value) then
+            return
+        end
+
+        MovementState.Connections.InfJump = UserInputService.JumpRequest:Connect(function()
+            if not Toggles.Move_InfJump.Value then return end
+
+            local hum = GetHumanoid()
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                hum.Sit = false
+            end
+        end)
+    end
+
+    PlayerLeft:AddToggle("Move_InfJump", {
+        Text    = "Infinite Jump",
+        Tooltip = "กระโดดได้ไม่จำกัด (กด Space รัว ๆ ได้ทุกเวลา)",
+        Default = false,
+        Risky   = true,
+    }):OnChanged(function()
+        UpdateInfJumpConnection()
+    end)
+
+    ----------------------------------------------------
+    -- 2.4 PLAYER: Fly (โครง UI + Slider ไว้ก่อน)
+    -- NOTE: ตรงนี้ตอนนี้เป็นแค่ UI + State ยังไม่ได้เขียน logic fly เต็ม ๆ
+    -- เดี๋ยวเราค่อยมาเติมระบบบินแบบ advanced ใน step ถัดไป
+    ----------------------------------------------------
+    PlayerLeft:AddToggle("Move_FlyToggle", {
+        Text    = "Fly (Coming Soon)",
+        Tooltip = "โหมดบิน (จะเติม logic ภายหลัง)",
+        Default = false,
+        Risky   = true,
+    })
+
+    local FlyBox = PlayerLeft:AddDependencyBox()
+    FlyBox:AddSlider("Move_FlySpeed", {
+        Text     = "Fly Speed",
+        Default  = 50,
+        Min      = 10,
+        Max      = 200,
+        Rounding = 0,
+        Tooltip  = "ความเร็วตอนบิน (ยังไม่ผูก logic)",
+    })
+
+    FlyBox:SetupDependencies({
+        { Toggles.Move_FlyToggle, true },
+    })
+
+    ----------------------------------------------------
+    -- 2.5 PLAYER: Noclip (เบื้องต้น)
+    ----------------------------------------------------
+    local function UpdateNoclipConnection()
+        if MovementState.Connections.Noclip then
+            MovementState.Connections.Noclip:Disconnect()
+            MovementState.Connections.Noclip = nil
+        end
+
+        if not (Toggles.Move_Noclip and Toggles.Move_Noclip.Value) then
+            return
+        end
+
+        MovementState.Connections.Noclip = RunService.Stepped:Connect(function()
+            if not Toggles.Move_Noclip.Value then return end
+
+            local char = LocalPlayer.Character
+            if not char then return end
+
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end)
+    end
+
+    PlayerLeft:AddToggle("Move_Noclip", {
+        Text    = "Noclip",
+        Tooltip = "เดินทะลุวัตถุ (อาจต้อง Reset เพื่อคืนสภาพเดิมของตัวละคร)",
+        Default = false,
+        Risky   = true,
+    }):OnChanged(function()
+        UpdateNoclipConnection()
+    end)
+
+    ----------------------------------------------------
+    -- 2.6 TELEPORT / UTILITY (Right)
+    ----------------------------------------------------
+    -- Dropdown รายชื่อผู้เล่น (auto-refresh จาก SpecialType = 'Player')
+    PlayerRight:AddDropdown("Move_TeleportPlayer", {
+        Text        = "Teleport Player",
+        Tooltip     = "เลือกผู้เล่นที่ต้องการวาร์ปไปหา",
+        SpecialType = "Player",      -- สำคัญ: ใช้ระบบ auto-refresh ที่เราต่อใน Library แล้ว
+        Searchable  = true,
+        Multi       = false,
+        Default     = 0,             -- 0 = ยังไม่ได้เลือก
+    })
+
+    PlayerRight:AddButton({
+        Text = "Teleport to Selected",
+        Func = function()
+            local targetName = Options.Move_TeleportPlayer.Value
+            if not targetName or targetName == "" then return end
+
+            local target = Players:FindFirstChild(targetName)
+            if not target then return end
+
+            local targetRoot = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+            local root      = GetRoot()
+
+            if root and targetRoot then
+                root.CFrame = targetRoot.CFrame + Vector3.new(0, 3, 0)
+            end
+        end
+    })
+
+    PlayerRight:AddDivider()
+
+    ----------------------------------------------------
+    -- 2.7 VIEW: FOV Changer (Toggle + DependencyBox)
+    ----------------------------------------------------
+    PlayerRight:AddToggle("View_FOVToggle", {
+        Text    = "FOV Changer",
+        Tooltip = "ปรับมุมมองกล้อง (Field of View)",
+        Default = false,
+    }):OnChanged(function()
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+
+        if Toggles.View_FOVToggle.Value then
+            MovementState.BaseFOV = cam.FieldOfView
+            local value = Options.View_FOV.Value or MovementState.BaseFOV
+            cam.FieldOfView = value
+        else
+            cam.FieldOfView = MovementState.BaseFOV or 70
+        end
+    end)
+
+    local FOVBox = PlayerRight:AddDependencyBox()
+    FOVBox:AddSlider("View_FOV", {
+        Text     = "Field of View",
+        Default  = MovementState.BaseFOV,
+        Min      = 60,
+        Max      = 120,
+        Rounding = 0,
+        Tooltip  = "ค่า FOV ยิ่งสูงยิ่งมุมกว้าง",
+        Callback = function(value)
+            if not Toggles.View_FOVToggle.Value then return end
+            local cam = workspace.CurrentCamera
+            if cam then
+                cam.FieldOfView = value
+            end
+        end
+    })
+
+    FOVBox:SetupDependencies({
+        { Toggles.View_FOVToggle, true },
+    })
     ------------------------------------------------
     -- 4.4 Theme / SaveManager (optional) ไว้ทำใน Tab Settings ภายหลัง
     ------------------------------------------------
