@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BxB.ware | Developer Nexus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        lavender: { DEFAULT: '#c084fc', glow: 'rgba(192, 132, 252, 0.5)', dim: 'rgba(192, 132, 252, 0.1)' },
+                        obsidian: { bg: '#0f0f0f', sidebar: '#0a0a0a', border: '#2a2a2a' },
+                        dark: { bg: '#030005', card: '#0a050f' }
+                    },
+                    fontFamily: {
+                        sans: ['"Space Grotesk"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    animation: {
+                        'pulse-glow': 'pulseGlow 3s infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #030005; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #c084fc; }
+
+        .glass-panel {
+            background: rgba(13, 10, 20, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(192, 132, 252, 0.15);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .input-glass {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            transition: all 0.3s ease;
+        }
+        .input-glass:focus {
+            border-color: #c084fc;
+            outline: none;
+            box-shadow: 0 0 15px rgba(192, 132, 252, 0.15);
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        /* Interactive Select Buttons */
+        .select-btn {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .select-btn:hover {
+            border-color: rgba(192, 132, 252, 0.4);
+            background: rgba(192, 132, 252, 0.05);
+            transform: translateY(-1px);
+        }
+        .select-btn.active {
+            background: #c084fc;
+            color: black;
+            border-color: #c084fc;
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(192, 132, 252, 0.4);
+        }
+
+        /* JSON Syntax Highlighting */
+        .json-key { color: #c084fc; }
+        .json-string { color: #a5f3fc; }
+        .json-number { color: #fca5a5; }
+        .json-boolean { color: #86efac; }
+        .json-null { color: #9ca3af; }
+    </style>
+</head>
+<body class="bg-dark-bg text-white min-h-screen flex flex-col font-sans overflow-x-hidden">
+
+    <!-- Nav -->
+    <nav class="border-b border-white/5 bg-dark-bg/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-xl font-bold tracking-tighter cursor-pointer group">
+                <i data-lucide="wrench" class="text-lavender"></i>
+                <span class="hidden sm:inline">BxB<span class="text-lavender">.dev</span></span>
+                <span class="sm:hidden">BxB</span>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('file-upload').click()" class="text-xs font-mono text-gray-400 hover:text-white transition-colors flex items-center gap-1 border border-white/10 px-3 py-1.5 rounded-lg hover:bg-white/5">
+                    <i data-lucide="upload" class="w-3 h-3"></i> <span class="hidden sm:inline">Load JSON</span><span class="sm:hidden">Load</span>
+                </button>
+                <input type="file" id="file-upload" class="hidden" accept=".json" onchange="handleFileUpload(this)">
+                
+                <button onclick="downloadJson()" class="text-xs font-bold bg-lavender text-black px-4 py-1.5 rounded-lg hover:bg-white transition-colors flex items-center gap-2 shadow-[0_0_10px_rgba(192,132,252,0.3)]">
+                    <i data-lucide="download" class="w-3 h-3"></i> <span class="hidden sm:inline">Export JSON</span><span class="sm:hidden">Export</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-grow p-4 md:p-6 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- LEFT COLUMN: Controls -->
+        <div class="lg:col-span-4 space-y-6">
+            
+            <!-- Global Config -->
+            <div class="glass-panel p-5 rounded-xl">
+                <div class="flex items-center gap-2 mb-4 text-lavender font-bold border-b border-white/10 pb-2">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                    <h3>Global Settings</h3>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-xs text-gray-400 font-mono block mb-2">Server Status</label>
+                        <!-- Custom Select Group for Status -->
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="setGlobalStatus('online', this)" class="status-btn select-btn active w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Online</button>
+                            <button onclick="setGlobalStatus('maintenance', this)" class="status-btn select-btn w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Maint.</button>
+                            <button onclick="setGlobalStatus('offline', this)" class="status-btn select-btn w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Offline</button>
+                        </div>
+                        <input type="hidden" id="global-status" value="online">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-400 font-mono block mb-1">Message</label>
+                        <input type="text" id="global-message" oninput="updateGlobal()" class="input-glass w-full rounded-md px-3 py-2 text-sm" value="Key server online">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 font-mono block mb-1">Version</label>
+                            <input type="text" id="global-version" oninput="updateGlobal()" class="input-glass w-full rounded-md px-3 py-2 text-sm" value="1.2.0">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 font-mono block mb-1">Last Update</label>
+                            <input type="text" id="global-update" disabled class="input-glass w-full rounded-md px-3 py-2 text-sm opacity-50 cursor-not-allowed">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Generator -->
+            <div class="glass-panel p-5 rounded-xl border-t-2 border-t-lavender relative overflow-hidden group">
+                <!-- Decorative Glow Background -->
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-lavender/10 rounded-full blur-xl group-hover:bg-lavender/20 transition-all"></div>
+
+                <div class="flex items-center gap-2 mb-4 text-lavender font-bold border-b border-white/10 pb-2 relative z-10">
+                    <i data-lucide="key" class="w-4 h-4"></i>
+                    <h3>Key Generator</h3>
+                </div>
+                
+                <div class="space-y-5 relative z-10">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-400 font-mono block mb-1">Prefix</label>
+                            <input type="text" id="gen-prefix" class="input-glass w-full rounded-md px-3 py-2 text-sm font-mono placeholder-gray-600" placeholder="KEY-">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 font-mono block mb-1">Amount</label>
+                            <input type="number" id="gen-amount" class="input-glass w-full rounded-md px-3 py-2 text-sm" value="1" min="1" max="100">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-400 font-mono block mb-2">Role Selection</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="setGenRole('user', this)" class="role-btn select-btn active w-full py-2 rounded-lg text-xs">User</button>
+                            <button onclick="setGenRole('premium', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Premium</button>
+                            <button onclick="setGenRole('vip', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">VIP</button>
+                            <button onclick="setGenRole('reseller', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Reseller</button>
+                            <button onclick="setGenRole('staff', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Staff</button>
+                            <button onclick="setGenRole('test', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Test</button>
+                        </div>
+                        <input type="hidden" id="gen-role" value="user">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                         <div>
+                            <label class="text-xs text-gray-400 font-mono block mb-2">Key Status</label>
+                             <div class="flex gap-2">
+                                <button onclick="setGenStatus('active', this)" class="gen-status-btn select-btn active flex-1 py-2 rounded-lg text-xs">Active</button>
+                                <button onclick="setGenStatus('disabled', this)" class="gen-status-btn select-btn flex-1 py-2 rounded-lg text-xs">Disabled</button>
+                             </div>
+                            <input type="hidden" id="gen-status" value="active">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400 font-mono block mb-1">Duration (Days)</label>
+                            <input type="number" id="gen-days" class="input-glass w-full rounded-md px-3 py-2 text-sm" placeholder="empty = lifetime">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-400 font-mono block mb-1">Note</label>
+                        <input type="text" id="gen-note" class="input-glass w-full rounded-md px-3 py-2 text-sm" placeholder="e.g. Generated for event...">
+                    </div>
+
+                    <label class="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5 cursor-pointer hover:bg-white/10 transition-colors group">
+                        <div class="relative flex items-center">
+                            <input type="checkbox" id="gen-hwid" class="peer sr-only">
+                            <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lavender"></div>
+                        </div>
+                        <span class="text-sm select-none text-gray-300 group-hover:text-white">Bind HWID to Key</span>
+                    </label>
+
+                    <button onclick="generateKeys()" class="w-full bg-lavender hover:bg-white text-black font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(192,132,252,0.3)] hover:shadow-[0_0_30px_rgba(192,132,252,0.6)] transform hover:-translate-y-1">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i> Generate Keys
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Preview & List -->
+        <div class="lg:col-span-8 flex flex-col gap-6 h-full min-h-[500px]">
+            
+            <!-- Stats -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="glass-panel p-4 rounded-xl flex items-center justify-between border-l-4 border-l-gray-500">
+                    <div><p class="text-gray-400 text-xs font-mono">Total Keys</p><h4 id="stat-total" class="text-2xl font-bold text-white">0</h4></div>
+                    <div class="p-2 bg-white/5 rounded-lg"><i data-lucide="database" class="w-5 h-5 text-gray-400"></i></div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl flex items-center justify-between border-l-4 border-l-green-500">
+                    <div><p class="text-gray-400 text-xs font-mono">Active</p><h4 id="stat-active" class="text-2xl font-bold text-green-400">0</h4></div>
+                    <div class="p-2 bg-green-500/10 rounded-lg"><i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i></div>
+                </div>
+                <div class="glass-panel p-4 rounded-xl flex items-center justify-between border-l-4 border-l-lavender">
+                    <div><p class="text-gray-400 text-xs font-mono">Premium</p><h4 id="stat-premium" class="text-2xl font-bold text-lavender">0</h4></div>
+                    <div class="p-2 bg-lavender/10 rounded-lg"><i data-lucide="star" class="w-5 h-5 text-lavender"></i></div>
+                </div>
+            </div>
+
+            <!-- JSON Preview -->
+            <div class="glass-panel rounded-xl flex-grow flex flex-col overflow-hidden min-h-[400px]">
+                <div class="bg-black/40 px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-mono flex items-center gap-2"><i data-lucide="code" class="w-3 h-3"></i> data.json Preview</span>
+                    <div class="flex gap-2">
+                        <button onclick="copyToClipboard()" class="text-[10px] font-bold bg-white/5 hover:bg-white/10 px-2 py-1 rounded text-gray-300 border border-white/5 transition-colors flex items-center gap-1">
+                            <i data-lucide="copy" class="w-3 h-3"></i> Copy
+                        </button>
+                    </div>
+                </div>
+                <div class="relative flex-grow bg-[#08050c] overflow-hidden">
+                    <pre id="json-output" class="absolute inset-0 p-4 font-mono text-xs overflow-auto leading-relaxed scrollbar-thin"></pre>
+                </div>
+            </div>
+
+            <!-- Management Table (Simple) -->
+            <div class="glass-panel rounded-xl overflow-hidden">
+                <div class="bg-black/40 px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 font-mono flex items-center gap-2"><i data-lucide="list" class="w-3 h-3"></i> Recent Keys</span>
+                    <button onclick="clearAllKeys()" class="text-[10px] text-red-400 hover:text-red-300 hover:underline">Clear All</button>
+                </div>
+                <div class="p-0 overflow-x-auto">
+                    <table class="w-full text-left border-collapse min-w-[500px]">
+                        <thead>
+                            <tr class="text-[10px] uppercase text-gray-500 font-mono border-b border-white/5 bg-white/[0.02]">
+                                <th class="p-3 pl-4">Key</th>
+                                <th class="p-3">Role</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3">Expire</th>
+                                <th class="p-3 text-right pr-4">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="keys-table-body" class="text-xs font-mono text-gray-300">
+                            <!-- JS Populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-4 right-4 translate-y-20 opacity-0 transition-all duration-300 z-[100] bg-lavender text-black px-4 py-3 rounded-lg shadow-[0_0_20px_rgba(192,132,252,0.4)] font-bold flex items-center gap-3">
+        <i data-lucide="check-circle" class="w-5 h-5"></i>
+        <span id="toast-msg">Action Successful</span>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // --- Data Structure ---
+        let db = {
+            status: "online",
+            message: "Key server online",
+            version: "1.2.0",
+            last_update: new Date().toLocaleString('en-GB'),
+            keys: []
+        };
+
+        // --- Init ---
+        function init() {
+            document.getElementById('global-update').value = db.last_update;
+            renderJSON();
+            updateStats();
+        }
+
+        // --- UI Logic: Button Selection ---
+        function setActiveButton(groupClass, clickedBtn) {
+            document.querySelectorAll(`.${groupClass}`).forEach(btn => btn.classList.remove('active'));
+            clickedBtn.classList.add('active');
+        }
+
+        function setGlobalStatus(val, btn) {
+            document.getElementById('global-status').value = val;
+            setActiveButton('status-btn', btn);
+            updateGlobal();
+        }
+
+        function setGenRole(val, btn) {
+            document.getElementById('gen-role').value = val;
+            setActiveButton('role-btn', btn);
+        }
+
+        function setGenStatus(val, btn) {
+            document.getElementById('gen-status').value = val;
+            setActiveButton('gen-status-btn', btn);
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            t.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                t.classList.add('translate-y-20', 'opacity-0');
+            }, 2500);
+        }
+
+        // --- Render Logic ---
+        function renderJSON() {
+            const jsonStr = JSON.stringify(db, null, 2);
+            // Enhanced syntax highlight
+            const highlighted = jsonStr.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+            
+            document.getElementById('json-output').innerHTML = highlighted;
+            renderTable();
+            updateStats();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('keys-table-body');
+            tbody.innerHTML = '';
+            
+            const recentKeys = db.keys.slice().reverse().slice(0, 10); 
+
+            if(recentKeys.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-gray-600 italic">No keys generated yet.</td></tr>';
+                return;
+            }
+
+            recentKeys.forEach((k, index) => {
+                const originalIndex = db.keys.indexOf(k);
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-white/5 hover:bg-white/5 transition-colors group';
+                
+                let expDisplay = k.expire ? k.expire : '<span class="text-green-400 flex items-center gap-1"><i data-lucide="infinity" class="w-3 h-3"></i> Lifetime</span>';
+                
+                let statusColor = k.status === 'active' ? 'text-green-400 bg-green-500/10' : (k.status === 'banned' ? 'text-red-400 bg-red-500/10' : 'text-gray-400 bg-gray-500/10');
+                let roleColor = k.role === 'premium' || k.role === 'vip' ? 'text-lavender border-lavender/30' : 'text-gray-300 border-white/10';
+
+                tr.innerHTML = `
+                    <td class="p-3 pl-4 font-bold text-white font-mono">${k.key}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded border ${roleColor} text-[10px] uppercase font-bold tracking-wider">${k.role}</span></td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded ${statusColor} text-[10px] uppercase font-bold">${k.status}</span></td>
+                    <td class="p-3 text-gray-500 text-[10px]">${expDisplay}</td>
+                    <td class="p-3 pr-4 text-right">
+                        <button onclick="deleteKey(${originalIndex})" class="text-gray-600 hover:text-red-400 transition-colors p-1 rounded hover:bg-white/5"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            lucide.createIcons();
+        }
+
+        function updateStats() {
+            // Animate numbers? Simple update for now
+            document.getElementById('stat-total').innerText = db.keys.length;
+            document.getElementById('stat-active').innerText = db.keys.filter(k => k.status === 'active').length;
+            document.getElementById('stat-premium').innerText = db.keys.filter(k => ['premium', 'vip', 'owner'].includes(k.role)).length;
+        }
+
+        function updateGlobal() {
+            db.status = document.getElementById('global-status').value;
+            db.message = document.getElementById('global-message').value;
+            db.version = document.getElementById('global-version').value;
+            db.last_update = new Date().toLocaleString('en-GB');
+            document.getElementById('global-update').value = db.last_update;
+            renderJSON();
+        }
+
+        // --- Generator Logic ---
+        function generateRandomString(length) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        function generateKeys() {
+            const prefix = document.getElementById('gen-prefix').value.trim();
+            const amount = parseInt(document.getElementById('gen-amount').value) || 1;
+            const role = document.getElementById('gen-role').value;
+            const days = document.getElementById('gen-days').value;
+            const status = document.getElementById('gen-status').value;
+            const note = document.getElementById('gen-note').value;
+            const bindHwid = document.getElementById('gen-hwid').checked;
+
+            let expireVal = null;
+            const now = new Date();
+            const createdVal = `${now.getMonth()+1}/${now.getDate()}/${now.getFullYear().toString().substr(-2)} ${now.getHours()}:${now.getMinutes()}:00`;
+
+            if (days && parseInt(days) > 0) {
+                const expDate = new Date();
+                expDate.setDate(expDate.getDate() + parseInt(days));
+                expireVal = `${expDate.getMonth()+1}/${expDate.getDate()}/${expDate.getFullYear().toString().substr(-2)} ${expDate.getHours()}:${expDate.getMinutes()}:00`;
+            }
+
+            for (let i = 0; i < amount; i++) {
+                const randomPart = generateRandomString(12);
+                const finalKey = prefix ? `${prefix}${randomPart}` : randomPart;
+
+                const newKey = {
+                    key: finalKey,
+                    role: role,
+                    status: status,
+                    bind_hwid: bindHwid,
+                    hwid_hash: "",
+                    timestamp: createdVal,
+                    expire: expireVal,
+                    note: note
+                };
+
+                db.keys.push(newKey);
+            }
+
+            updateGlobal();
+            showToast(`Successfully generated ${amount} keys!`);
+        }
+
+        function deleteKey(index) {
+            if(confirm('Delete this key?')) {
+                db.keys.splice(index, 1);
+                renderJSON();
+                showToast('Key deleted.');
+            }
+        }
+
+        function clearAllKeys() {
+            if(confirm('Are you sure you want to delete ALL keys? This cannot be undone.')) {
+                db.keys = [];
+                renderJSON();
+                showToast('All keys cleared.');
+            }
+        }
+
+        // --- File I/O ---
+        function downloadJson() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "data.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+            showToast('JSON Exported!');
+        }
+
+        function handleFileUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const loadedDb = JSON.parse(e.target.result);
+                    if (loadedDb.keys && Array.isArray(loadedDb.keys)) {
+                        db = loadedDb;
+                        
+                        // Populate Global Inputs (Visual)
+                        if(db.status) {
+                            document.getElementById('global-status').value = db.status;
+                            // Find button with value and set active
+                            const btn = document.querySelector(`button[onclick*="'${db.status}'"]`);
+                            if(btn) setActiveButton('status-btn', btn);
+                        }
+                        if(db.message) document.getElementById('global-message').value = db.message;
+                        if(db.version) document.getElementById('global-version').value = db.version;
+                        if(db.last_update) document.getElementById('global-update').value = db.last_update;
+
+                        renderJSON();
+                        showToast('Database loaded successfully!');
+                    } else {
+                        alert('Invalid JSON format.');
+                    }
+                } catch (err) {
+                    alert('Error parsing JSON: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function copyToClipboard() {
+            const content = JSON.stringify(db, null, 2);
+            navigator.clipboard.writeText(content).then(() => showToast('JSON copied to clipboard!'));
+        }
+
+        init();
+    </script>
+</body>
+</html>
