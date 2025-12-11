@@ -57,24 +57,46 @@
             background: rgba(0, 0, 0, 0.5);
         }
 
-        /* Interactive Select Buttons */
+        /* --- Interactive Buttons System --- */
         .select-btn {
             border: 1px solid rgba(255, 255, 255, 0.1);
             background: rgba(255, 255, 255, 0.03);
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: #9ca3af;
         }
         .select-btn:hover {
-            border-color: rgba(192, 132, 252, 0.4);
-            background: rgba(192, 132, 252, 0.05);
+            background: rgba(255, 255, 255, 0.08);
             transform: translateY(-1px);
+            color: white;
         }
+
+        /* Generic Active (fallback) */
         .select-btn.active {
-            background: #c084fc;
-            color: black;
-            border-color: #c084fc;
+            background: #333;
+            color: white;
+            border-color: #666;
             font-weight: bold;
-            box-shadow: 0 0 15px rgba(192, 132, 252, 0.4);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
         }
+
+        /* -- ROLE SPECIFIC COLORS -- */
+        .role-btn.role-premium.active { background: #c084fc; color: black; border-color: #c084fc; box-shadow: 0 0 15px rgba(192, 132, 252, 0.4); }
+        .role-btn.role-vip.active { background: #fbbf24; color: black; border-color: #fbbf24; box-shadow: 0 0 15px rgba(251, 191, 36, 0.4); }
+        .role-btn.role-reseller.active { background: #22d3ee; color: black; border-color: #22d3ee; box-shadow: 0 0 15px rgba(34, 211, 238, 0.4); }
+        .role-btn.role-staff.active { background: #4ade80; color: black; border-color: #4ade80; box-shadow: 0 0 15px rgba(74, 222, 128, 0.4); }
+        .role-btn.role-owner.active { background: #f87171; color: black; border-color: #f87171; box-shadow: 0 0 15px rgba(248, 113, 113, 0.4); }
+        .role-btn.role-user.active { background: #9ca3af; color: black; border-color: #9ca3af; }
+
+        /* -- STATUS SPECIFIC COLORS -- */
+        .status-btn.st-online.active { background: #22c55e; color: black; border-color: #22c55e; }
+        .status-btn.st-maint.active { background: #facc15; color: black; border-color: #facc15; }
+        .status-btn.st-offline.active { background: #ef4444; color: black; border-color: #ef4444; }
+
+        .gen-status-btn.st-active.active { background: #22c55e; color: black; border-color: #22c55e; }
+        .gen-status-btn.st-disabled.active { background: #6b7280; color: white; border-color: #6b7280; }
+        .gen-status-btn.st-banned.active { background: #dc2626; color: white; border-color: #dc2626; box-shadow: 0 0 10px rgba(220, 38, 38, 0.4); }
+        .gen-status-btn.st-expired.active { background: #f97316; color: white; border-color: #f97316; }
+        .gen-status-btn.st-test.active { background: #3b82f6; color: white; border-color: #3b82f6; }
 
         /* JSON Syntax Highlighting */
         .json-key { color: #c084fc; }
@@ -121,11 +143,10 @@
                 <div class="space-y-4">
                     <div>
                         <label class="text-xs text-gray-400 font-mono block mb-2">Server Status</label>
-                        <!-- Custom Select Group for Status -->
                         <div class="grid grid-cols-3 gap-2">
-                            <button onclick="setGlobalStatus('online', this)" class="status-btn select-btn active w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Online</button>
-                            <button onclick="setGlobalStatus('maintenance', this)" class="status-btn select-btn w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Maint.</button>
-                            <button onclick="setGlobalStatus('offline', this)" class="status-btn select-btn w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Offline</button>
+                            <button onclick="setGlobalStatus('online', this)" class="status-btn st-online select-btn active w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Online</button>
+                            <button onclick="setGlobalStatus('maintenance', this)" class="status-btn st-maint select-btn w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Maint.</button>
+                            <button onclick="setGlobalStatus('offline', this)" class="status-btn st-offline select-btn w-full py-2 rounded-lg text-xs flex items-center justify-center gap-1"><div class="w-1.5 h-1.5 rounded-full bg-current"></div>Offline</button>
                         </div>
                         <input type="hidden" id="global-status" value="online">
                     </div>
@@ -148,9 +169,7 @@
 
             <!-- Key Generator -->
             <div class="glass-panel p-5 rounded-xl border-t-2 border-t-lavender relative overflow-hidden group">
-                <!-- Decorative Glow Background -->
                 <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-lavender/10 rounded-full blur-xl group-hover:bg-lavender/20 transition-all"></div>
-
                 <div class="flex items-center gap-2 mb-4 text-lavender font-bold border-b border-white/10 pb-2 relative z-10">
                     <i data-lucide="key" class="w-4 h-4"></i>
                     <h3>Key Generator</h3>
@@ -171,29 +190,31 @@
                     <div>
                         <label class="text-xs text-gray-400 font-mono block mb-2">Role Selection</label>
                         <div class="grid grid-cols-3 gap-2">
-                            <button onclick="setGenRole('user', this)" class="role-btn select-btn active w-full py-2 rounded-lg text-xs">User</button>
-                            <button onclick="setGenRole('premium', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Premium</button>
-                            <button onclick="setGenRole('vip', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">VIP</button>
-                            <button onclick="setGenRole('reseller', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Reseller</button>
-                            <button onclick="setGenRole('staff', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Staff</button>
-                            <button onclick="setGenRole('test', this)" class="role-btn select-btn w-full py-2 rounded-lg text-xs">Test</button>
+                            <button onclick="setGenRole('user', this)" class="role-btn role-user select-btn active w-full py-2 rounded-lg text-xs font-bold">User</button>
+                            <button onclick="setGenRole('premium', this)" class="role-btn role-premium select-btn w-full py-2 rounded-lg text-xs font-bold text-lavender border-lavender/30">Premium</button>
+                            <button onclick="setGenRole('vip', this)" class="role-btn role-vip select-btn w-full py-2 rounded-lg text-xs font-bold text-yellow-400 border-yellow-400/30">VIP</button>
+                            <button onclick="setGenRole('reseller', this)" class="role-btn role-reseller select-btn w-full py-2 rounded-lg text-xs font-bold text-cyan-400 border-cyan-400/30">Reseller</button>
+                            <button onclick="setGenRole('staff', this)" class="role-btn role-staff select-btn w-full py-2 rounded-lg text-xs font-bold text-green-400 border-green-400/30">Staff</button>
+                            <button onclick="setGenRole('owner', this)" class="role-btn role-owner select-btn w-full py-2 rounded-lg text-xs font-bold text-red-400 border-red-400/30">Owner</button>
                         </div>
                         <input type="hidden" id="gen-role" value="user">
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                         <div>
-                            <label class="text-xs text-gray-400 font-mono block mb-2">Key Status</label>
-                             <div class="flex gap-2">
-                                <button onclick="setGenStatus('active', this)" class="gen-status-btn select-btn active flex-1 py-2 rounded-lg text-xs">Active</button>
-                                <button onclick="setGenStatus('disabled', this)" class="gen-status-btn select-btn flex-1 py-2 rounded-lg text-xs">Disabled</button>
-                             </div>
-                            <input type="hidden" id="gen-status" value="active">
-                        </div>
-                        <div>
-                            <label class="text-xs text-gray-400 font-mono block mb-1">Duration (Days)</label>
-                            <input type="number" id="gen-days" class="input-glass w-full rounded-md px-3 py-2 text-sm" placeholder="empty = lifetime">
-                        </div>
+                    <div>
+                        <label class="text-xs text-gray-400 font-mono block mb-2">Key Status</label>
+                         <div class="grid grid-cols-3 gap-2">
+                            <button onclick="setGenStatus('active', this)" class="gen-status-btn st-active select-btn active w-full py-2 rounded-lg text-xs text-green-400 border-green-900/30">Active</button>
+                            <button onclick="setGenStatus('disabled', this)" class="gen-status-btn st-disabled select-btn w-full py-2 rounded-lg text-xs text-gray-400 border-gray-700">Disabled</button>
+                            <button onclick="setGenStatus('banned', this)" class="gen-status-btn st-banned select-btn w-full py-2 rounded-lg text-xs text-red-400 border-red-900/30">Banned</button>
+                            <button onclick="setGenStatus('expired', this)" class="gen-status-btn st-expired select-btn w-full py-2 rounded-lg text-xs text-orange-400 border-orange-900/30">Expired</button>
+                            <button onclick="setGenStatus('test', this)" class="gen-status-btn st-test select-btn w-full py-2 rounded-lg text-xs text-blue-400 border-blue-900/30">Test</button>
+                         </div>
+                        <input type="hidden" id="gen-status" value="active">
+                    </div>
+
+                    <div>
+                        <label class="text-xs text-gray-400 font-mono block mb-1">Duration (Days)</label>
+                        <input type="number" id="gen-days" class="input-glass w-full rounded-md px-3 py-2 text-sm" placeholder="empty = lifetime">
                     </div>
 
                     <div>
@@ -263,6 +284,7 @@
                                 <th class="p-3 pl-4">Key</th>
                                 <th class="p-3">Role</th>
                                 <th class="p-3">Status</th>
+                                <th class="p-3">HWID</th>
                                 <th class="p-3">Expire</th>
                                 <th class="p-3 text-right pr-4">Action</th>
                             </tr>
@@ -365,7 +387,7 @@
             const recentKeys = db.keys.slice().reverse().slice(0, 10); 
 
             if(recentKeys.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-gray-600 italic">No keys generated yet.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-gray-600 italic">No keys generated yet.</td></tr>';
                 return;
             }
 
@@ -376,13 +398,38 @@
                 
                 let expDisplay = k.expire ? k.expire : '<span class="text-green-400 flex items-center gap-1"><i data-lucide="infinity" class="w-3 h-3"></i> Lifetime</span>';
                 
-                let statusColor = k.status === 'active' ? 'text-green-400 bg-green-500/10' : (k.status === 'banned' ? 'text-red-400 bg-red-500/10' : 'text-gray-400 bg-gray-500/10');
-                let roleColor = k.role === 'premium' || k.role === 'vip' ? 'text-lavender border-lavender/30' : 'text-gray-300 border-white/10';
+                // Color mapping for Status
+                let statusColor = 'text-gray-400 bg-gray-500/10';
+                if(k.status === 'active') statusColor = 'text-green-400 bg-green-500/10';
+                else if(k.status === 'banned') statusColor = 'text-red-400 bg-red-500/10';
+                else if(k.status === 'expired') statusColor = 'text-orange-400 bg-orange-500/10';
+                else if(k.status === 'test') statusColor = 'text-blue-400 bg-blue-500/10';
+
+                // Role text color logic
+                let roleColor = 'text-gray-300 border-white/10';
+                if(k.role === 'premium') roleColor = 'text-lavender border-lavender/30';
+                else if(k.role === 'vip') roleColor = 'text-yellow-400 border-yellow-400/30';
+                else if(k.role === 'reseller') roleColor = 'text-cyan-400 border-cyan-400/30';
+                else if(k.role === 'staff') roleColor = 'text-green-400 border-green-400/30';
+                else if(k.role === 'owner') roleColor = 'text-red-400 border-red-400/30';
+
+                // HWID Status Logic
+                let hwidHtml = '';
+                if (!k.bind_hwid) {
+                     hwidHtml = '<span class="px-2 py-0.5 rounded bg-gray-700/50 text-gray-400 text-[9px] font-bold border border-gray-600/30">OFF</span>';
+                } else {
+                     if (k.hwid_hash && k.hwid_hash.length > 0) {
+                        hwidHtml = '<span class="px-2 py-0.5 rounded bg-green-500/20 text-green-400 text-[9px] font-bold border border-green-500/30 flex items-center w-fit gap-1"><i data-lucide="link" class="w-3 h-3"></i> BOUND</span>';
+                     } else {
+                        hwidHtml = '<span class="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 text-[9px] font-bold border border-yellow-500/30 flex items-center w-fit gap-1"><i data-lucide="loader" class="w-3 h-3"></i> WAIT</span>';
+                     }
+                }
 
                 tr.innerHTML = `
                     <td class="p-3 pl-4 font-bold text-white font-mono">${k.key}</td>
                     <td class="p-3"><span class="px-2 py-0.5 rounded border ${roleColor} text-[10px] uppercase font-bold tracking-wider">${k.role}</span></td>
                     <td class="p-3"><span class="px-2 py-0.5 rounded ${statusColor} text-[10px] uppercase font-bold">${k.status}</span></td>
+                    <td class="p-3">${hwidHtml}</td>
                     <td class="p-3 text-gray-500 text-[10px]">${expDisplay}</td>
                     <td class="p-3 pr-4 text-right">
                         <button onclick="deleteKey(${originalIndex})" class="text-gray-600 hover:text-red-400 transition-colors p-1 rounded hover:bg-white/5"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
