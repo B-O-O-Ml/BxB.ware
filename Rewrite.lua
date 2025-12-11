@@ -888,6 +888,825 @@ local function MainHub(Exec, keydata, authToken)
 
     UtilBox:AddDivider()
     UtilBox:AddLabel("More utilities will be added later.")
+
+        ------------------------------------------------
+    -- 3. ESP TAB (Player ESP / Visuals)
+    ------------------------------------------------
+    local ESPTab = Tabs.ESP  -- ใช้ Tab ที่สร้างไว้ในตาราง Tabs ด้านบน
+
+    do
+        if not ESPTab then
+            warn("[MainHub] ESP Tab not found")
+        else
+            local Workspace = game:GetService("Workspace")
+            local camera = Workspace.CurrentCamera
+
+            local ESPObjects = {}
+            local whitelistName = nil
+
+            -- ตรวจว่ามี Drawing API ใน executor ไหม
+            local HAS_DRAWING = false
+            pcall(function()
+                if Drawing and type(Drawing.new) == "function" then
+                    HAS_DRAWING = true
+                end
+            end)
+
+            -- State หลักของ ESP
+            local ESP_Settings = {
+                Enabled      = false,
+                TeamCheck    = true,
+                WallCheck    = true,
+                Box          = true,
+                BoxType      = "Full Box", -- "Full Box" หรือ "Corner"
+                Chams        = false,
+                Skeleton     = false,
+                HealthBar    = true,
+                NameTag      = true,
+                Distance     = true,
+                Tracer       = true,
+
+                BoxColor      = Color3.fromRGB(255, 255, 255),
+                TracerColor   = Color3.fromRGB(255, 255, 255),
+                NameColor     = Color3.fromRGB(255, 255, 255),
+                DistanceColor = Color3.fromRGB(255, 255, 255),
+
+                NameSize      = 13,
+                DistanceSize  = 13,
+            }
+
+            -- Helper: สร้าง Drawing object แบบปลอดภัย
+            local function newDrawing(t)
+                if not HAS_DRAWING then
+                    return nil
+                end
+
+                local ok, obj = pcall(Drawing.new, t)
+                if not ok or not obj then
+                    return nil
+                end
+
+                obj.Visible = false
+                obj.Thickness = 1
+                obj.Transparency = 1
+
+                if t == "Text" then
+                    obj.Size = 13
+                    obj.Center = true
+                    obj.Outline = true
+                    obj.Font = 2
+                end
+
+                return obj
+            end
+
+            -- เก็บ Drawing/Highlight ต่อ Player
+            local function getESPContainer(plr)
+                local container = ESPObjects[plr]
+                if container then
+                    return container
+                end
+
+                container = {
+                    BoxOutline   = newDrawing("Square"),
+                    Box          = newDrawing("Square"),
+                    Corners      = {
+                        newDrawing("Line"), newDrawing("Line"),
+                        newDrawing("Line"), newDrawing("Line"),
+                        newDrawing("Line"), newDrawing("Line"),
+                        newDrawing("Line"), newDrawing("Line"),
+                    },
+
+                    HealthOutline = newDrawing("Square"),
+                    HealthBar     = newDrawing("Square"),
+
+                    Name      = newDrawing("Text"),
+                    Distance  = newDrawing("Text"),
+                    Tracer    = newDrawing("Line"),
+
+                    SkeletonLines = {}, -- line array
+
+                    Highlight = nil,    -- Instance.new("Highlight")
+                }
+
+                ESPObjects[plr] = container
+                return container
+            end
+
+            -- ลบ Drawing/Highlight ของ player นั้น
+            local function removeESPContainer(plr)
+                local container = ESPObjects[plr]
+                if not container then
+                    return
+                end
+
+                local function safeRemove(obj)
+                    if not obj then
+                        return
+                    end
+                    pcall(function()
+                        if typeof(obj) == "Instance" then
+                            obj:Destroy()
+                        elseif obj.Remove then
+                            obj:Remove()
+                        elseif obj.Destroy then
+                            obj:Destroy()
+                        end
+                    end)
+                end
+
+                for _, obj in pairs(container) do
+                    if type(obj) == "table" then
+                        for _, inner in pairs(obj) do
+                            safeRemove(inner)
+                        end
+                    else
+                        safeRemove(obj)
+                    end
+                end
+
+                ESPObjects[plr] = nil
+            end
+
+            AddConnection(Players.PlayerRemoving:Connect(function(plr)
+                removeESPContainer(plr)
+            end))
+
+            -- ตรวจ Wall Check: true = มองเห็น, false = อยู่หลังกำแพง
+            local function isVisibleFromCamera(worldPos, targetChar)
+                if not ESP_Settings.WallCheck then
+                    return true
+                end
+
+                local cam = Workspace.CurrentCamera
+                if not cam then
+                    return true
+                end
+
+                local origin = cam.CFrame.Position
+                local direction = worldPos - origin
+
+                local rayParams = RaycastParams.new()
+                rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                rayParams.FilterDescendantsInstances = {
+                    LocalPlayer.Character,
+                    targetChar,
+                }
+
+                local result = Workspace:Raycast(origin, direction, rayParams)
+                if not result then
+                    return true
+                end
+
+                return result.Instance:IsDescendantOf(targetChar)
+            end
+
+            -- ถ้าเปิด Wall Check → ใช้สีเขียว/แดงแทนสี base
+            local function getColorWithWallCheck(baseColor, isVisible)
+                if not ESP_Settings.WallCheck then
+                    return baseColor
+                end
+
+                if isVisible then
+                    -- สีเขียว เมื่ออยู่ด้านหน้า (Visible)
+                    return Color3.fromRGB(0, 255, 0)
+                else
+                    -- สีแดง เมื่ออยู่หลังกำแพง
+                    return Color3.fromRGB(255, 0, 0)
+                end
+            end
+
+            -- Skeleton pairs (R15 / R6)
+            local function getSkeletonPairs(char)
+                local pairsList = {}
+
+                local function add(a, b)
+                    local p1 = char:FindFirstChild(a)
+                    local p2 = char:FindFirstChild(b)
+                    if p1 and p2 then
+                        table.insert(pairsList, { p1, p2 })
+                    end
+                end
+
+                if char:FindFirstChild("UpperTorso") then
+                    -- R15
+                    add("Head", "UpperTorso")
+                    add("UpperTorso", "LowerTorso")
+
+                    add("UpperTorso", "LeftUpperArm")
+                    add("LeftUpperArm", "LeftLowerArm")
+                    add("LeftLowerArm", "LeftHand")
+
+                    add("UpperTorso", "RightUpperArm")
+                    add("RightUpperArm", "RightLowerArm")
+                    add("RightLowerArm", "RightHand")
+
+                    add("LowerTorso", "LeftUpperLeg")
+                    add("LeftUpperLeg", "LeftLowerLeg")
+                    add("LeftLowerLeg", "LeftFoot")
+
+                    add("LowerTorso", "RightUpperLeg")
+                    add("RightUpperLeg", "RightLowerLeg")
+                    add("RightLowerLeg", "RightFoot")
+                else
+                    -- R6
+                    add("Head", "Torso")
+                    add("Torso", "Left Arm")
+                    add("Torso", "Right Arm")
+                    add("Torso", "Left Leg")
+                    add("Torso", "Right Leg")
+                end
+
+                return pairsList
+            end
+
+            local function hideContainer(container)
+                if not container then
+                    return
+                end
+
+                local function hide(obj)
+                    if obj and obj.Visible ~= nil then
+                        obj.Visible = false
+                    end
+                end
+
+                hide(container.Box)
+                hide(container.BoxOutline)
+                hide(container.HealthBar)
+                hide(container.HealthOutline)
+                hide(container.Name)
+                hide(container.Distance)
+                hide(container.Tracer)
+
+                if container.Corners then
+                    for _, line in pairs(container.Corners) do
+                        hide(line)
+                    end
+                end
+
+                if container.SkeletonLines then
+                    for _, line in pairs(container.SkeletonLines) do
+                        hide(line)
+                    end
+                end
+
+                if container.Highlight then
+                    container.Highlight.Enabled = false
+                end
+            end
+
+            -- อัปเดต ESP 1 player
+            local function updateESPForPlayer(plr, container)
+                local char = plr.Character
+                if not char then
+                    hideContainer(container)
+                    return
+                end
+
+                -- Whitelist: ซ่อน player ที่เลือก
+                if whitelistName and plr.Name == whitelistName then
+                    hideContainer(container)
+                    return
+                end
+
+                -- Team check
+                if ESP_Settings.TeamCheck and LocalPlayer.Team ~= nil and plr.Team == LocalPlayer.Team then
+                    hideContainer(container)
+                    return
+                end
+
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if not hum or hum.Health <= 0 then
+                    hideContainer(container)
+                    return
+                end
+
+                local root = char:FindFirstChild("HumanoidRootPart")
+                    or char:FindFirstChild("Torso")
+                    or char:FindFirstChild("UpperTorso")
+
+                local head = char:FindFirstChild("Head")
+                if not root or not head then
+                    hideContainer(container)
+                    return
+                end
+
+                local cam = Workspace.CurrentCamera
+                if not cam then
+                    hideContainer(container)
+                    return
+                end
+
+                local rootPos, onScreenRoot = cam:WorldToViewportPoint(root.Position)
+                local headPos, onScreenHead = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+
+                if not onScreenRoot or not onScreenHead then
+                    hideContainer(container)
+                    return
+                end
+
+                local visibleFromCam = isVisibleFromCamera(root.Position, char)
+
+                local boxColor      = getColorWithWallCheck(ESP_Settings.BoxColor, visibleFromCam)
+                local tracerColor   = getColorWithWallCheck(ESP_Settings.TracerColor, visibleFromCam)
+                local nameColor     = getColorWithWallCheck(ESP_Settings.NameColor, visibleFromCam)
+                local distanceColor = getColorWithWallCheck(ESP_Settings.DistanceColor, visibleFromCam)
+
+                local height = math.abs(headPos.Y - rootPos.Y)
+                local width  = height * 0.55
+                local x = rootPos.X - width / 2
+                local y = headPos.Y - height * 0.1
+
+                local screenSize = cam.ViewportSize
+                local bottomCenter = Vector2.new(screenSize.X / 2, screenSize.Y)
+
+                ------------------------------------------------
+                -- Box / Corner
+                ------------------------------------------------
+                if ESP_Settings.Box and container.Box and container.BoxOutline and HAS_DRAWING then
+                    if ESP_Settings.BoxType == "Full Box" then
+                        -- Outline ดำหนา
+                        container.BoxOutline.Visible = true
+                        container.BoxOutline.Color = Color3.new(0, 0, 0)
+                        container.BoxOutline.Thickness = 3
+                        container.BoxOutline.Position = Vector2.new(x, y)
+                        container.BoxOutline.Size = Vector2.new(width, height)
+
+                        -- Box สีหลัก
+                        container.Box.Visible = true
+                        container.Box.Color = boxColor
+                        container.Box.Thickness = 1
+                        container.Box.Position = Vector2.new(x, y)
+                        container.Box.Size = Vector2.new(width, height)
+
+                        if container.Corners then
+                            for _, line in pairs(container.Corners) do
+                                line.Visible = false
+                            end
+                        end
+                    else
+                        -- Corner box
+                        container.Box.Visible = false
+                        container.BoxOutline.Visible = false
+
+                        if container.Corners then
+                            local cornerLength = math.floor(height * 0.25)
+
+                            local tl = Vector2.new(x, y)
+                            local tr = Vector2.new(x + width, y)
+                            local bl = Vector2.new(x, y + height)
+                            local br = Vector2.new(x + width, y + height)
+
+                            local c = container.Corners
+
+                            local function setLine(line, fromPos, toPos)
+                                if not line then
+                                    return
+                                end
+                                line.Visible = true
+                                line.Color = boxColor
+                                line.Thickness = 1
+                                line.From = fromPos
+                                line.To = toPos
+                            end
+
+                            -- top-left
+                            setLine(c[1], tl, tl + Vector2.new(cornerLength, 0))
+                            setLine(c[2], tl, tl + Vector2.new(0, cornerLength))
+                            -- top-right
+                            setLine(c[3], tr, tr + Vector2.new(-cornerLength, 0))
+                            setLine(c[4], tr, tr + Vector2.new(0, cornerLength))
+                            -- bottom-left
+                            setLine(c[5], bl, bl + Vector2.new(cornerLength, 0))
+                            setLine(c[6], bl, bl + Vector2.new(0, -cornerLength))
+                            -- bottom-right
+                            setLine(c[7], br, br + Vector2.new(-cornerLength, 0))
+                            setLine(c[8], br, br + Vector2.new(0, -cornerLength))
+                        end
+                    end
+                else
+                    if container.Box then
+                        container.Box.Visible = false
+                    end
+                    if container.BoxOutline then
+                        container.BoxOutline.Visible = false
+                    end
+                    if container.Corners then
+                        for _, line in pairs(container.Corners) do
+                            line.Visible = false
+                        end
+                    end
+                end
+
+                ------------------------------------------------
+                -- Healthbar
+                ------------------------------------------------
+                if ESP_Settings.HealthBar and container.HealthBar and container.HealthOutline and HAS_DRAWING then
+                    local frac = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+
+                    local barX      = x - 5
+                    local barY      = y
+                    local barWidth  = 3
+                    local barHeight = height
+
+                    container.HealthOutline.Visible = true
+                    container.HealthOutline.Color = Color3.new(0, 0, 0)
+                    container.HealthOutline.Thickness = 1
+                    container.HealthOutline.Filled = false
+                    container.HealthOutline.Position = Vector2.new(barX, barY)
+                    container.HealthOutline.Size = Vector2.new(barWidth, barHeight)
+
+                    container.HealthBar.Visible = true
+                    container.HealthBar.Color = Color3.fromRGB(0, 255, 0)
+                    container.HealthBar.Filled = true
+                    container.HealthBar.Position = Vector2.new(barX + 1, barY + barHeight * (1 - frac))
+                    container.HealthBar.Size = Vector2.new(barWidth - 2, barHeight * frac)
+                else
+                    if container.HealthBar then
+                        container.HealthBar.Visible = false
+                    end
+                    if container.HealthOutline then
+                        container.HealthOutline.Visible = false
+                    end
+                end
+
+                ------------------------------------------------
+                -- Tracer
+                ------------------------------------------------
+                if ESP_Settings.Tracer and container.Tracer and HAS_DRAWING then
+                    container.Tracer.Visible = true
+                    container.Tracer.Color = tracerColor
+                    container.Tracer.Thickness = 1
+                    container.Tracer.From = bottomCenter
+                    container.Tracer.To = Vector2.new(rootPos.X, rootPos.Y + height / 2)
+                else
+                    if container.Tracer then
+                        container.Tracer.Visible = false
+                    end
+                end
+
+                ------------------------------------------------
+                -- NameTag
+                ------------------------------------------------
+                if ESP_Settings.NameTag and container.Name and HAS_DRAWING then
+                    container.Name.Visible = true
+                    container.Name.Color = nameColor
+                    container.Name.Size = ESP_Settings.NameSize
+                    container.Name.Text = plr.Name
+                    container.Name.Position = Vector2.new(rootPos.X, y - 12)
+                else
+                    if container.Name then
+                        container.Name.Visible = false
+                    end
+                end
+
+                ------------------------------------------------
+                -- Distance
+                ------------------------------------------------
+                if ESP_Settings.Distance and container.Distance and HAS_DRAWING then
+                    local distance = (root.Position - cam.CFrame.Position).Magnitude
+                    container.Distance.Visible = true
+                    container.Distance.Color = distanceColor
+                    container.Distance.Size = ESP_Settings.DistanceSize
+                    container.Distance.Text = string.format("[%.0f]", distance)
+                    container.Distance.Position = Vector2.new(rootPos.X, y + height + 12)
+                else
+                    if container.Distance then
+                        container.Distance.Visible = false
+                    end
+                end
+
+                ------------------------------------------------
+                -- Skeleton
+                ------------------------------------------------
+                if ESP_Settings.Skeleton and HAS_DRAWING then
+                    local pairsList = getSkeletonPairs(char)
+                    container.SkeletonLines = container.SkeletonLines or {}
+
+                    for index, pair in ipairs(pairsList) do
+                        local partA, partB = pair[1], pair[2]
+                        local aPos, aOn = cam:WorldToViewportPoint(partA.Position)
+                        local bPos, bOn = cam:WorldToViewportPoint(partB.Position)
+
+                        if aOn and bOn then
+                            local line = container.SkeletonLines[index]
+                            if not line then
+                                line = newDrawing("Line")
+                                container.SkeletonLines[index] = line
+                            end
+                            if line then
+                                line.Visible = true
+                                line.Color = boxColor
+                                line.Thickness = 1
+                                line.From = Vector2.new(aPos.X, aPos.Y)
+                                line.To   = Vector2.new(bPos.X, bPos.Y)
+                            end
+                        elseif container.SkeletonLines[index] then
+                            container.SkeletonLines[index].Visible = false
+                        end
+                    end
+
+                    if container.SkeletonLines then
+                        for index = #pairsList + 1, #container.SkeletonLines do
+                            local line = container.SkeletonLines[index]
+                            if line then
+                                line.Visible = false
+                            end
+                        end
+                    end
+                else
+                    if container.SkeletonLines then
+                        for _, line in pairs(container.SkeletonLines) do
+                            if line then
+                                line.Visible = false
+                            end
+                        end
+                    end
+                end
+
+                ------------------------------------------------
+                -- Chams (Highlight)
+                ------------------------------------------------
+                if ESP_Settings.Chams then
+                    if not container.Highlight or not container.Highlight.Parent then
+                        local highlight = Instance.new("Highlight")
+                        highlight.Adornee = char
+                        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        highlight.FillTransparency = 0.75
+                        highlight.OutlineTransparency = 0
+                        highlight.Parent = char
+                        container.Highlight = highlight
+                    end
+
+                    container.Highlight.Enabled = true
+                    container.Highlight.FillColor = boxColor
+                    container.Highlight.OutlineColor = Color3.new(0, 0, 0)
+                else
+                    if container.Highlight then
+                        container.Highlight.Enabled = false
+                    end
+                end
+            end
+
+            -- Loop หลักของ ESP
+            AddConnection(RunService.RenderStepped:Connect(function()
+                if not ESP_Settings.Enabled then
+                    for _, container in pairs(ESPObjects) do
+                        hideContainer(container)
+                    end
+                    return
+                end
+
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer then
+                        local container = getESPContainer(plr)
+                        updateESPForPlayer(plr, container)
+                    end
+                end
+            end))
+
+            ------------------------------------------------
+            -- UI: Groupbox / Controls
+            ------------------------------------------------
+            local ESPMainBox     = ESPTab:AddLeftGroupbox("ESP Master", "eye")
+            local ESPSettingsBox = ESPTab:AddRightGroupbox("ESP Settings", "settings")
+
+            -- Master toggle
+            local EnableESPToggle = ESPMainBox:AddToggle("bxw_esp_enable", {
+                Text    = "Enable ESP",
+                Default = false,
+                Tooltip = "Master switch for all ESP features",
+            })
+
+            EnableESPToggle:OnChanged(function(state)
+                ESP_Settings.Enabled = state
+                if not state then
+                    for _, container in pairs(ESPObjects) do
+                        hideContainer(container)
+                    end
+                end
+            end)
+
+            -- Box / Corner / Healthbar / Tracer / Name / Distance
+            ESPMainBox:AddToggle("bxw_esp_box", {
+                Text    = "Box",
+                Default = true,
+                Tooltip = "Draw box around players",
+            }):OnChanged(function(state)
+                ESP_Settings.Box = state
+            end)
+
+            ESPMainBox:AddDropdown("bxw_esp_boxtype", {
+                Text    = "Box Type",
+                Values  = { "Full Box", "Corner" },
+                Default = "Full Box",
+                Multi   = false,
+                Tooltip = "Full box or corner style",
+            }):OnChanged(function(value)
+                ESP_Settings.BoxType = value or "Full Box"
+            end)
+
+            ESPMainBox:AddToggle("bxw_esp_healthbar", {
+                Text    = "Healthbar",
+                Default = true,
+                Tooltip = "Show health bar",
+            }):OnChanged(function(state)
+                ESP_Settings.HealthBar = state
+            end)
+
+            ESPMainBox:AddToggle("bxw_esp_tracer", {
+                Text    = "Tracer",
+                Default = true,
+                Tooltip = "Draw tracer from bottom of screen",
+            }):OnChanged(function(state)
+                ESP_Settings.Tracer = state
+            end)
+
+            ESPMainBox:AddToggle("bxw_esp_name", {
+                Text    = "Name Tag",
+                Default = true,
+                Tooltip = "Show player name",
+            }):OnChanged(function(state)
+                ESP_Settings.NameTag = state
+            end)
+
+            ESPMainBox:AddToggle("bxw_esp_distance", {
+                Text    = "Distance",
+                Default = true,
+                Tooltip = "Show distance",
+            }):OnChanged(function(state)
+                ESP_Settings.Distance = state
+            end)
+
+            ESPMainBox:AddDivider()
+
+            -- Chams / Skeleton / TeamCheck / WallCheck
+            ESPMainBox:AddToggle("bxw_esp_chams", {
+                Text    = "Chams (Highlight)",
+                Default = false,
+                Tooltip = "3D highlight using Highlight instance",
+            }):OnChanged(function(state)
+                ESP_Settings.Chams = state
+            end)
+
+            ESPMainBox:AddToggle("bxw_esp_skeleton", {
+                Text    = "Skeleton",
+                Default = false,
+                Tooltip = "Draw skeleton on players",
+            }):OnChanged(function(state)
+                ESP_Settings.Skeleton = state
+            end)
+
+            ESPMainBox:AddToggle("bxw_esp_teamcheck", {
+                Text    = "Team Check",
+                Default = true,
+                Tooltip = "Skip same team",
+            }):OnChanged(function(state)
+                ESP_Settings.TeamCheck = state
+            end)
+
+            ESPMainBox:AddToggle("bxw_esp_wallcheck", {
+                Text    = "Wall Check (Green/Red)",
+                Default = true,
+                Tooltip = "Green = visible, Red = behind wall",
+            }):OnChanged(function(state)
+                ESP_Settings.WallCheck = state
+            end)
+
+            ESPMainBox:AddLabel("Note: 2D ESP (Box/Tracer/Skeleton/Name) requires Drawing API support.")
+
+            ------------------------------------------------
+            -- ESP Settings (Color / Size / Whitelist)
+            ------------------------------------------------
+            local BoxColorPicker = ESPSettingsBox:AddColorPicker("bxw_esp_boxcolor", {
+                Text    = "Box Color",
+                Default = ESP_Settings.BoxColor,
+            })
+
+            BoxColorPicker:OnChanged(function(color)
+                ESP_Settings.BoxColor = color
+            end)
+
+            local TracerColorPicker = ESPSettingsBox:AddColorPicker("bxw_esp_tracercolor", {
+                Text    = "Tracer Color",
+                Default = ESP_Settings.TracerColor,
+            })
+
+            TracerColorPicker:OnChanged(function(color)
+                ESP_Settings.TracerColor = color
+            end)
+
+            local NameColorPicker = ESPSettingsBox:AddColorPicker("bxw_esp_namecolor", {
+                Text    = "Name Color",
+                Default = ESP_Settings.NameColor,
+            })
+
+            NameColorPicker:OnChanged(function(color)
+                ESP_Settings.NameColor = color
+            end)
+
+            local NameSizeSlider = ESPSettingsBox:AddSlider("bxw_esp_namesize", {
+                Text     = "Name Size",
+                Default  = ESP_Settings.NameSize,
+                Min      = 10,
+                Max      = 24,
+                Rounding = 0,
+                Compact  = true,
+            })
+
+            NameSizeSlider:OnChanged(function(value)
+                ESP_Settings.NameSize = value
+            end)
+
+            local DistanceColorPicker = ESPSettingsBox:AddColorPicker("bxw_esp_distancecolor", {
+                Text    = "Distance Color",
+                Default = ESP_Settings.DistanceColor,
+            })
+
+            DistanceColorPicker:OnChanged(function(color)
+                ESP_Settings.DistanceColor = color
+            end)
+
+            local DistanceSizeSlider = ESPSettingsBox:AddSlider("bxw_esp_distancesize", {
+                Text     = "Distance Size",
+                Default  = ESP_Settings.DistanceSize,
+                Min      = 10,
+                Max      = 24,
+                Rounding = 0,
+                Compact  = true,
+            })
+
+            DistanceSizeSlider:OnChanged(function(value)
+                ESP_Settings.DistanceSize = value
+            end)
+
+            ESPSettingsBox:AddDivider()
+
+            -- Whitelist Player (Dropdown + auto refresh)
+            local whitelistValues = {}
+
+            local function refreshWhitelist()
+                table.clear(whitelistValues)
+                table.insert(whitelistValues, "None")
+
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer then
+                        table.insert(whitelistValues, plr.Name)
+                    end
+                end
+            end
+
+            refreshWhitelist()
+
+            local WhitelistDropdown = ESPSettingsBox:AddDropdown("bxw_esp_whitelist", {
+                Text      = "Whitelist Player",
+                Values    = whitelistValues,
+                Default   = "None",
+                Multi     = false,
+                AllowNull = true,
+                Tooltip   = "Selected player will be hidden from ESP",
+            })
+
+            WhitelistDropdown:OnChanged(function(value)
+                if not value or value == "" or value == "None" then
+                    whitelistName = nil
+                else
+                    whitelistName = tostring(value)
+                end
+            end)
+
+            ESPSettingsBox:AddButton("Refresh Whitelist List", function()
+                refreshWhitelist()
+                WhitelistDropdown:SetValues(whitelistValues)
+            end)
+
+            -- Auto-refresh รายชื่อทุก 10 วิ
+            do
+                local acc = 0
+                AddConnection(RunService.Heartbeat:Connect(function(dt)
+                    acc = acc + dt
+                    if acc >= 10 then
+                        acc = 0
+                        refreshWhitelist()
+                        WhitelistDropdown:SetValues(whitelistValues)
+                    end
+                end))
+            end
+
+            -- อัปเดตรายชื่อทันทีเมื่อมีคนเข้า/ออก
+            AddConnection(Players.PlayerAdded:Connect(function()
+                refreshWhitelist()
+                WhitelistDropdown:SetValues(whitelistValues)
+            end))
+
+            AddConnection(Players.PlayerRemoving:Connect(function()
+                refreshWhitelist()
+                WhitelistDropdown:SetValues(whitelistValues)
+            end))
+        end
+    end
+
     ------------------------------------------------
     -- 4.4 Theme / SaveManager (optional) ไว้ทำใน Tab Settings ภายหลัง
     ------------------------------------------------
