@@ -222,13 +222,24 @@
                         <input type="text" id="gen-note" class="input-glass w-full rounded-md px-3 py-2 text-sm" placeholder="e.g. Generated for event...">
                     </div>
 
-                    <label class="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5 cursor-pointer hover:bg-white/10 transition-colors group">
-                        <div class="relative flex items-center">
-                            <input type="checkbox" id="gen-hwid" class="peer sr-only">
-                            <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lavender"></div>
+                    <div class="bg-black/20 p-4 rounded-xl border border-white/5 space-y-3">
+                        <label class="flex items-center gap-3 cursor-pointer group select-none">
+                            <div class="relative flex items-center">
+                                <input type="checkbox" id="gen-hwid" class="peer sr-only">
+                                <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lavender"></div>
+                            </div>
+                            <span class="text-sm text-gray-300 group-hover:text-white transition-colors">Bind HWID to Key</span>
+                        </label>
+
+                        <!-- Hidden Input for Custom HWID -->
+                        <div id="hwid-input-container" class="hidden transition-all duration-300 pl-1">
+                            <label class="text-[10px] text-lavender font-mono block mb-1 ml-1 font-bold">Pre-bind HWID (Optional)</label>
+                            <div class="relative">
+                                <i data-lucide="fingerprint" class="w-4 h-4 text-gray-500 absolute left-3 top-2.5"></i>
+                                <input type="text" id="gen-custom-hwid" class="input-glass w-full rounded-md pl-9 pr-3 py-2 text-xs font-mono text-lavender placeholder-gray-600/50 border-lavender/30 focus:border-lavender" placeholder="Paste HWID Hash here to bind immediately...">
+                            </div>
                         </div>
-                        <span class="text-sm select-none text-gray-300 group-hover:text-white">Bind HWID to Key</span>
-                    </label>
+                    </div>
 
                     <button onclick="generateKeys()" class="w-full bg-lavender hover:bg-white text-black font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(192,132,252,0.3)] hover:shadow-[0_0_30px_rgba(192,132,252,0.6)] transform hover:-translate-y-1">
                         <i data-lucide="sparkles" class="w-4 h-4"></i> Generate Keys
@@ -355,6 +366,19 @@
             }, 2500);
         }
 
+        // --- HWID Toggle Logic ---
+        document.getElementById('gen-hwid').addEventListener('change', function(e) {
+            const container = document.getElementById('hwid-input-container');
+            const input = document.getElementById('gen-custom-hwid');
+            if(e.target.checked) {
+                container.classList.remove('hidden');
+                setTimeout(() => input.focus(), 100);
+            } else {
+                container.classList.add('hidden');
+                input.value = ''; // Clear when unchecked
+            }
+        });
+
         // --- Render Logic ---
         function renderJSON() {
             const jsonStr = JSON.stringify(db, null, 2);
@@ -473,7 +497,10 @@
             const days = document.getElementById('gen-days').value;
             const status = document.getElementById('gen-status').value;
             const note = document.getElementById('gen-note').value;
+            
+            // New Bind Logic
             const bindHwid = document.getElementById('gen-hwid').checked;
+            const customHwid = bindHwid ? document.getElementById('gen-custom-hwid').value.trim() : "";
 
             let expireVal = null;
             const now = new Date();
@@ -494,7 +521,7 @@
                     role: role,
                     status: status,
                     bind_hwid: bindHwid,
-                    hwid_hash: "",
+                    hwid_hash: customHwid, // Apply custom HWID here
                     timestamp: createdVal,
                     expire: expireVal,
                     note: note
