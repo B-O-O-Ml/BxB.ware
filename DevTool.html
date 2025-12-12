@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BxB.ware | JSON Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Three.js for Background -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        lavender: { DEFAULT: '#c084fc', glow: 'rgba(192, 132, 252, 0.5)' },
+                        obsidian: { bg: '#0f0f0f', sidebar: '#0a0a0a', border: '#2a2a2a' },
+                        dark: { bg: '#030005', card: '#0a050f' }
+                    },
+                    fontFamily: {
+                        sans: ['"Space Grotesk"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    animation: {
+                        'pulse-glow': 'pulseGlow 3s infinite',
+                        'fadeIn': 'fadeIn 0.2s ease-out forwards',
+                        'scaleIn': 'scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                    },
+                    keyframes: {
+                        fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+                        scaleIn: { '0%': { transform: 'scale(0.95)', opacity: '0' }, '100%': { transform: 'scale(1)', opacity: '1' } }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Base Styles */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #030005; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #c084fc; }
+
+        /* Custom Scrollbar specifically for inner containers */
+        .custom-inner-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-inner-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        .custom-inner-scroll::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        .custom-inner-scroll::-webkit-scrollbar-thumb:hover { background: #c084fc; }
+        
+        /* Hide scrollbar for nav items on mobile but allow scrolling */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        body { background-color: #030005; color: white; }
+
+        .glass-panel {
+            background: rgba(13, 10, 20, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(192, 132, 252, 0.15);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+            transition: all 0.2s ease-out;
+        }
+
+        .input-dark {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            width: 100%;
+            transition: border-color 0.2s;
+        }
+        .input-dark:focus { outline: none; border-color: #c084fc; }
+
+        .btn-primary, .btn-secondary, .btn-danger {
+            border-radius: 0.5rem; display: flex; align-items: center; gap: 0.5rem; transition: all 0.2s; white-space: nowrap; padding: 0.5rem 1rem; cursor: pointer; justify-content: center;
+        }
+        .btn-primary { background: #c084fc; color: black; font-weight: bold; }
+        .btn-primary:hover { background: #d8b4fe; transform: translateY(-2px); }
+        .btn-secondary { background: rgba(255, 255, 255, 0.05); color: white; border: 1px solid rgba(255, 255, 255, 0.1); }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); border-color: white; }
+        .btn-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.25); border-color: #ef4444; transform: translateY(-1px); }
+
+        /* Notification Toast */
+        #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 100; display: flex; flex-col-reverse; gap: 10px; pointer-events: none; }
+        .toast { pointer-events: auto; min-width: 300px; padding: 15px; border-radius: 8px; background: #1a1a1a; border-left: 4px solid #c084fc; color: white; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transform: translateX(100%); animation: slideIn 0.3s forwards; }
+        .toast.success { border-color: #4ade80; }
+        .toast.error { border-color: #ef4444; }
+        @keyframes slideIn { to { transform: translateX(0); } }
+        @keyframes slideOut { to { transform: translateX(120%); opacity: 0; } }
+
+        /* Syntax Highlight */
+        .json-key { color: #c084fc; } .json-string { color: #a5f3fc; } .json-number { color: #fcd34d; } .json-boolean { color: #f87171; } .json-null { color: #9ca3af; }
+
+        /* Toggle Switch */
+        .toggle-checkbox:checked { right: 0; border-color: #c084fc; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #c084fc; }
+        .toggle-checkbox:checked + .toggle-label:before { transform: translateX(100%); }
+        .toggle-label { width: 36px; height: 20px; position: relative; display: block; background: #333; border-radius: 20px; cursor: pointer; transition: 0.2s; }
+        .toggle-label:before { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+
+        /* Role Badges */
+        .badge-base { padding: 6px 8px; font-size: 10px; border-radius: 4px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; text-align: center; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid transparent; }
+        .role-owner { background: #450a0a; color: #fecaca; border-color: #991b1b; }
+        .role-staff { background: #431407; color: #fed7aa; border-color: #c2410c; }
+        .role-reseller { background: #3b0764; color: #e9d5ff; border-color: #7e22ce; }
+        .role-vip { background: #713f12; color: #fef08a; border-color: #eab308; }
+        .role-premium { background: #831843; color: #fbcfe8; border-color: #db2777; }
+        .role-trial { background: #172554; color: #bfdbfe; border-color: #3b82f6; }
+        .role-user { background: #1f2937; color: #e5e7eb; border-color: #4b5563; }
+        .role-free { background: #111827; color: #9ca3af; border-color: #374151; }
+
+        /* Status Badges */
+        .status-active { background: #064e3b; color: #a7f3d0; border-color: #059669; }
+        .status-banned { background: #450a0a; color: #f87171; border-color: #ef4444; }
+        .status-disabled { background: #1f2937; color: #9ca3af; border-color: #4b5563; }
+        .status-expired { background: #334155; color: #cbd5e1; border-color: #64748b; }
+        .status-test { background: #164e63; color: #a5f3fc; border-color: #0891b2; }
+
+        /* Global Status Buttons */
+        .status-btn { 
+            flex: 1; padding: 6px; text-align: center; font-size: 10px; text-transform: uppercase; font-weight: bold; 
+            border: 1px solid #333; background: #111; color: #666; cursor: pointer; transition: all 0.2s;
+        }
+        .status-btn:first-child { border-radius: 6px 0 0 6px; }
+        .status-btn:last-child { border-radius: 0 6px 6px 0; }
+        .status-btn.active-online { background: #064e3b; color: #a7f3d0; border-color: #059669; }
+        .status-btn.active-maint { background: #713f12; color: #fef08a; border-color: #eab308; }
+        .status-btn.active-offline { background: #450a0a; color: #fecaca; border-color: #991b1b; }
+        
+        .status-btn.active-planned { background: #3b0764; color: #e9d5ff; border-color: #7e22ce; }
+
+    </style>
+</head>
+<body class="bg-dark-bg text-white overflow-x-hidden min-h-screen flex flex-col font-sans">
+
+    <canvas id="particles-bg" class="fixed top-0 left-0 w-full h-full pointer-events-none z-0 opacity-30"></canvas>
+
+    <!-- Navbar -->
+    <nav class="fixed top-0 w-full z-40 border-b border-white/5 bg-dark-bg/80 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 lg:px-6 h-16 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-2 text-lg lg:text-xl font-bold tracking-tighter shrink-0">
+                <i data-lucide="file-json" class="text-lavender"></i>
+                <span>BxB<span class="text-lavender">.JSON</span> Studio</span>
+            </div>
+            <!-- Scrollable Tabs on Mobile -->
+            <div class="flex gap-2 overflow-x-auto no-scrollbar flex-nowrap pr-2">
+                <button onclick="changeTab('keys')" class="nav-tab active px-3 py-1.5 rounded-md text-sm font-mono transition-colors hover:text-lavender text-lavender bg-white/5 whitespace-nowrap">Keys</button>
+                <button onclick="changeTab('changelog')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap">Changelog</button>
+                <button onclick="changeTab('scriptinfo')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap">ScriptInfo</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="relative z-10 pt-24 pb-10 px-4 max-w-7xl mx-auto w-full h-full flex flex-col lg:flex-row gap-6">
+        
+        <!-- EDITOR -->
+        <div class="w-full lg:w-2/3 flex flex-col gap-6">
+            <div class="glass-panel p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div class="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto flex-grow">
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <h2 id="current-editor-title" class="text-xl font-bold">Key Generator</h2>
+                        <span class="text-xs text-gray-500 font-mono bg-white/5 px-2 py-0.5 rounded">.json</span>
+                    </div>
+                    <div id="search-container" class="relative w-full md:max-w-xs">
+                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500"></i>
+                        <input type="text" id="search-input" placeholder="Search..." class="input-dark pl-8 w-full" oninput="handleSearch(this.value)">
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-start md:justify-end">
+                    <div id="default-hwid-container" class="flex items-center gap-2 bg-white/5 px-2 py-1.5 rounded-lg border border-white/10" title="Auto Bind HWID">
+                        <span class="text-[10px] text-gray-400 font-bold uppercase whitespace-nowrap">Auto HWID</span>
+                        <div class="relative scale-75 origin-center">
+                            <input type="checkbox" id="default-hwid-toggle" class="toggle-checkbox absolute opacity-0 w-0 h-0" checked>
+                            <label for="default-hwid-toggle" class="toggle-label"></label>
+                        </div>
+                    </div>
+                    <button onclick="importJSON()" class="btn-secondary text-xs flex-grow md:flex-grow-0 justify-center"><i data-lucide="upload" class="w-4 h-4"></i> Import</button>
+                    <button id="btn-add-entry" onclick="addNewItem()" class="btn-primary text-xs flex-grow md:flex-grow-0 justify-center"><i data-lucide="plus" class="w-4 h-4"></i> Add Entry</button>
+                </div>
+            </div>
+
+            <div id="editor-container" class="flex flex-col gap-4"></div>
+        </div>
+
+        <!-- PREVIEW -->
+        <div class="w-full lg:w-1/3 flex flex-col gap-6">
+            <div class="glass-panel p-0 rounded-xl overflow-hidden flex flex-col h-[calc(100vh-8rem)] sticky top-24">
+                <div class="p-3 border-b border-white/10 bg-black/20 flex justify-between items-center">
+                    <span class="text-sm font-bold font-mono text-gray-400">Preview Output</span>
+                    <div class="flex gap-2">
+                        <button onclick="copyToClipboard()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Copy"><i data-lucide="copy" class="w-4 h-4"></i></button>
+                        <button onclick="downloadJSON()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Download"><i data-lucide="download" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+                <div class="relative flex-grow bg-[#050505] overflow-auto">
+                     <pre class="p-4 text-xs font-mono leading-relaxed"><code id="json-preview"></code></pre>
+                </div>
+                <div class="p-2 border-t border-white/10 bg-black/20 text-center">
+                    <span id="status-bar" class="text-[10px] text-gray-500 font-mono">Ready to edit</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- CUSTOM CONFIRMATION MODAL -->
+    <div id="custom-confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden animate-fadeIn">
+        <div class="glass-panel w-[400px] max-w-[90%] p-6 rounded-2xl flex flex-col gap-4 animate-scaleIn border-l-4 border-red-500">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 shrink-0">
+                    <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h3 id="confirm-title" class="text-lg font-bold text-white">Delete Item?</h3>
+                    <p id="confirm-desc" class="text-xs text-gray-400 mt-1">This action cannot be undone. Are you sure you want to proceed?</p>
+                </div>
+            </div>
+            <div class="flex gap-3 mt-2 justify-end">
+                <button onclick="closeConfirmModal()" class="btn-secondary text-xs">Cancel</button>
+                <button id="btn-confirm-action" class="btn-danger text-xs bg-red-500/20 hover:bg-red-500/40 text-red-500 border-red-500/50">Confirm Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+    <input type="file" id="file-input" class="hidden" accept=".json">
+
+    <script>
+        lucide.createIcons();
+
+        let currentTab = 'keys'; 
+        let searchTerm = '';
+        let currentConfirmAction = null; 
+        
+        let dataStore = {
+            keys: { status: "online", message: "Key server online", version: "1.2.0", last_update: new Date().toISOString(), keys: [] },
+            changelog: { status: "online", project: "Obsidian Hub", latest_version: "1.5.0", entries: [] },
+            scriptinfo: { 
+                status: "online", 
+                hub_name: "Obsidian Universal Hub", 
+                hub_code: "OBSIDIAN_UNI",
+                version: "1.5.0", 
+                channel: "stable",
+                last_update: "2025-12-05 13:45:00",
+                description: { short: "", long: "" },
+                roles_required: { basic: [], premium_features: [], staff_tools: [] },
+                features: {},
+                executors_support: { stable: [], partial: [], mobile: [], notes: "" },
+                game_support: [],
+                credits: [],
+                links: { discord: "", github: "", docs: "" }
+            }
+        };
+
+        // Sample Data Initialization
+        dataStore.keys.keys = [
+            { key: "BxB-Owner", role: "owner", status: "active", bind_hwid: false, timestamp: "12/05/25", expire: null, note: "Owner Key", isStarred: true },
+            { key: "BxB-User", role: "user", status: "active", bind_hwid: true, hwid_hash:"HASH123", timestamp: "12/05/25", expire: "01/01/26", note: "Normal User", isStarred: false },
+        ];
+        
+        dataStore.changelog.entries = [
+            { 
+                version: "1.5.0", date: "2025-12-05", channel: "stable", status: "released", 
+                title: "Combat & ESP upgrade",
+                highlights: ["Improved aimbot smoothing", "Added ESP distance fade", "Added free-key support"],
+                changes: { added: ["Support for free keys"], changed: ["ESP box scaling"], fixed: ["Fixed groupbox"], removed: [] } 
+            }
+        ];
+
+        // Sample for ScriptInfo
+        dataStore.scriptinfo.description = { short: "Universal hub", long: "Full featured hub for Roblox" };
+        dataStore.scriptinfo.features = {
+            aimbot: { status: "online", min_role: "premium", description: "Legit aimbot & prediction" },
+            esp: { status: "online", min_role: "user", description: "Player ESP (box, chams)" }
+        };
+        dataStore.scriptinfo.game_support = [
+            { place_id: 0, name: "Universal", status: "online" }
+        ];
+        dataStore.scriptinfo.links = { discord: "https://discord.gg/example" };
+
+        // --- RENDER LOGIC ---
+        function render() {
+            const container = document.getElementById('editor-container');
+            container.innerHTML = '';
+            
+            const searchContainer = document.getElementById('search-container');
+            const defaultHwidContainer = document.getElementById('default-hwid-container');
+            const addBtn = document.getElementById('btn-add-entry');
+            
+            if(currentTab === 'keys') {
+                searchContainer.classList.remove('hidden');
+                defaultHwidContainer.classList.remove('hidden');
+                addBtn.style.display = 'flex';
+            } else if (currentTab === 'changelog') {
+                searchContainer.classList.add('hidden');
+                defaultHwidContainer.classList.add('hidden');
+                addBtn.style.display = 'flex';
+            } else {
+                // ScriptInfo: Hide Add Entry button (we add specific sections inside)
+                searchContainer.classList.add('hidden');
+                defaultHwidContainer.classList.add('hidden');
+                addBtn.style.display = 'none';
+            }
+
+            renderGlobalFields(container);
+
+            if (currentTab === 'keys') {
+                const listWrapper = document.createElement('div');
+                // Updated: Enable full page scroll on mobile (removed max-h), locked on Desktop
+                listWrapper.className = 'flex flex-col gap-4 lg:overflow-y-auto lg:pr-2 lg:max-h-[600px] custom-scrollbar'; 
+                listWrapper.id = 'keys-list-wrapper';
+                container.appendChild(listWrapper);
+
+                let displayKeys = dataStore.keys.keys.map((k, i) => ({...k, originalIndex: i}));
+                if(searchTerm) {
+                    const lower = searchTerm.toLowerCase();
+                    displayKeys = displayKeys.filter(k => k.key.toLowerCase().includes(lower) || (k.note && k.note.toLowerCase().includes(lower)) || k.role.toLowerCase().includes(lower));
+                }
+                const roleOrder = { owner: 0, staff: 1, vip: 2, premium: 3, reseller: 4, free: 5, user: 6 };
+                displayKeys.sort((a, b) => {
+                    if (a.isStarred !== b.isStarred) return (b.isStarred ? 1 : 0) - (a.isStarred ? 1 : 0);
+                    const roleA = roleOrder[a.role.toLowerCase()] ?? 99; const roleB = roleOrder[b.role.toLowerCase()] ?? 99;
+                    if (roleA !== roleB) return roleA - roleB;
+                    if (a.status !== b.status) return a.status === 'active' ? -1 : 1;
+                    return 0;
+                });
+                if (displayKeys.length === 0) listWrapper.innerHTML = '<div class="text-gray-500 text-center text-sm py-10">No keys found. Click "Add Entry".</div>';
+                else displayKeys.forEach(item => renderKeyCard(listWrapper, item, item.originalIndex));
+
+            } else if (currentTab === 'changelog') {
+                const listWrapper = document.createElement('div');
+                // Updated: Enable full page scroll on mobile
+                listWrapper.className = 'flex flex-col gap-6 lg:overflow-y-auto lg:pr-2 lg:max-h-[600px] custom-scrollbar';
+                container.appendChild(listWrapper);
+                dataStore.changelog.entries.forEach((item, index) => renderChangelogCard(listWrapper, item, index));
+            } else if (currentTab === 'scriptinfo') {
+                renderScriptInfoForm(container);
+            }
+
+            updatePreview();
+            lucide.createIcons();
+        }
+
+        function renderGlobalFields(container) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'glass-panel p-4 rounded-xl mb-2 flex-shrink-0';
+            let fieldsToRender = [];
+            
+            if(currentTab === 'keys') fieldsToRender = ['status', 'message', 'version', 'last_update'];
+            else if(currentTab === 'changelog') fieldsToRender = ['status', 'project', 'latest_version'];
+            else if(currentTab === 'scriptinfo') fieldsToRender = ['status', 'hub_name', 'hub_code', 'version', 'channel', 'last_update'];
+            else fieldsToRender = Object.keys(dataStore[currentTab]).filter(k => typeof dataStore[currentTab][k] !== 'object');
+            
+            let html = `<h3 class="text-sm font-bold text-lavender mb-3">Global Settings</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-4">`;
+            
+            fieldsToRender.forEach(key => {
+                 const value = dataStore[currentTab][key] || '';
+                 let inputHtml = '';
+                 if (key === 'status') {
+                     const status = value.toLowerCase();
+                     inputHtml = `<div class="flex w-full"><button onclick="updateGlobal('status', 'online')" class="status-btn ${status==='online'?'active-online':''}">Online</button><button onclick="updateGlobal('status', 'maintenance')" class="status-btn ${status==='maintenance'?'active-maint':''}">Maint</button><button onclick="updateGlobal('status', 'offline')" class="status-btn ${status==='offline'?'active-offline':''}">Offline</button></div>`;
+                 } else {
+                     inputHtml = `<input type="text" class="input-dark" value="${value}" onchange="updateGlobal('${key}', this.value)">`;
+                 }
+                 html += `<div><label class="block text-xs text-gray-400 mb-1 capitalize">${key.replace('_', ' ')}</label>${inputHtml}</div>`;
+            });
+            html += `</div>`;
+            wrapper.innerHTML = html;
+            container.appendChild(wrapper);
+        }
+
+        // --- RENDER HELPERS FOR SCRIPT INFO ---
+        function renderScriptInfoForm(container) {
+            const data = dataStore.scriptinfo;
+            const scrollContainer = document.createElement('div');
+            // Updated: Enable full page scroll on mobile
+            scrollContainer.className = 'flex flex-col gap-6 lg:overflow-y-auto lg:pr-2 lg:max-h-[600px] custom-scrollbar';
+
+            // 1. Description & Links
+            const descHtml = `
+                <div class="glass-panel p-4 rounded-xl border-l-4 border-blue-500">
+                    <h3 class="text-sm font-bold text-white mb-3">Details & Links</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] text-gray-500">Short Description</label>
+                            <input class="input-dark mb-2" value="${data.description.short || ''}" onchange="updateDeep('description', 'short', this.value)">
+                            <label class="text-[10px] text-gray-500">Long Description</label>
+                            <textarea class="input-dark h-20" onchange="updateDeep('description', 'long', this.value)">${data.description.long || ''}</textarea>
+                        </div>
+                        <div class="space-y-2">
+                            <div><label class="text-[10px] text-gray-500">Discord</label><input class="input-dark" value="${data.links.discord || ''}" onchange="updateDeep('links', 'discord', this.value)"></div>
+                            <div><label class="text-[10px] text-gray-500">GitHub</label><input class="input-dark" value="${data.links.github || ''}" onchange="updateDeep('links', 'github', this.value)"></div>
+                            <div><label class="text-[10px] text-gray-500">Docs</label><input class="input-dark" value="${data.links.docs || ''}" onchange="updateDeep('links', 'docs', this.value)"></div>
+                        </div>
+                    </div>
+                </div>`;
+            
+            // 2. Configuration (Roles & Executors)
+            const configHtml = `
+                <div class="glass-panel p-4 rounded-xl border-l-4 border-yellow-500">
+                    <h3 class="text-sm font-bold text-white mb-3">Configuration</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] text-yellow-400 font-bold mb-1 block">Required Roles (comma separated)</label>
+                            <div class="space-y-1">
+                                <input class="input-dark text-xs" placeholder="Basic" value="${(data.roles_required.basic || []).join(',')}" onchange="updateArrayStr('roles_required', 'basic', this.value)">
+                                <input class="input-dark text-xs" placeholder="Premium Features" value="${(data.roles_required.premium_features || []).join(',')}" onchange="updateArrayStr('roles_required', 'premium_features', this.value)">
+                                <input class="input-dark text-xs" placeholder="Staff Tools" value="${(data.roles_required.staff_tools || []).join(',')}" onchange="updateArrayStr('roles_required', 'staff_tools', this.value)">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-yellow-400 font-bold mb-1 block">Executors Support</label>
+                            <div class="space-y-1">
+                                <input class="input-dark text-xs" placeholder="Stable" value="${(data.executors_support.stable || []).join(',')}" onchange="updateArrayStr('executors_support', 'stable', this.value)">
+                                <input class="input-dark text-xs" placeholder="Partial" value="${(data.executors_support.partial || []).join(',')}" onchange="updateArrayStr('executors_support', 'partial', this.value)">
+                                <input class="input-dark text-xs" placeholder="Mobile" value="${(data.executors_support.mobile || []).join(',')}" onchange="updateArrayStr('executors_support', 'mobile', this.value)">
+                                <input class="input-dark text-xs" placeholder="Notes" value="${data.executors_support.notes || ''}" onchange="updateDeep('executors_support', 'notes', this.value)">
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+            // 3. Features (Dynamic Object)
+            let featuresListHtml = '';
+            for(const [key, feat] of Object.entries(data.features || {})) {
+                featuresListHtml += `
+                    <div class="bg-white/5 p-2 rounded flex gap-2 items-center mb-2">
+                        <div class="w-1/4 font-mono text-xs text-lavender">${key}</div>
+                        <select class="input-dark w-1/6 text-[10px]" onchange="updateFeature('${key}', 'status', this.value)">
+                            <option value="online" ${feat.status==='online'?'selected':''}>Online</option>
+                            <option value="maintenance" ${feat.status==='maintenance'?'selected':''}>Maint</option>
+                            <option value="planned" ${feat.status==='planned'?'selected':''}>Plan</option>
+                        </select>
+                        <input class="input-dark w-1/6 text-[10px]" placeholder="Min Role" value="${feat.min_role||''}" onchange="updateFeature('${key}', 'min_role', this.value)">
+                        <input class="input-dark w-1/3 text-[10px]" placeholder="Desc" value="${feat.description||''}" onchange="updateFeature('${key}', 'description', this.value)">
+                        <button onclick="deleteFeature('${key}')" class="text-red-400"><i data-lucide="x" class="w-3 h-3"></i></button>
+                    </div>
+                `;
+            }
+            const featuresHtml = `
+                <div class="glass-panel p-4 rounded-xl border-l-4 border-green-500">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-white">Features Modules</h3>
+                        <button onclick="addFeature()" class="btn-secondary text-[10px] py-1">Add Feature</button>
+                    </div>
+                    <div class="bg-black/20 p-2 rounded max-h-[200px] overflow-y-auto custom-inner-scroll">
+                        ${featuresListHtml || '<div class="text-xs text-gray-600 text-center">No features added</div>'}
+                    </div>
+                </div>`;
+
+            // 4. Game Support
+            let gamesHtmlItems = '';
+            (data.game_support || []).forEach((game, idx) => {
+                gamesHtmlItems += `
+                    <div class="flex gap-2 items-center bg-white/5 p-2 rounded mb-2">
+                        <input class="input-dark w-1/6 text-[10px]" placeholder="ID" value="${game.place_id || 0}" onchange="updateGame(${idx}, 'place_id', this.value)">
+                        <input class="input-dark w-1/4 text-[10px]" placeholder="Name" value="${game.name || ''}" onchange="updateGame(${idx}, 'name', this.value)">
+                        <select class="input-dark w-1/6 text-[10px]" onchange="updateGame(${idx}, 'status', this.value)">
+                            <option value="online" ${game.status==='online'?'selected':''}>Online</option>
+                            <option value="maintenance" ${game.status==='maintenance'?'selected':''}>Maint</option>
+                        </select>
+                        <input class="input-dark w-1/4 text-[10px]" placeholder="Module Path" value="${game.module || ''}" onchange="updateGame(${idx}, 'module', this.value)">
+                        <input class="input-dark w-1/6 text-[10px]" placeholder="Role" value="${game.min_role || ''}" onchange="updateGame(${idx}, 'min_role', this.value)">
+                        <button onclick="deleteGame(${idx})" class="text-red-400"><i data-lucide="trash" class="w-3 h-3"></i></button>
+                    </div>
+                `;
+            });
+            const gamesHtml = `
+                <div class="glass-panel p-4 rounded-xl border-l-4 border-purple-500">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-white">Game Support</h3>
+                        <button onclick="addGameSupport()" class="btn-secondary text-[10px] py-1">Add Game</button>
+                    </div>
+                    <div class="bg-black/20 p-2 rounded max-h-[200px] overflow-y-auto custom-inner-scroll">
+                        ${gamesHtmlItems}
+                    </div>
+                </div>`;
+
+            // 5. Credits
+            let creditsHtmlItems = '';
+            (data.credits || []).forEach((c, idx) => {
+                creditsHtmlItems += `
+                    <div class="flex gap-2 items-center bg-white/5 p-2 rounded mb-2">
+                        <input class="input-dark w-1/4 text-[10px]" placeholder="Role" value="${c.role || ''}" onchange="updateCredit(${idx}, 'role', this.value)">
+                        <input class="input-dark w-1/4 text-[10px]" placeholder="Name" value="${c.name || ''}" onchange="updateCredit(${idx}, 'name', this.value)">
+                        <input class="input-dark w-1/2 text-[10px]" placeholder="Note" value="${c.note || ''}" onchange="updateCredit(${idx}, 'note', this.value)">
+                        <button onclick="deleteCredit(${idx})" class="text-red-400"><i data-lucide="trash" class="w-3 h-3"></i></button>
+                    </div>
+                `;
+            });
+            const creditsHtml = `
+                <div class="glass-panel p-4 rounded-xl border-l-4 border-pink-500">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-bold text-white">Credits</h3>
+                        <button onclick="addCredit()" class="btn-secondary text-[10px] py-1">Add Credit</button>
+                    </div>
+                    <div class="bg-black/20 p-2 rounded max-h-[200px] overflow-y-auto custom-inner-scroll">
+                        ${creditsHtmlItems}
+                    </div>
+                </div>`;
+
+            scrollContainer.innerHTML = descHtml + configHtml + featuresHtml + gamesHtml + creditsHtml;
+            container.appendChild(scrollContainer);
+        }
+
+        // --- KEY CARD ---
+        function renderKeyCard(container, item, index) {
+            const card = document.createElement('div');
+            card.className = `glass-panel p-4 rounded-xl transition-all group relative flex-shrink-0 ${item.isStarred ? 'border-yellow-500/50 bg-yellow-500/5' : 'hover:border-lavender/50'}`;
+            const roleOptions = ['owner', 'staff', 'vip', 'premium', 'reseller', 'free', 'user'];
+            const statusOptions = ['active', 'banned', 'disabled', 'expired', 'test'];
+            card.innerHTML = `
+                <div class="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button onclick="toggleStar(${index})" class="p-1 rounded hover:bg-white/10 ${item.isStarred ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}"><i data-lucide="star" class="w-4 h-4 ${item.isStarred ? 'fill-yellow-400' : ''}"></i></button>
+                    <button onclick="deleteItem(${index}, 'Key')" class="p-1 rounded hover:bg-red-500/20 text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                </div>
+                <div class="flex flex-col gap-3">
+                    <div class="w-full pr-16"><label class="text-[10px] text-gray-500 uppercase flex items-center gap-1 mb-1">${item.isStarred ? '<i data-lucide="star" class="w-3 h-3 text-yellow-500 fill-yellow-500"></i>' : ''} Key String</label><input type="text" class="input-dark font-mono font-bold text-lavender text-sm" value="${item.key}" onchange="updateKeyItem(${index}, 'key', this.value)"></div>
+                    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 items-start">
+                        <div class="col-span-1 relative"><label class="text-[10px] text-gray-500 uppercase mb-1 block">Role</label><div class="relative w-full"><div class="badge-base role-${item.role} cursor-pointer">${item.role} <i data-lucide="chevron-down" class="w-3 h-3 opacity-70"></i></div><select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="updateKeyItem(${index}, 'role', this.value)">${roleOptions.map(r => `<option value="${r}" ${item.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div></div>
+                        <div class="col-span-1 relative"><label class="text-[10px] text-gray-500 uppercase mb-1 block">Status</label><div class="relative w-full"><div class="badge-base status-${item.status} cursor-pointer">${item.status} <i data-lucide="chevron-down" class="w-3 h-3 opacity-70"></i></div><select class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="updateKeyItem(${index}, 'status', this.value)">${statusOptions.map(s => `<option value="${s}" ${item.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div></div>
+                        <div class="col-span-2 md:col-span-2"><div class="flex items-center justify-between mb-1"><label class="text-[10px] text-gray-500 uppercase">HWID Bind</label><div class="relative scale-75 origin-right"><input type="checkbox" id="toggle-${index}" class="toggle-checkbox absolute opacity-0 w-0 h-0" ${item.bind_hwid ? 'checked' : ''} onchange="updateKeyItem(${index}, 'bind_hwid', this.checked)"><label for="toggle-${index}" class="toggle-label"></label></div></div>${item.bind_hwid ? `<input type="text" placeholder="Hash..." class="input-dark text-[10px] animate-[fadeIn_0.3s]" value="${item.hwid_hash || ''}" onchange="updateKeyItem(${index}, 'hwid_hash', this.value)">` : '<div class="h-8 flex items-center justify-center text-[10px] text-gray-600 border border-white/5 rounded bg-white/5 italic">Not Bound</div>'}</div>
+                        <div class="col-span-1"><label class="text-[10px] text-gray-500 uppercase mb-1 block">Created</label><input type="text" class="input-dark text-[10px]" value="${item.timestamp || ''}" onchange="updateKeyItem(${index}, 'timestamp', this.value)" placeholder="Unix/Date"></div>
+                        <div class="col-span-1"><label class="text-[10px] text-gray-500 uppercase mb-1 block">Expires</label><input type="text" class="input-dark text-[10px]" value="${item.expire || ''}" onchange="updateKeyItem(${index}, 'expire', this.value)" placeholder="Unix/Date/Null"></div>
+                    </div>
+                    <div class="w-full"><div class="relative"><i data-lucide="sticky-note" class="absolute top-2 left-2 w-3 h-3 text-gray-600"></i><input type="text" placeholder="Add a note..." class="input-dark pl-7 text-gray-400 italic text-[10px]" value="${item.note || ''}" onchange="updateKeyItem(${index}, 'note', this.value)"></div></div>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+
+        // --- CHANGELOG CARD ---
+        function renderChangelogCard(container, item, index) {
+            const card = document.createElement('div'); card.className = 'glass-panel p-4 rounded-xl border-l-4 border-l-lavender flex-shrink-0';
+            const renderList = (type, list, changeType = null) => {
+                if (!list) list = [];
+                const itemsHtml = list.map((txt, i) => `<div class="flex gap-2 mb-1"><span class="text-gray-600 text-xs">•</span><input type="text" class="input-dark text-xs py-1" value="${txt}" onchange="updateChangelogNested(${index}, '${type}', ${i}, this.value, '${changeType || ''}')"><button onclick="removeChangelogNested(${index}, '${type}', ${i}, '${changeType || ''}')" class="text-red-400 hover:text-red-300 opacity-50 hover:opacity-100"><i data-lucide="x" class="w-3 h-3"></i></button></div>`).join('');
+                return `<div class="h-[140px] overflow-y-auto pr-1 custom-inner-scroll space-y-1 mb-2 bg-black/20 rounded p-1 border border-white/5">${itemsHtml.length > 0 ? itemsHtml : '<div class="text-[10px] text-gray-600 italic p-2">No items</div>'}</div><button onclick="addChangelogNested(${index}, '${type}', '${changeType || ''}')" class="text-[10px] text-lavender hover:underline flex items-center gap-1 opacity-70 hover:opacity-100">+ Add Line</button>`;
+            };
+            card.innerHTML = `<div class="flex flex-col gap-4"><div class="flex justify-between items-start gap-4"><div class="grid grid-cols-2 md:grid-cols-4 gap-3 flex-grow"><div><label class="text-[10px] text-gray-500 uppercase">Version</label><input class="input-dark font-bold text-lavender" value="${item.version}" onchange="updateChangelogItem(${index}, 'version', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Date</label><input class="input-dark" value="${item.date}" onchange="updateChangelogItem(${index}, 'date', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Channel</label><input class="input-dark" value="${item.channel || 'stable'}" onchange="updateChangelogItem(${index}, 'channel', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Status</label><input class="input-dark" value="${item.status || 'released'}" onchange="updateChangelogItem(${index}, 'status', this.value)"></div></div><button onclick="deleteItem(${index}, 'Log Entry')" class="btn-danger text-xs flex-shrink-0 mt-1"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div><div><label class="text-[10px] text-gray-500 uppercase">Title / Headline</label><input class="input-dark font-bold text-sm" value="${item.title || ''}" placeholder="e.g. Combat & ESP Update" onchange="updateChangelogItem(${index}, 'title', this.value)"></div><div class="bg-white/5 p-3 rounded-lg border border-white/5"><label class="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-2 mb-2"><i data-lucide="star" class="w-3 h-3 text-yellow-400"></i> Highlights</label>${renderList('highlights', item.highlights)}</div><div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 bg-black/20 p-3 rounded-lg"><div><h4 class="text-[10px] font-bold text-green-400 mb-2 uppercase tracking-wider">Added</h4>${renderList('changes', item.changes?.added || [], 'added')}</div><div><h4 class="text-[10px] font-bold text-yellow-400 mb-2 uppercase tracking-wider">Changed</h4>${renderList('changes', item.changes?.changed || [], 'changed')}</div><div><h4 class="text-[10px] font-bold text-blue-400 mb-2 uppercase tracking-wider">Fixed</h4>${renderList('changes', item.changes?.fixed || [], 'fixed')}</div><div><h4 class="text-[10px] font-bold text-red-400 mb-2 uppercase tracking-wider">Removed</h4>${renderList('changes', item.changes?.removed || [], 'removed')}</div></div></div>`;
+            container.appendChild(card);
+        }
+
+        // --- LOGIC ---
+        function handleSearch(val) { searchTerm = val; render(); }
+        function toggleStar(index) { dataStore.keys.keys[index].isStarred = !dataStore.keys.keys[index].isStarred; render(); }
+        function updateGlobal(key, val) { 
+            dataStore[currentTab][key] = val; 
+            if(key === 'status') render(); 
+            else updatePreview(); 
+        }
+        function updateDeep(parent, key, val) { dataStore.scriptinfo[parent][key] = val; updatePreview(); }
+        function updateArrayStr(parent, key, val) { dataStore.scriptinfo[parent][key] = val.split(',').map(s=>s.trim()); updatePreview(); }
+        
+        // Feature Logic
+        function updateFeature(key, field, val) { dataStore.scriptinfo.features[key][field] = val; updatePreview(); }
+        function deleteFeature(key) { delete dataStore.scriptinfo.features[key]; render(); }
+        function addFeature() { 
+            const name = prompt("Enter feature key (e.g. 'aimbot', 'esp'):");
+            if(name) { dataStore.scriptinfo.features[name] = {status:'planned', min_role:'free', description:''}; render(); }
+        }
+
+        // Game Logic
+        function updateGame(idx, key, val) { if(key === 'place_id') val = parseInt(val); dataStore.scriptinfo.game_support[idx][key] = val; updatePreview(); }
+        function deleteGame(idx) { dataStore.scriptinfo.game_support.splice(idx, 1); render(); }
+        function addGameSupport() { dataStore.scriptinfo.game_support.push({place_id:0, name:'New Game', status:'online'}); render(); }
+
+        // Credit Logic
+        function updateCredit(idx, key, val) { dataStore.scriptinfo.credits[idx][key] = val; updatePreview(); }
+        function deleteCredit(idx) { dataStore.scriptinfo.credits.splice(idx, 1); render(); }
+        function addCredit() { dataStore.scriptinfo.credits.push({role:'dev', name:'Name', note:''}); render(); }
+
+        function updateKeyItem(index, key, val) {
+            dataStore.keys.keys[index][key] = val;
+            if (key === 'bind_hwid') { if(!val) delete dataStore.keys.keys[index].hwid_hash; else if(!dataStore.keys.keys[index].hwid_hash) dataStore.keys.keys[index].hwid_hash = ""; }
+            if (['bind_hwid','role','status'].includes(key)) render(); else updatePreview();
+        }
+        function updateChangelogItem(idx, key, val) { dataStore.changelog.entries[idx][key] = val; updatePreview(); }
+        function updateChangelogNested(entryIdx, type, listIdx, val, changeType) {
+             const entry = dataStore.changelog.entries[entryIdx];
+             if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights[listIdx] = val; } 
+             else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType][listIdx] = val; }
+             updatePreview();
+        }
+        function addChangelogNested(entryIdx, type, changeType) {
+             const entry = dataStore.changelog.entries[entryIdx];
+             if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights.push("New..."); } 
+             else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType].push("New..."); }
+             render();
+        }
+        function removeChangelogNested(entryIdx, type, listIdx, changeType) {
+            const entry = dataStore.changelog.entries[entryIdx];
+            if (type === 'highlights') entry.highlights.splice(listIdx, 1); else entry.changes[changeType].splice(listIdx, 1);
+            render();
+        }
+        
+        function addNewItem() {
+            if (currentTab === 'keys') {
+                const defaultBind = document.getElementById('default-hwid-toggle')?.checked ?? true;
+                dataStore.keys.keys.unshift({ key: `KEY-${Math.floor(Math.random()*100000)}`, role: "user", status: "active", bind_hwid: defaultBind, timestamp: new Date().toISOString(), expire: null, note: "", isStarred: false });
+            } else if (currentTab === 'changelog') {
+                dataStore.changelog.entries.unshift({ version: "1.0.X", date: new Date().toISOString().split('T')[0], channel: "stable", status: "released", title: "New Update", highlights: [], changes: { added: [], changed: [], fixed: [], removed: [] } });
+            }
+            render();
+            if(currentTab === 'keys') document.getElementById('keys-list-wrapper')?.scrollTo(0,0);
+        }
+
+        // Modal Logic
+        function showConfirm(title, msg, onConfirm) { document.getElementById('confirm-title').innerText = title; document.getElementById('confirm-desc').innerText = msg; currentConfirmAction = onConfirm; const modal = document.getElementById('custom-confirm-modal'); modal.classList.remove('hidden'); modal.classList.add('flex'); }
+        function closeConfirmModal() { const modal = document.getElementById('custom-confirm-modal'); modal.classList.add('hidden'); modal.classList.remove('flex'); currentConfirmAction = null; }
+        document.getElementById('btn-confirm-action').addEventListener('click', () => { if(currentConfirmAction) currentConfirmAction(); closeConfirmModal(); });
+        function deleteItem(index, typeName) { showConfirm(`Delete ${typeName}?`, `Are you sure?`, () => { dataStore[currentTab][currentTab==='keys'?'keys':'entries'].splice(index, 1); render(); showToast(`${typeName} deleted`, 'error'); }); }
+
+        function changeTab(tab) {
+            currentTab = tab; searchTerm=''; if(document.getElementById('search-input')) document.getElementById('search-input').value='';
+            document.querySelectorAll('.nav-tab').forEach(el => { el.classList.remove('active', 'bg-white/5', 'text-lavender'); el.classList.add('text-gray-400'); });
+            event.target.classList.add('active', 'bg-white/5', 'text-lavender'); event.target.classList.remove('text-gray-400');
+            render();
+        }
+        function updatePreview() {
+            let clean = JSON.parse(JSON.stringify(dataStore[currentTab]));
+            if(currentTab==='keys') {
+                clean.keys = clean.keys.map(({isStarred, originalIndex, ...r})=>r);
+                const roleOrder = { owner: 0, staff: 1, vip: 2, premium: 3, reseller: 4, free: 5, user: 6 };
+                clean.keys.sort((a, b) => { const roleA = roleOrder[a.role.toLowerCase()] ?? 99; const roleB = roleOrder[b.role.toLowerCase()] ?? 99; if (roleA !== roleB) return roleA - roleB; if (a.status !== b.status) return a.status === 'active' ? -1 : 1; return 0; });
+            }
+            document.getElementById('json-preview').innerHTML = syntaxHighlight(JSON.stringify(clean, null, 2));
+        }
+        function syntaxHighlight(json) { return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) { let cls = 'json-number'; if (/^"/.test(match)) { cls = /:$/.test(match) ? 'json-key' : 'json-string'; } else if (/true|false/.test(match)) { cls = 'json-boolean'; } else if (/null/.test(match)) { cls = 'json-null'; } return '<span class="' + cls + '">' + match + '</span>'; }); }
+        function copyToClipboard() { navigator.clipboard.writeText(document.getElementById('json-preview').innerText); showToast('Copied to clipboard', 'success'); }
+        function downloadJSON() { 
+            let clean = JSON.parse(JSON.stringify(dataStore[currentTab])); 
+            if(currentTab==='keys') clean.keys = clean.keys.map(({isStarred, ...r})=>r);
+            const a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(clean, null, 2)); a.download = `${currentTab}.json`; a.click(); 
+        }
+        function importJSON() { document.getElementById('file-input').click(); }
+        document.getElementById('file-input').addEventListener('change', (e) => { const file = e.target.files[0]; if(!file)return; const reader = new FileReader(); reader.onload=(ev)=>{ try{ dataStore[currentTab]=JSON.parse(ev.target.result); if(dataStore[currentTab].keys) dataStore[currentTab].keys.forEach(k=>k.isStarred=false); render(); showToast('Import successful', 'success'); }catch(e){showToast('Invalid JSON', 'error');} }; reader.readAsText(file); });
+        function showToast(msg, type) { const container = document.getElementById('toast-container'); const el = document.createElement('div'); el.className = `toast ${type}`; el.innerHTML = `<span>${msg}</span><i data-lucide="${type==='success'?'check-circle':'alert-circle'}" class="w-5 h-5"></i>`; container.appendChild(el); setTimeout(() => { el.style.animation = 'slideOut 0.3s forwards'; setTimeout(() => el.remove(), 300) }, 3000); lucide.createIcons(); }
+
+        function initBg() { const cvs = document.getElementById('particles-bg'), ctx = cvs.getContext('2d'); function resize() { cvs.width=window.innerWidth; cvs.height=window.innerHeight; } window.addEventListener('resize', resize); resize(); let pts = []; for(let i=0;i<60;i++) pts.push({x:Math.random()*cvs.width, y:Math.random()*cvs.height, vx:(Math.random()-.5)*.3, vy:(Math.random()-.5)*.3}); function anim() { ctx.clearRect(0,0,cvs.width,cvs.height); ctx.fillStyle = '#c084fc'; pts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; if(p.x<0)p.x=cvs.width; if(p.x>cvs.width)p.x=0; if(p.y<0)p.y=cvs.height; if(p.y>cvs.height)p.y=0; ctx.beginPath(); ctx.arc(p.x,p.y,1.5,0,Math.PI*2); ctx.fill(); }); requestAnimationFrame(anim); } anim(); }
+        initBg(); render();
+    </script>
+</body>
+</html>
