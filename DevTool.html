@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BxB.ware | JSON Studio</title>
+    <title>BxB.ware | JSON Studio (Enhanced)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Three.js for Background -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Removed Unused Three.js to improve performance -->
     
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
     
@@ -195,8 +194,12 @@
         <div class="w-full lg:w-1/3 flex flex-col gap-6">
             <div class="glass-panel p-0 rounded-xl overflow-hidden flex flex-col h-[calc(100vh-8rem)] sticky top-24">
                 <div class="p-3 border-b border-white/10 bg-black/20 flex justify-between items-center">
-                    <span class="text-sm font-bold font-mono text-gray-400">Preview Output</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-bold font-mono text-gray-400">Preview Output</span>
+                        <span id="save-indicator" class="text-[10px] text-green-500 opacity-0 transition-opacity">Saved locally</span>
+                    </div>
                     <div class="flex gap-2">
+                        <button type="button" onclick="resetAllData()" class="p-1.5 hover:bg-red-500/10 rounded text-gray-400 hover:text-red-500 transition-colors" title="Reset Local Storage"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
                         <button type="button" onclick="copyToClipboard()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Copy"><i data-lucide="copy" class="w-4 h-4"></i></button>
                         <button type="button" onclick="downloadJSON()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Download"><i data-lucide="download" class="w-4 h-4"></i></button>
                     </div>
@@ -320,6 +323,9 @@
         let searchTerm = '';
         let currentConfirmAction = null; 
         
+        // --- STORAGE MANAGER ---
+        const STORAGE_KEY = 'bxb_studio_data';
+        
         let dataStore = {
             keys: { status: "online", message: "Key server online", version: "1.2.0", last_update: new Date().toISOString(), keys: [] },
             changelog: { status: "online", project: "Obsidian Hub", latest_version: "1.5.0", entries: [] },
@@ -340,34 +346,65 @@
             }
         };
 
-        // Sample Data Initialization
-        dataStore.keys.keys = [
-            { key: "BxB-Owner", role: "owner", status: "active", bind_hwid: false, timestamp: "12/05/25", expire: null, note: "Owner Key", isStarred: true },
-            { key: "BxB-User", role: "user", status: "active", bind_hwid: true, hwid_hash:"HASH123", timestamp: "12/05/25", expire: "01/01/26", note: "Normal User", isStarred: false },
-        ];
-        
-        dataStore.changelog.entries = [
-            { 
-                version: "1.5.0", date: "2025-12-05", channel: "stable", status: "released", 
-                title: "Combat & ESP upgrade",
-                highlights: ["Improved aimbot smoothing", "Added ESP distance fade", "Added free-key support"],
-                changes: { added: ["Support for free keys"], changed: ["ESP box scaling"], fixed: ["Fixed groupbox"], removed: [] } 
+        // Load from storage or init default
+        function loadData() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if(saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    // Merge to ensure new fields in future updates don't break
+                    dataStore = { ...dataStore, ...parsed };
+                } catch(e) {
+                    console.error("Storage corrupted, loading default");
+                }
+            } else {
+                // Initial Default Data if Storage Empty
+                initDefaultData();
             }
-        ];
+        }
 
-        // Sample for ScriptInfo matching requested JSON structure
-        dataStore.scriptinfo.description = { short: "Universal hub", long: "Full featured hub for Roblox" };
-        dataStore.scriptinfo.features = {
-            player: { status: "online", min_role: "free", description: "Movement, teleport, camera, basic utilities." },
-            esp: { status: "online", min_role: "user", description: "Player ESP (box, corner, chams, tracers, distance)." },
-            aimbot: { status: "online", min_role: "premium", description: "Legit aimbot, random weighted hitpart, prediction." },
-            silent_aim: { status: "maintenance", min_role: "vip", description: "Silent Aim via game module. Currently under maintenance." },
-            item_esp: { status: "planned", min_role: "premium", description: "Per-game loot/item ESP via modules (coming soon)." }
-        };
-        dataStore.scriptinfo.game_support = [
-            { place_id: 0, name: "Universal", status: "online" }
-        ];
-        dataStore.scriptinfo.links = { discord: "https://discord.gg/example" };
+        function initDefaultData() {
+             dataStore.keys.keys = [
+                { key: "BxB-Owner", role: "owner", status: "active", bind_hwid: false, timestamp: "12/05/25", expire: null, note: "Owner Key", isStarred: true },
+                { key: "BxB-User", role: "user", status: "active", bind_hwid: true, hwid_hash:"HASH123", timestamp: "12/05/25", expire: "01/01/26", note: "Normal User", isStarred: false },
+            ];
+            
+            dataStore.changelog.entries = [
+                { 
+                    version: "1.5.0", date: "2025-12-05", channel: "stable", status: "released", 
+                    title: "Combat & ESP upgrade",
+                    highlights: ["Improved aimbot smoothing", "Added ESP distance fade", "Added free-key support"],
+                    changes: { added: ["Support for free keys"], changed: ["ESP box scaling"], fixed: ["Fixed groupbox"], removed: [] } 
+                }
+            ];
+
+            // Sample for ScriptInfo matching requested JSON structure
+            dataStore.scriptinfo.description = { short: "Universal hub", long: "Full featured hub for Roblox" };
+            dataStore.scriptinfo.features = {
+                player: { status: "online", min_role: "free", description: "Movement, teleport, camera, basic utilities." },
+                esp: { status: "online", min_role: "user", description: "Player ESP (box, corner, chams, tracers, distance)." },
+                aimbot: { status: "online", min_role: "premium", description: "Legit aimbot, random weighted hitpart, prediction." }
+            };
+            dataStore.scriptinfo.game_support = [{ place_id: 0, name: "Universal", status: "online" }];
+            dataStore.scriptinfo.links = { discord: "https://discord.gg/example" };
+            saveData();
+        }
+
+        function saveData() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dataStore));
+            const ind = document.getElementById('save-indicator');
+            if(ind) {
+                ind.style.opacity = '1';
+                setTimeout(() => ind.style.opacity = '0', 2000);
+            }
+        }
+
+        function resetAllData() {
+            if(confirm("Are you sure you want to reset all data to default? This clears local storage.")) {
+                localStorage.removeItem(STORAGE_KEY);
+                location.reload();
+            }
+        }
 
         // --- RENDER LOGIC ---
         function render() {
@@ -608,21 +645,23 @@
 
         // --- LOGIC ---
         function handleSearch(val) { searchTerm = val; render(); }
-        function toggleStar(index) { dataStore.keys.keys[index].isStarred = !dataStore.keys.keys[index].isStarred; render(); }
+        function toggleStar(index) { dataStore.keys.keys[index].isStarred = !dataStore.keys.keys[index].isStarred; render(); saveData(); }
         function updateGlobal(key, val) { 
             dataStore[currentTab][key] = val; 
+            saveData();
             if(key === 'status') render(); else updatePreview(); 
         }
         function updateKeyItem(index, key, val) {
             dataStore.keys.keys[index][key] = val;
             if (key === 'bind_hwid') { if(!val) delete dataStore.keys.keys[index].hwid_hash; else if(!dataStore.keys.keys[index].hwid_hash) dataStore.keys.keys[index].hwid_hash = ""; }
+            saveData();
             if (['bind_hwid','role','status'].includes(key) || key === 'key') render(); else updatePreview();
         }
         
         function setExpire(index, days) {
             let newVal = null;
             if (days > 0) { const d = new Date(); d.setDate(d.getDate() + days); newVal = d.toLocaleDateString('en-GB') + " 00:00:00"; }
-            dataStore.keys.keys[index].expire = newVal; render();
+            dataStore.keys.keys[index].expire = newVal; render(); saveData();
         }
         function checkDuplicate(keyString) { if(!dataStore.keys.keys) return false; return dataStore.keys.keys.filter(k => k.key === keyString).length > 1; }
 
@@ -634,11 +673,11 @@
             if(key) {
                 if(dataStore.scriptinfo.features[key]) { showToast('Feature key exists!', 'error'); return; }
                 dataStore.scriptinfo.features[key] = { status: 'planned', min_role: 'free', description: '' };
-                render(); closeFeatureModal();
+                render(); closeFeatureModal(); saveData();
             }
         }
 
-        // Batch Modal
+        // Batch Modal Logic
         function openBatchModal() { document.getElementById('batch-modal').classList.remove('hidden'); document.getElementById('batch-modal').classList.add('flex'); }
         function closeBatchModal() { document.getElementById('batch-modal').classList.add('hidden'); document.getElementById('batch-modal').classList.remove('flex'); }
         
@@ -653,26 +692,99 @@
                 const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
                 dataStore.keys.keys.unshift({ key: `KEY-${randomStr}`, role: role, status: 'active', bind_hwid: true, timestamp: new Date().toISOString(), expire: expireVal, note: `Batch generated`, isStarred: false });
             }
+            saveData();
             closeBatchModal(); render(); showToast(`Generated ${qty} keys!`, 'success');
         }
 
+        // --- NEW IMPLEMENTED FUNCTIONS ---
+
+        // Helper to parse "DD/MM/YYYY HH:mm:ss" used in this tool
+        function parseCustomDate(dateStr) {
+            if (!dateStr) return null;
+            try {
+                // assume DD/MM/YYYY
+                const parts = dateStr.split(' ')[0].split('/');
+                if (parts.length === 3) {
+                    // Month is 0-indexed in JS Date
+                    return new Date(parts[2], parts[1] - 1, parts[0]);
+                }
+            } catch (e) { return null; }
+            return null;
+        }
+
+        function deleteExpiredKeys() {
+            showConfirm("Delete Expired?", "This will remove all keys where date has passed.", () => {
+                const now = new Date();
+                const initialCount = dataStore.keys.keys.length;
+                
+                dataStore.keys.keys = dataStore.keys.keys.filter(k => {
+                    if (!k.expire) return true; // Keep lifetime keys
+                    const expDate = parseCustomDate(k.expire);
+                    if (!expDate) return true; // Keep malformed dates to be safe
+                    return expDate >= now; // Keep if date is in future
+                });
+
+                const deletedCount = initialCount - dataStore.keys.keys.length;
+                saveData();
+                render();
+                closeBatchModal();
+                showToast(`Deleted ${deletedCount} expired keys`, 'success');
+            });
+        }
+
+        function deleteByStatus(status) {
+            showConfirm(`Delete ${status} keys?`, `Remove all keys with status '${status}'.`, () => {
+                const initialCount = dataStore.keys.keys.length;
+                dataStore.keys.keys = dataStore.keys.keys.filter(k => k.status !== status);
+                const deletedCount = initialCount - dataStore.keys.keys.length;
+                saveData();
+                render();
+                closeBatchModal();
+                showToast(`Deleted ${deletedCount} keys`, 'success');
+            });
+        }
+
+        function deleteByRole() {
+            const role = document.getElementById('delete-role-select').value;
+            showConfirm(`Delete all ${role}s?`, `DANGER: This removes ALL keys with role '${role}'.`, () => {
+                 const initialCount = dataStore.keys.keys.length;
+                 dataStore.keys.keys = dataStore.keys.keys.filter(k => k.role !== role);
+                 const deletedCount = initialCount - dataStore.keys.keys.length;
+                 saveData();
+                 render();
+                 closeBatchModal();
+                 showToast(`Deleted ${deletedCount} keys`, 'success');
+            });
+        }
+
+        function deleteAllKeys() {
+            showConfirm("NUKE ALL KEYS?", "CRITICAL: This deletes EVERY key. Cannot be undone.", () => {
+                dataStore.keys.keys = [];
+                saveData();
+                render();
+                closeBatchModal();
+                showToast('All keys deleted', 'error');
+            });
+        }
+
+
         // ... Update Helpers ...
-        function updateChangelogItem(idx, key, val) { dataStore.changelog.entries[idx][key] = val; updatePreview(); }
-        function updateChangelogNested(entryIdx, type, listIdx, val, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights[listIdx] = val; } else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType][listIdx] = val; } updatePreview(); }
-        function addChangelogNested(entryIdx, type, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights.push("New..."); } else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType].push("New..."); } render(); }
-        function removeChangelogNested(entryIdx, type, listIdx, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') entry.highlights.splice(listIdx, 1); else entry.changes[changeType].splice(listIdx, 1); render(); }
+        function updateChangelogItem(idx, key, val) { dataStore.changelog.entries[idx][key] = val; saveData(); updatePreview(); }
+        function updateChangelogNested(entryIdx, type, listIdx, val, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights[listIdx] = val; } else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType][listIdx] = val; } saveData(); updatePreview(); }
+        function addChangelogNested(entryIdx, type, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights.push("New..."); } else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType].push("New..."); } saveData(); render(); }
+        function removeChangelogNested(entryIdx, type, listIdx, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') entry.highlights.splice(listIdx, 1); else entry.changes[changeType].splice(listIdx, 1); saveData(); render(); }
         
-        function updateDeep(parent, key, val) { dataStore.scriptinfo[parent][key] = val; updatePreview(); }
-        function updateArrayStr(parent, key, val) { dataStore.scriptinfo[parent][key] = val.split(',').map(s=>s.trim()); updatePreview(); }
-        function updateFeature(key, field, val) { dataStore.scriptinfo.features[key][field] = val; updatePreview(); }
-        function deleteFeature(key) { delete dataStore.scriptinfo.features[key]; render(); }
+        function updateDeep(parent, key, val) { dataStore.scriptinfo[parent][key] = val; saveData(); updatePreview(); }
+        function updateArrayStr(parent, key, val) { dataStore.scriptinfo[parent][key] = val.split(',').map(s=>s.trim()); saveData(); updatePreview(); }
+        function updateFeature(key, field, val) { dataStore.scriptinfo.features[key][field] = val; saveData(); updatePreview(); }
+        function deleteFeature(key) { delete dataStore.scriptinfo.features[key]; saveData(); render(); }
         
-        function updateGame(idx, key, val) { if(key === 'place_id') val = parseInt(val); dataStore.scriptinfo.game_support[idx][key] = val; updatePreview(); }
-        function deleteGame(idx) { dataStore.scriptinfo.game_support.splice(idx, 1); render(); }
-        function addGameSupport() { dataStore.scriptinfo.game_support.push({place_id:0, name:'New Game', status:'online'}); render(); }
-        function updateCredit(idx, key, val) { dataStore.scriptinfo.credits[idx][key] = val; updatePreview(); }
-        function deleteCredit(idx) { dataStore.scriptinfo.credits.splice(idx, 1); render(); }
-        function addCredit() { dataStore.scriptinfo.credits.push({role:'dev', name:'Name', note:''}); render(); }
+        function updateGame(idx, key, val) { if(key === 'place_id') val = parseInt(val); dataStore.scriptinfo.game_support[idx][key] = val; saveData(); updatePreview(); }
+        function deleteGame(idx) { dataStore.scriptinfo.game_support.splice(idx, 1); saveData(); render(); }
+        function addGameSupport() { dataStore.scriptinfo.game_support.push({place_id:0, name:'New Game', status:'online'}); saveData(); render(); }
+        function updateCredit(idx, key, val) { dataStore.scriptinfo.credits[idx][key] = val; saveData(); updatePreview(); }
+        function deleteCredit(idx) { dataStore.scriptinfo.credits.splice(idx, 1); saveData(); render(); }
+        function addCredit() { dataStore.scriptinfo.credits.push({role:'dev', name:'Name', note:''}); saveData(); render(); }
 
         function addNewItem() {
             if (currentTab === 'keys') {
@@ -683,6 +795,7 @@
             } else if (currentTab === 'changelog') {
                 dataStore.changelog.entries.unshift({ version: "1.0.X", date: new Date().toISOString().split('T')[0], channel: "stable", status: "released", title: "New Update", highlights: [], changes: { added: [], changed: [], fixed: [], removed: [] } });
             }
+            saveData();
             render();
             if(currentTab === 'keys') document.getElementById('keys-list-wrapper')?.scrollTo(0,0);
         }
@@ -691,7 +804,7 @@
         function showConfirm(title, msg, onConfirm) { document.getElementById('confirm-title').innerText = title; document.getElementById('confirm-desc').innerText = msg; currentConfirmAction = onConfirm; const modal = document.getElementById('custom-confirm-modal'); modal.classList.remove('hidden'); modal.classList.add('flex'); }
         function closeConfirmModal() { const modal = document.getElementById('custom-confirm-modal'); modal.classList.add('hidden'); modal.classList.remove('flex'); currentConfirmAction = null; }
         document.getElementById('btn-confirm-action').addEventListener('click', () => { if(currentConfirmAction) currentConfirmAction(); closeConfirmModal(); });
-        function deleteItem(index, typeName) { showConfirm(`Delete ${typeName}?`, `Are you sure?`, () => { dataStore[currentTab][currentTab==='keys'?'keys':'entries'].splice(index, 1); render(); showToast(`${typeName} deleted`, 'error'); }); }
+        function deleteItem(index, typeName) { showConfirm(`Delete ${typeName}?`, `Are you sure?`, () => { dataStore[currentTab][currentTab==='keys'?'keys':'entries'].splice(index, 1); saveData(); render(); showToast(`${typeName} deleted`, 'error'); }); }
         
         function changeTab(tab) {
             currentTab = tab; searchTerm=''; if(document.getElementById('search-input')) document.getElementById('search-input').value='';
@@ -700,6 +813,11 @@
             render();
         }
         function updatePreview() {
+            // FIX: Check if data exists for current tab (Dashboard has no data)
+            if (!dataStore[currentTab]) {
+                document.getElementById('json-preview').innerHTML = '<span class="text-gray-500">// Dashboard Overview Mode<br>// No raw JSON data to display</span>';
+                return;
+            }
             let clean = JSON.parse(JSON.stringify(dataStore[currentTab]));
             if(currentTab==='keys') {
                 clean.keys = clean.keys.map(({isStarred, originalIndex, ...r})=>r);
@@ -716,11 +834,15 @@
             const a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(clean, null, 2)); a.download = `${currentTab}.json`; a.click(); 
         }
         function importJSON() { document.getElementById('file-input').click(); }
-        document.getElementById('file-input').addEventListener('change', (e) => { const file = e.target.files[0]; if(!file)return; const reader = new FileReader(); reader.onload=(ev)=>{ try{ dataStore[currentTab]=JSON.parse(ev.target.result); if(dataStore[currentTab].keys) dataStore[currentTab].keys.forEach(k=>k.isStarred=false); render(); showToast('Import successful', 'success'); }catch(e){showToast('Invalid JSON', 'error');} }; reader.readAsText(file); });
+        document.getElementById('file-input').addEventListener('change', (e) => { const file = e.target.files[0]; if(!file)return; const reader = new FileReader(); reader.onload=(ev)=>{ try{ dataStore[currentTab]=JSON.parse(ev.target.result); if(dataStore[currentTab].keys) dataStore[currentTab].keys.forEach(k=>k.isStarred=false); saveData(); render(); showToast('Import successful', 'success'); }catch(e){showToast('Invalid JSON', 'error');} }; reader.readAsText(file); });
         function showToast(msg, type) { const container = document.getElementById('toast-container'); const el = document.createElement('div'); el.className = `toast ${type}`; el.innerHTML = `<span>${msg}</span><i data-lucide="${type==='success'?'check-circle':'alert-circle'}" class="w-5 h-5"></i>`; container.appendChild(el); setTimeout(() => { el.style.animation = 'slideOut 0.3s forwards'; setTimeout(() => el.remove(), 300) }, 3000); lucide.createIcons(); }
 
         function initBg() { const cvs = document.getElementById('particles-bg'), ctx = cvs.getContext('2d'); function resize() { cvs.width=window.innerWidth; cvs.height=window.innerHeight; } window.addEventListener('resize', resize); resize(); let pts = []; for(let i=0;i<60;i++) pts.push({x:Math.random()*cvs.width, y:Math.random()*cvs.height, vx:(Math.random()-.5)*.3, vy:(Math.random()-.5)*.3}); function anim() { ctx.clearRect(0,0,cvs.width,cvs.height); ctx.fillStyle = '#c084fc'; pts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; if(p.x<0)p.x=cvs.width; if(p.x>cvs.width)p.x=0; if(p.y<0)p.y=cvs.height; if(p.y>cvs.height)p.y=0; ctx.beginPath(); ctx.arc(p.x,p.y,1.5,0,Math.PI*2); ctx.fill(); }); requestAnimationFrame(anim); } anim(); }
-        initBg(); render();
+        
+        // Init
+        loadData();
+        initBg(); 
+        render();
     </script>
 </body>
 </html>
