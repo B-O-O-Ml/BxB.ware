@@ -6,6 +6,8 @@ local RunService         = game:GetService("RunService")
 local Stats              = game:GetService("Stats")
 local MarketplaceService = game:GetService("MarketplaceService")
 local UserInputService   = game:GetService("UserInputService") -- เพิ่มบรรทัดนี้
+-- VirtualUser for simulating user input (Anti-AFK)
+local VirtualUser        = game:GetService("VirtualUser")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -206,9 +208,13 @@ local function MainHub(Exec, keydata, authToken)
     ---------------------------------------------
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 
-    local Library = loadstring(Exec.HttpGet(repo .. "Library.lua"))()
+    local Library      = loadstring(Exec.HttpGet(repo .. "Library.lua"))()
     local ThemeManager = loadstring(Exec.HttpGet(repo .. "addons/ThemeManager.lua"))()
     local SaveManager  = loadstring(Exec.HttpGet(repo .. "addons/SaveManager.lua"))()
+
+    -- นำ Options และ Toggles มาไว้ในตัวแปรเพื่อใช้งานในส่วนต่าง ๆ
+    local Options = Library.Options
+    local Toggles = Library.Toggles
 
     -- 1) สร้าง Window (ตาม noedit.lua)
     local Window = Library:CreateWindow({
@@ -501,6 +507,15 @@ local function MainHub(Exec, keydata, authToken)
         WalkSpeedToggle:SetValue(false)
     end)
 
+    -- WalkSpeed method dropdown (for future expansion)
+    local WalkMethodDropdown = MoveBox:AddDropdown("bxw_walk_method", {
+        Text = "Walk Method",
+        Values = { "Direct", "Incremental" },
+        Default = "Direct",
+        Multi = false,
+        Tooltip = "Method to apply WalkSpeed (placeholder)",
+    })
+
     -- JumpPower + Toggle
     local defaultJumpPower = 50
     local jumpPowerEnabled = false
@@ -600,6 +615,19 @@ local function MainHub(Exec, keydata, authToken)
         Text = "Fly (Smooth)",
         Default = false,
         Tooltip = "Smooth fly with locked rotation",
+    })
+
+    -- Fly speed slider
+    local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", {
+        Text = "Fly Speed",
+        Default = flySpeed,
+        Min = 1,
+        Max = 300,
+        Rounding = 0,
+        Compact = false,
+        Callback = function(value)
+            flySpeed = value
+        end,
     })
 
     FlyToggle:OnChanged(function(state)
@@ -889,735 +917,1622 @@ local function MainHub(Exec, keydata, authToken)
     UtilBox:AddDivider()
     UtilBox:AddLabel("More utilities will be added later.")
 
-    --------------------------------------------------------
-    -- 3. ESP TAB (ESP & Visuals)
-    --------------------------------------------------------
-    -- Set up local references for Options and Toggles to simplify
-    local Options = Library.Options
-    local Toggles = Library.Toggles
-
-    local EspTab = Tabs.ESP
-
-    -- Groupboxes: left for toggles/features, right for settings
-    local EspFeatureBox  = EspTab:AddLeftGroupbox("ESP Features", "eye")
-    local EspSettingBox  = EspTab:AddRightGroupbox("ESP Settings", "sliders")
-
-    -- #region ESP Controls
-    -- Master enable toggle for the entire ESP system
-    local EspEnabledToggle = EspFeatureBox:AddToggle("bxw_esp_enable", {
-        Text    = "Enable ESP",
-        Default = false,
-        Tooltip = "Master switch for all ESP features",
-    })
-
-    -- Box / Corner toggle
-    local BoxToggle = EspFeatureBox:AddToggle("bxw_esp_box", {
-        Text    = "Box ESP",
-        Default = true,
-        Tooltip = "Draw boxes around players",
-    })
-
-    local BoxTypeDropdown = EspFeatureBox:AddDropdown("bxw_esp_box_type", {
-        Text    = "Box Style",
-        Values  = {"Box", "Corner"},
-        Default = "Box",
-        Multi   = false,
-        Tooltip = "Full box or only corners",
-    })
-
-    local ChamsToggle = EspFeatureBox:AddToggle("bxw_esp_chams", {
-        Text    = "Chams",
-        Default = false,
-        Tooltip = "Highlight players with a colored overlay",
-    })
-
-    local SkeletonToggle = EspFeatureBox:AddToggle("bxw_esp_skeleton", {
-        Text    = "Skeleton",
-        Default = false,
-        Tooltip = "Draw bone lines between limbs",
-    })
-
-    local HealthToggle = EspFeatureBox:AddToggle("bxw_esp_healthbar", {
-        Text    = "Health Bar",
-        Default = false,
-        Tooltip = "Draw a health bar next to the box",
-    })
-
-    local NameToggle = EspFeatureBox:AddToggle("bxw_esp_nametag", {
-        Text    = "Name Tag",
-        Default = true,
-        Tooltip = "Show player name above their head",
-    })
-
-    local DistanceToggle = EspFeatureBox:AddToggle("bxw_esp_distance", {
-        Text    = "Distance",
-        Default = false,
-        Tooltip = "Show distance to player",
-    })
-
-    local TracerToggle = EspFeatureBox:AddToggle("bxw_esp_tracer", {
-        Text    = "Tracer",
-        Default = false,
-        Tooltip = "Draw lines from screen center to players",
-    })
-
-    local TeamCheckToggle = EspFeatureBox:AddToggle("bxw_esp_teamcheck", {
-        Text    = "Team Check",
-        Default = false,
-        Tooltip = "Hide ESP for players on the same team",
-    })
-
-    local WallCheckToggle = EspFeatureBox:AddToggle("bxw_esp_wallcheck", {
-        Text    = "Wall Check",
-        Default = false,
-        Tooltip = "Change box/tracer color when player is behind a wall",
-    })
-
-    EspFeatureBox:AddDivider()
-
-    -- Whitelist dropdown (multi‑select)
-    local whitelistNames = {}
-    local function refreshWhitelist()
-        table.clear(whitelistNames)
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then
-                table.insert(whitelistNames, plr.Name)
-            end
-        end
-    end
-    refreshWhitelist()
-
-    local WhitelistDropdown = EspFeatureBox:AddDropdown("bxw_esp_whitelist", {
-        Text    = "Whitelist Players",
-        Values  = whitelistNames,
-        Default = {},
-        Multi   = true,
+    -- Waypoints management
+    UtilBox:AddDivider()
+    UtilBox:AddLabel("Waypoints")
+    -- table to store waypoint CFrame by name
+    local savedWaypoints = {}
+    local savedNames = {}
+    -- Dropdown to list saved waypoints
+    local WaypointDropdown = UtilBox:AddDropdown("bxw_waypoint_list", {
+        Text = "Waypoint List",
+        Values = savedNames,
+        Default = "",
+        Multi = false,
         AllowNull = true,
-        Tooltip = "Select players to ignore in ESP",
+        Tooltip = "Select a saved waypoint",
     })
-
-    EspFeatureBox:AddButton("Refresh List", function()
-        refreshWhitelist()
-        WhitelistDropdown:SetValues(whitelistNames)
-    end)
-
-    -- #endregion ESP Controls
-
-    -- #region ESP Settings
-    -- Color pickers and sliders for customizing visuals
-    local BoxColorPicker = EspSettingBox:AddColorPicker("bxw_esp_boxcolor", {
-        Text = "Box Color",
-        Default = Color3.fromRGB(255, 255, 255),
-    })
-
-    local TracerColorPicker = EspSettingBox:AddColorPicker("bxw_esp_tracercolor", {
-        Text = "Tracer Color",
-        Default = Color3.fromRGB(255, 255, 255),
-    })
-
-    local NameColorPicker = EspSettingBox:AddColorPicker("bxw_esp_namecolor", {
-        Text = "Name Color",
-        Default = Color3.fromRGB(255, 255, 255),
-    })
-
-    local NameSizeSlider = EspSettingBox:AddSlider("bxw_esp_namesize", {
-        Text = "Name Size",
-        Default = 13,
-        Min = 10,
-        Max = 24,
-        Rounding = 0,
-        Compact = false,
-    })
-
-    local DistanceColorPicker = EspSettingBox:AddColorPicker("bxw_esp_distancecolor", {
-        Text = "Distance Color",
-        Default = Color3.fromRGB(255, 255, 255),
-    })
-
-    local DistanceSizeSlider = EspSettingBox:AddSlider("bxw_esp_distancesize", {
-        Text = "Distance Size",
-        Default = 12,
-        Min = 8,
-        Max = 20,
-        Rounding = 0,
-        Compact = false,
-    })
-
-    -- #endregion ESP Settings
-
-    --------------------------------------------------------
-    -- ESP Logic Implementation
-    -- This section sets up drawing objects for each player
-    -- and updates them every frame based on toggles/settings.
-    --------------------------------------------------------
-    -- Table to store drawing objects keyed by player
-    local espObjects = {}
-
-    -- Helper: remove ESP objects for a player
-    local function removeEspForPlayer(plr)
-        local obj = espObjects[plr]
-        if not obj then return end
-        -- destroy drawings
-        if obj.BoxLines then
-            for _, line in pairs(obj.BoxLines) do
-                if line then line:Remove() end
-            end
-        end
-        if obj.CornerLines then
-            for _, line in pairs(obj.CornerLines) do
-                if line then line:Remove() end
-            end
-        end
-        if obj.SkeletonLines then
-            for _, line in pairs(obj.SkeletonLines) do
-                if line then line:Remove() end
-            end
-        end
-        if obj.HealthLines then
-            for _, line in pairs(obj.HealthLines) do
-                if line then line:Remove() end
-            end
-        end
-        if obj.NameText and obj.NameText.Remove then
-            obj.NameText:Remove()
-        end
-        if obj.DistanceText and obj.DistanceText.Remove then
-            obj.DistanceText:Remove()
-        end
-        if obj.TracerLine and obj.TracerLine.Remove then
-            obj.TracerLine:Remove()
-        end
-        if obj.HighlightInstance and obj.HighlightInstance.Destroy then
-            obj.HighlightInstance:Destroy()
-        end
-        espObjects[plr] = nil
-    end
-
-    -- Helper: create ESP drawings for a player
-    local function createEspForPlayer(plr)
-        if espObjects[plr] then return end
-        local obj = {}
-        obj.BoxLines    = {}
-        obj.CornerLines = {}
-        obj.SkeletonLines = {}
-        obj.HealthLines = {}
-
-        -- full box (4 lines)
-        for i = 1, 4 do
-            local ln = Drawing.new("Line")
-            ln.Visible = false
-            ln.Thickness = 1
-            ln.Transparency = 1
-            table.insert(obj.BoxLines, ln)
-        end
-        -- corner lines (8 lines: each corner has horizontal and vertical segments)
-        for i = 1, 8 do
-            local ln = Drawing.new("Line")
-            ln.Visible = false
-            ln.Thickness = 1
-            ln.Transparency = 1
-            table.insert(obj.CornerLines, ln)
-        end
-        -- skeleton lines (create enough lines, we will map pairs at runtime)
-        for i = 1, 15 do
-            local ln = Drawing.new("Line")
-            ln.Visible = false
-            ln.Thickness = 1
-            ln.Transparency = 1
-            table.insert(obj.SkeletonLines, ln)
-        end
-        -- health bar lines (outer and inner)
-        for i = 1, 2 do
-            local ln = Drawing.new("Line")
-            ln.Visible = false
-            ln.Thickness = 2
-            ln.Transparency = 1
-            table.insert(obj.HealthLines, ln)
-        end
-        -- name text
-        local nameText = Drawing.new("Text")
-        nameText.Visible = false
-        nameText.Center = true
-        nameText.Outline = true
-        nameText.Text = plr.Name
-        obj.NameText = nameText
-        -- distance text
-        local distText = Drawing.new("Text")
-        distText.Visible = false
-        distText.Center = true
-        distText.Outline = true
-        obj.DistanceText = distText
-        -- tracer line
-        local tracer = Drawing.new("Line")
-        tracer.Visible = false
-        tracer.Thickness = 1
-        tracer.Transparency = 1
-        obj.TracerLine = tracer
-        -- chams highlight (using Highlight instance)
-        local highlight = Instance.new("Highlight")
-        highlight.Enabled = false
-        highlight.FillTransparency = 0.5
-        highlight.OutlineTransparency = 0
-        highlight.Parent = game:GetService("CoreGui")
-        obj.HighlightInstance = highlight
-        espObjects[plr] = obj
-    end
-
-    -- Helper: update skeleton line pairs depending on rig type (R6/R15)
-    local function getSkeletonPairs(character)
-        local pairsList = {}
-        if not character then return pairsList end
-        -- Determine rig type
-        if character:FindFirstChild("UpperTorso") then
-            -- R15 skeleton connections
-            local function addPair(a, b)
-                local aPart = character:FindFirstChild(a)
-                local bPart = character:FindFirstChild(b)
-                if aPart and bPart then
-                    table.insert(pairsList, {aPart, bPart})
-                end
-            end
-            addPair("Head","UpperTorso")
-            addPair("UpperTorso","LowerTorso")
-            addPair("LowerTorso","LeftUpperLeg")
-            addPair("LeftUpperLeg","LeftLowerLeg")
-            addPair("LeftLowerLeg","LeftFoot")
-            addPair("LowerTorso","RightUpperLeg")
-            addPair("RightUpperLeg","RightLowerLeg")
-            addPair("RightLowerLeg","RightFoot")
-            addPair("UpperTorso","LeftUpperArm")
-            addPair("LeftUpperArm","LeftLowerArm")
-            addPair("LeftLowerArm","LeftHand")
-            addPair("UpperTorso","RightUpperArm")
-            addPair("RightUpperArm","RightLowerArm")
-            addPair("RightLowerArm","RightHand")
-        else
-            -- R6 skeleton connections
-            local function addPair(a, b)
-                local aPart = character:FindFirstChild(a)
-                local bPart = character:FindFirstChild(b)
-                if aPart and bPart then
-                    table.insert(pairsList, {aPart, bPart})
-                end
-            end
-            addPair("Head","Torso")
-            addPair("Torso","Left Arm")
-            addPair("Torso","Right Arm")
-            addPair("Torso","Left Leg")
-            addPair("Torso","Right Leg")
-        end
-        return pairsList
-    end
-
-    -- Helper: compute bounding box screen coords
-    local function getBoundingBox(character)
-        local cframe, size = character:GetBoundingBox()
-        local corners = {
-            Vector3.new(-size.X/2, -size.Y/2, -size.Z/2),
-            Vector3.new(size.X/2, -size.Y/2, -size.Z/2),
-            Vector3.new(-size.X/2, size.Y/2, -size.Z/2),
-            Vector3.new(size.X/2, size.Y/2, -size.Z/2),
-            Vector3.new(-size.X/2, -size.Y/2, size.Z/2),
-            Vector3.new(size.X/2, -size.Y/2, size.Z/2),
-            Vector3.new(-size.X/2, size.Y/2, size.Z/2),
-            Vector3.new(size.X/2, size.Y/2, size.Z/2),
-        }
-        local camera = Workspace.CurrentCamera
-        local minX, minY = math.huge, math.huge
-        local maxX, maxY = -math.huge, -math.huge
-        local onScreen = false
-        local points = {}
-        for _, offset in ipairs(corners) do
-            local worldPoint = (cframe * CFrame.new(offset)).Position
-            local screenPoint, visible = camera:WorldToViewportPoint(worldPoint)
-            if visible then
-                onScreen = true
-                minX = math.min(minX, screenPoint.X)
-                minY = math.min(minY, screenPoint.Y)
-                maxX = math.max(maxX, screenPoint.X)
-                maxY = math.max(maxY, screenPoint.Y)
-                table.insert(points, screenPoint)
-            else
-                table.insert(points, screenPoint)
-            end
-        end
-        return onScreen, minX, minY, maxX, maxY, points
-    end
-
-    -- Wall check: cast ray from camera to target; returns true if blocked
-    local function isBehindWall(origin, target)
-        local direction = (target - origin)
-        local rayParams = RaycastParams.new()
-        -- ignore player's character and local player
-        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-        rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
-        local result = workspace:Raycast(origin, direction, rayParams)
-        -- if hit something before reaching the player, then behind wall
-        if result and (result.Instance and result.Instance:IsDescendantOf(LocalPlayer.Character) == false) then
-            local hitPosition = result.Position
-            local distanceToHit = (hitPosition - origin).Magnitude
-            local distanceToTarget = direction.Magnitude
-            if distanceToHit < distanceToTarget - 1 then
-                return true
-            end
-        end
-        return false
-    end
-
-    -- Main update loop; runs every frame when ESP is enabled
-    local function updateEsp()
-        if not EspEnabledToggle.Value then
-            -- hide all drawings
-            for plr, obj in pairs(espObjects) do
-                -- hide box lines
-                for _, l in pairs(obj.BoxLines) do l.Visible = false end
-                for _, l in pairs(obj.CornerLines) do l.Visible = false end
-                for _, l in pairs(obj.SkeletonLines) do l.Visible = false end
-                for _, l in pairs(obj.HealthLines) do l.Visible = false end
-                if obj.NameText then obj.NameText.Visible = false end
-                if obj.DistanceText then obj.DistanceText.Visible = false end
-                if obj.TracerLine then obj.TracerLine.Visible = false end
-                if obj.HighlightInstance then obj.HighlightInstance.Enabled = false end
-            end
+    -- Button to save current position as waypoint
+    UtilBox:AddButton("Set Waypoint", function()
+        local root = getRootPart()
+        if not root then
+            Library:Notify("Character not loaded", 2)
             return
         end
-        local camera = Workspace.CurrentCamera
-        if not camera then return end
-
-        -- update whitelist list periodically
-        -- (done by event and manual refresh)
-
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then
-                -- respect team check
-                local skip = false
-                if TeamCheckToggle.Value then
-                    local myTeam = LocalPlayer.Team
-                    if myTeam and plr.Team == myTeam then
-                        skip = true
-                    end
-                end
-                -- whitelist check
-                local wl = WhitelistDropdown.Value or {}
-                if type(wl) == "string" then
-                    -- single value returns string
-                    if wl == plr.Name then
-                        skip = true
-                    end
-                elseif type(wl) == "table" then
-                    for _, v in pairs(wl) do
-                        if v == plr.Name then
-                            skip = true
-                            break
-                        end
-                    end
-                end
-                if skip then
-                    -- hide and continue
-                    removeEspForPlayer(plr)
-                    goto continue
-                end
-                -- ensure esp object exists
-                if not espObjects[plr] then
-                    createEspForPlayer(plr)
-                end
-                local obj = espObjects[plr]
-                local character = plr.Character
-                local hrp = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso"))
-                if not character or not hrp then
-                    -- no character; hide and continue
-                    removeEspForPlayer(plr)
-                    goto continue
-                end
-                -- compute bounding box
-                local onScreen, minX, minY, maxX, maxY, points = getBoundingBox(character)
-                if not onScreen then
-                    -- hide
-                    if obj.BoxLines then
-                        for _, l in pairs(obj.BoxLines) do l.Visible = false end
-                    end
-                    if obj.CornerLines then
-                        for _, l in pairs(obj.CornerLines) do l.Visible = false end
-                    end
-                    if obj.SkeletonLines then
-                        for _, l in pairs(obj.SkeletonLines) do l.Visible = false end
-                    end
-                    if obj.HealthLines then
-                        for _, l in pairs(obj.HealthLines) do l.Visible = false end
-                    end
-                    if obj.NameText then obj.NameText.Visible = false end
-                    if obj.DistanceText then obj.DistanceText.Visible = false end
-                    if obj.TracerLine then obj.TracerLine.Visible = false end
-                    if obj.HighlightInstance then obj.HighlightInstance.Enabled = false end
-                    goto continue
-                end
-
-                -- Determine color based on wall check
-                local baseColor = BoxColorPicker.Value
-                local useColor = baseColor
-                if WallCheckToggle.Value then
-                    local camPos = camera.CFrame.Position
-                    local wallHit = isBehindWall(camPos, hrp.Position)
-                    if wallHit then
-                        useColor = Color3.fromRGB(255, 0, 0) -- red behind wall
-                    else
-                        useColor = Color3.fromRGB(0, 255, 0) -- green when visible
-                    end
-                end
-
-                --------------------------------------------------
-                -- Box drawing (either full box or corners)
-                if BoxToggle.Value then
-                    if BoxTypeDropdown.Value == "Box" then
-                        -- compute lines: top, bottom, left, right
-                        local topLeft     = Vector2.new(minX, minY)
-                        local topRight    = Vector2.new(maxX, minY)
-                        local bottomLeft  = Vector2.new(minX, maxY)
-                        local bottomRight = Vector2.new(maxX, maxY)
-                        -- assign positions
-                        local bl = obj.BoxLines
-                        if bl and #bl >= 4 then
-                            bl[1].From = topLeft;    bl[1].To = topRight
-                            bl[2].From = topRight;   bl[2].To = bottomRight
-                            bl[3].From = bottomRight;bl[3].To = bottomLeft
-                            bl[4].From = bottomLeft; bl[4].To = topLeft
-                            for _, l in ipairs(bl) do
-                                l.Color = useColor
-                                l.Visible = true
-                            end
-                        end
-                        -- hide corners
-                        if obj.CornerLines then
-                            for _, l in pairs(obj.CornerLines) do l.Visible = false end
-                        end
-                    else -- Corner style
-                        -- compute ratio for corner length
-                        local width  = maxX - minX
-                        local height = maxY - minY
-                        local cw     = math.clamp(width * 0.25, 4, 50)
-                        local ch     = math.clamp(height * 0.25, 4, 50)
-                        -- coordinates
-                        local topLeft     = Vector2.new(minX, minY)
-                        local topRight    = Vector2.new(maxX, minY)
-                        local bottomLeft  = Vector2.new(minX, maxY)
-                        local bottomRight = Vector2.new(maxX, maxY)
-                        -- set corner lines (eight lines)
-                        local cl = obj.CornerLines
-                        if cl and #cl >= 8 then
-                            -- TopLeft horizontal and vertical
-                            cl[1].From = topLeft;                cl[1].To = topLeft + Vector2.new(cw, 0)
-                            cl[2].From = topLeft;                cl[2].To = topLeft + Vector2.new(0, ch)
-                            -- TopRight horizontal and vertical
-                            cl[3].From = topRight;               cl[3].To = topRight - Vector2.new(cw, 0)
-                            cl[4].From = topRight;               cl[4].To = topRight + Vector2.new(0, ch)
-                            -- BottomLeft horizontal and vertical
-                            cl[5].From = bottomLeft;             cl[5].To = bottomLeft + Vector2.new(cw, 0)
-                            cl[6].From = bottomLeft;             cl[6].To = bottomLeft - Vector2.new(0, ch)
-                            -- BottomRight horizontal and vertical
-                            cl[7].From = bottomRight;            cl[7].To = bottomRight - Vector2.new(cw, 0)
-                            cl[8].From = bottomRight;            cl[8].To = bottomRight - Vector2.new(0, ch)
-                            for _, l in ipairs(cl) do
-                                l.Color = useColor
-                                l.Visible = true
-                            end
-                        end
-                        -- hide full box lines
-                        if obj.BoxLines then
-                            for _, l in pairs(obj.BoxLines) do l.Visible = false end
-                        end
-                    end
-                else
-                    -- hide all box/corner lines
-                    if obj.BoxLines then
-                        for _, l in pairs(obj.BoxLines) do l.Visible = false end
-                    end
-                    if obj.CornerLines then
-                        for _, l in pairs(obj.CornerLines) do l.Visible = false end
-                    end
-                end
-
-                --------------------------------------------------
-                -- Chams: highlight part surfaces
-                if ChamsToggle.Value and obj.HighlightInstance then
-                    obj.HighlightInstance.Adornee = character
-                    obj.HighlightInstance.FillColor = useColor
-                    obj.HighlightInstance.OutlineColor = useColor
-                    obj.HighlightInstance.Enabled = true
-                else
-                    if obj.HighlightInstance then
-                        obj.HighlightInstance.Enabled = false
-                    end
-                end
-
-                --------------------------------------------------
-                -- Skeleton
-                if SkeletonToggle.Value then
-                    local pairsList = getSkeletonPairs(character)
-                    -- ensure we have enough line objects
-                    local sl = obj.SkeletonLines
-                    -- hide unused lines
-                    for i = 1, #sl do
-                        local line = sl[i]
-                        if i <= #pairsList then
-                            local a = pairsList[i][1].Position
-                            local b = pairsList[i][2].Position
-                            local posA, visA = camera:WorldToViewportPoint(a)
-                            local posB, visB = camera:WorldToViewportPoint(b)
-                            if visA and visB then
-                                line.From = Vector2.new(posA.X, posA.Y)
-                                line.To   = Vector2.new(posB.X, posB.Y)
-                                line.Color = useColor
-                                line.Visible = true
-                            else
-                                line.Visible = false
-                            end
-                        else
-                            line.Visible = false
-                        end
-                    end
-                else
-                    if obj.SkeletonLines then
-                        for _, l in pairs(obj.SkeletonLines) do l.Visible = false end
-                    end
-                end
-
-                --------------------------------------------------
-                -- Health bar
-                if HealthToggle.Value then
-                    -- compute positions: draw bar on the left side of box
-                    local hum = character:FindFirstChildOfClass("Humanoid")
-                    if hum then
-                        local health     = math.clamp(hum.Health, 0, hum.MaxHealth)
-                        local ratio      = health / math.max(1, hum.MaxHealth)
-                        local barHeight  = maxY - minY
-                        local barWidth   = 4
-                        local x0 = minX - barWidth - 2
-                        local y0 = minY
-                        local y1 = maxY
-                        -- outer line
-                        local hl = obj.HealthLines
-                        if hl and #hl >= 2 then
-                            -- outline
-                            hl[1].From = Vector2.new(x0, y0)
-                            hl[1].To   = Vector2.new(x0, y1)
-                            hl[1].Color = Color3.new(0,0,0)
-                            hl[1].Thickness = 2
-                            hl[1].Visible = true
-                            -- inner bar
-                            local innerY = y0 + barHeight * (1 - ratio)
-                            hl[2].From = Vector2.new(x0, innerY)
-                            hl[2].To   = Vector2.new(x0, y1)
-                            -- gradient from red to green
-                            local r = math.clamp(1 - ratio, 0, 1)
-                            local g = math.clamp(ratio, 0, 1)
-                            hl[2].Color = Color3.new(r, g, 0)
-                            hl[2].Thickness = 2
-                            hl[2].Visible = true
-                        end
-                    else
-                        if obj.HealthLines then
-                            for _, l in pairs(obj.HealthLines) do l.Visible = false end
-                        end
-                    end
-                else
-                    if obj.HealthLines then
-                        for _, l in pairs(obj.HealthLines) do l.Visible = false end
-                    end
-                end
-
-                --------------------------------------------------
-                -- Name tag
-                if NameToggle.Value and obj.NameText then
-                    local text = obj.NameText
-                    local midX = (minX + maxX) / 2
-                    local yPos = minY - 15
-                    text.Position = Vector2.new(midX, yPos)
-                    text.Color    = NameColorPicker.Value
-                    text.Size     = NameSizeSlider.Value
-                    text.Text     = plr.DisplayName or plr.Name
-                    text.Visible  = true
-                else
-                    if obj.NameText then obj.NameText.Visible = false end
-                end
-
-                --------------------------------------------------
-                -- Distance text
-                if DistanceToggle.Value and obj.DistanceText then
-                    local text = obj.DistanceText
-                    -- compute distance from local player
-                    local root = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or LocalPlayer.Character:FindFirstChild("Torso") or LocalPlayer.Character:FindFirstChild("UpperTorso"))
-                    if root then
-                        local dist = (hrp.Position - root.Position).Magnitude
-                        local midX = (minX + maxX) / 2
-                        local yPos = maxY + 3
-                        text.Position = Vector2.new(midX, yPos)
-                        text.Color    = DistanceColorPicker.Value
-                        text.Size     = DistanceSizeSlider.Value
-                        text.Text     = string.format("%.0f m", dist)
-                        text.Visible  = true
-                    else
-                        text.Visible = false
-                    end
-                else
-                    if obj.DistanceText then obj.DistanceText.Visible = false end
-                end
-
-                --------------------------------------------------
-                -- Tracer line
-                if TracerToggle.Value and obj.TracerLine then
-                    local line = obj.TracerLine
-                    local screenPos, visible = camera:WorldToViewportPoint(hrp.Position)
-                    if visible then
-                        -- start from bottom center of screen
-                        local viewSize = camera.ViewportSize
-                        local startX = viewSize.X / 2
-                        local startY = viewSize.Y
-                        line.From = Vector2.new(startX, startY)
-                        line.To   = Vector2.new(screenPos.X, screenPos.Y)
-                        line.Color = TracerColorPicker.Value
-                        line.Visible = true
-                    else
-                        line.Visible = false
-                    end
-                else
-                    if obj.TracerLine then obj.TracerLine.Visible = false end
-                end
-
-                ::continue::
-                -- loop end for each player
-            end
+        local name = "WP" .. tostring(#savedNames + 1)
+        savedWaypoints[name] = root.CFrame
+        table.insert(savedNames, name)
+        WaypointDropdown:SetValues(savedNames)
+        Library:Notify("Saved waypoint " .. name, 2)
+    end)
+    -- Button to teleport to selected waypoint
+    UtilBox:AddButton("Teleport to Waypoint", function()
+        local sel = WaypointDropdown.Value
+        if not sel or sel == "" then
+            Library:Notify("Select a waypoint first", 2)
+            return
         end
-
-        -- remove esp for players no longer in game
-        for plr, _ in pairs(espObjects) do
-            if not Players:FindFirstChild(plr.Name) then
-                removeEspForPlayer(plr)
-            end
-        end
-    end
-
-    -- set up event to update whitelist list on join/leave
-    AddConnection(Players.PlayerAdded:Connect(function(plr)
-        refreshWhitelist()
-        WhitelistDropdown:SetValues(whitelistNames)
-    end))
-    AddConnection(Players.PlayerRemoving:Connect(function(plr)
-        refreshWhitelist()
-        WhitelistDropdown:SetValues(whitelistNames)
-        removeEspForPlayer(plr)
-    end))
-
-    -- periodic refresh every 10 seconds
-    task.spawn(function()
-        while true do
-            task.wait(10)
-            refreshWhitelist()
-            WhitelistDropdown:SetValues(whitelistNames)
+        local cf = savedWaypoints[sel]
+        local root = getRootPart()
+        if cf and root then
+            root.CFrame = cf + Vector3.new(0, 3, 0)
+            Library:Notify("Teleported to " .. sel, 2)
+        else
+            Library:Notify("Waypoint or character missing", 2)
         end
     end)
 
-    -- connect main ESP update loop
-    AddConnection(RunService.RenderStepped:Connect(updateEsp))
+    ------------------------------------------------
+    -- 4.3 ESP & Visuals Tab
+    ------------------------------------------------
+    do
+        local ESPTab = Tabs.ESP
+
+        -- Groupboxes for ESP features and settings
+        local ESPFeatureBox = ESPTab:AddLeftGroupbox("ESP Features", "eye")
+        local ESPSettingBox = ESPTab:AddRightGroupbox("ESP Settings", "palette")
+
+        -- Master toggle for ESP
+        local ESPEnabledToggle = ESPFeatureBox:AddToggle("bxw_esp_enable", {
+            Text = "Enable ESP",
+            Default = false,
+            Tooltip = "Toggle all ESP drawing on/off",
+        })
+
+        -- Box style: full box vs corner
+        local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", {
+            Text = "Box Style",
+            Values = { "Box", "Corner" },
+            Default = "Box",
+            Multi = false,
+            Tooltip = "Choose between full box or corner box",
+        })
+
+        -- Individual feature toggles
+        local BoxToggle      = ESPFeatureBox:AddToggle("bxw_esp_box",      { Text = "Box",        Default = true })
+        local ChamsToggle    = ESPFeatureBox:AddToggle("bxw_esp_chams",    { Text = "Chams",      Default = false })
+        local SkeletonToggle = ESPFeatureBox:AddToggle("bxw_esp_skeleton", { Text = "Skeleton",   Default = false })
+        local HealthToggle   = ESPFeatureBox:AddToggle("bxw_esp_health",   { Text = "Health Bar", Default = false })
+        local NameToggle     = ESPFeatureBox:AddToggle("bxw_esp_name",     { Text = "Name Tag",   Default = true })
+        local DistToggle     = ESPFeatureBox:AddToggle("bxw_esp_distance", { Text = "Distance",   Default = false })
+        local TracerToggle   = ESPFeatureBox:AddToggle("bxw_esp_tracer",   { Text = "Tracer",     Default = false })
+        local TeamToggle     = ESPFeatureBox:AddToggle("bxw_esp_team",     { Text = "Team Check", Default = true })
+        local WallToggle     = ESPFeatureBox:AddToggle("bxw_esp_wall",     { Text = "Wall Check", Default = false })
+
+        -- Additional ESP feature toggles
+        local SelfToggle     = ESPFeatureBox:AddToggle("bxw_esp_self", {
+            Text = "Self ESP",
+            Default = false,
+            Tooltip = "Draw ESP on your own character for testing",
+        })
+        local InfoToggle     = ESPFeatureBox:AddToggle("bxw_esp_info", {
+            Text = "Target Info",
+            Default = false,
+            Tooltip = "Display extra info (health, team, distance) under ESP",
+        })
+
+        -- Whitelist players dropdown (auto refresh)
+        local function getPlayerNames()
+            local names = {}
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    table.insert(names, plr.Name)
+                end
+            end
+            table.sort(names)
+            return names
+        end
+
+        local WhitelistDropdown = ESPSettingBox:AddDropdown("bxw_esp_whitelist", {
+            Text = "Whitelist Player",
+            Values = getPlayerNames(),
+            Default = "",
+            Multi = true,
+            AllowNull = true,
+            Tooltip = "Players to exclude from ESP",
+        })
+
+        -- Auto refresh whitelist every 10 seconds and on player join/leave
+        do
+            local function refreshWhitelist()
+                local names = getPlayerNames()
+                WhitelistDropdown:SetValues(names)
+            end
+            refreshWhitelist()
+            AddConnection(Players.PlayerAdded:Connect(refreshWhitelist))
+            AddConnection(Players.PlayerRemoving:Connect(refreshWhitelist))
+            -- periodic refresh
+            task.spawn(function()
+                while true do
+                    task.wait(10)
+                    refreshWhitelist()
+                end
+            end)
+        end
+
+        -- Color pickers and size sliders
+        local BoxColorPicker    = ESPSettingBox:AddColorPicker("bxw_esp_box_color", {
+            Text = "Box Color",
+            Default = Color3.fromRGB(255, 255, 255),
+        })
+        local TracerColorPicker = ESPSettingBox:AddColorPicker("bxw_esp_tracer_color", {
+            Text = "Tracer Color",
+            Default = Color3.fromRGB(255, 255, 255),
+        })
+        local NameColorPicker   = ESPSettingBox:AddColorPicker("bxw_esp_name_color", {
+            Text = "Name Color",
+            Default = Color3.fromRGB(255, 255, 255),
+        })
+        local NameSizeSlider = ESPSettingBox:AddSlider("bxw_esp_name_size", {
+            Text = "Name Size",
+            Default = 14,
+            Min = 10,
+            Max = 30,
+            Rounding = 0,
+        })
+        local DistColorPicker   = ESPSettingBox:AddColorPicker("bxw_esp_dist_color", {
+            Text = "Distance Color",
+            Default = Color3.fromRGB(255, 255, 255),
+        })
+        local DistSizeSlider = ESPSettingBox:AddSlider("bxw_esp_dist_size", {
+            Text = "Distance Size",
+            Default = 14,
+            Min = 10,
+            Max = 30,
+            Rounding = 0,
+        })
+
+        -- Distance unit dropdown (studs/meters)
+        local DistUnitDropdown = ESPSettingBox:AddDropdown("bxw_esp_dist_unit", {
+            Text = "Distance Unit",
+            Values = { "Studs", "Meters" },
+            Default = "Studs",
+            Multi = false,
+            Tooltip = "Choose unit for distance display",
+        })
+
+        -- Additional color pickers for ESP elements
+        local SkeletonColorPicker = ESPSettingBox:AddColorPicker("bxw_esp_skeleton_color", {
+            Text = "Skeleton Color",
+            Default = Color3.fromRGB(0, 255, 255),
+        })
+        local HealthColorPicker = ESPSettingBox:AddColorPicker("bxw_esp_health_color", {
+            Text = "Health Bar Color",
+            Default = Color3.fromRGB(0, 255, 0),
+        })
+        local InfoColorPicker = ESPSettingBox:AddColorPicker("bxw_esp_info_color", {
+            Text = "Info Color",
+            Default = Color3.fromRGB(255, 255, 255),
+        })
+        local ChamsColorPicker = ESPSettingBox:AddColorPicker("bxw_esp_chams_color", {
+            Text = "Chams Color",
+            Default = Color3.fromRGB(0, 255, 0),
+        })
+
+        -- Chams customization sliders/toggles
+        local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", {
+            Text = "Chams Transparency",
+            Default = 0.5,
+            Min = 0,
+            Max = 1,
+            Rounding = 2,
+            Compact = false,
+        })
+        local ChamsMaterialDropdown = ESPSettingBox:AddDropdown("bxw_esp_chams_material", {
+            Text = "Chams Material",
+            Values = { "ForceField", "Neon", "Plastic" },
+            Default = "ForceField",
+            Multi = false,
+            Tooltip = "Material applied to highlighted parts (visual only)",
+        })
+        local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", {
+            Text = "Visible Only",
+            Default = false,
+            Tooltip = "Only show chams when unobstructed",
+        })
+
+        -- Camera & world settings group
+        local cam = Workspace.CurrentCamera
+        local defaultCamFov = cam and cam.FieldOfView or 70
+        local defaultMaxZoom = LocalPlayer.CameraMaxZoomDistance or 400
+        local defaultMinZoom = LocalPlayer.CameraMinZoomDistance or 0.5
+        local WorldBox = ESPTab:AddLeftGroupbox("Camera & World", "sun")
+
+        local CamFOVSlider = WorldBox:AddSlider("bxw_cam_fov", {
+            Text = "Camera FOV",
+            Default = defaultCamFov,
+            Min = 40,
+            Max = 120,
+            Rounding = 0,
+            Compact = false,
+            Callback = function(value)
+                local c = Workspace.CurrentCamera
+                if c then
+                    c.FieldOfView = value
+                end
+            end,
+        })
+        local MaxZoomSlider = WorldBox:AddSlider("bxw_cam_maxzoom", {
+            Text = "Max Zoom",
+            Default = defaultMaxZoom,
+            Min = 10,
+            Max = 1000,
+            Rounding = 0,
+            Compact = false,
+            Callback = function(value)
+                pcall(function()
+                    LocalPlayer.CameraMaxZoomDistance = value
+                end)
+            end,
+        })
+        WorldBox:AddButton("Reset Max Zoom", function()
+            pcall(function()
+                LocalPlayer.CameraMaxZoomDistance = defaultMaxZoom
+            end)
+            MaxZoomSlider:SetValue(defaultMaxZoom)
+        end)
+        local MinZoomSlider = WorldBox:AddSlider("bxw_cam_minzoom", {
+            Text = "Min Zoom",
+            Default = defaultMinZoom,
+            Min = 0,
+            Max = 50,
+            Rounding = 1,
+            Compact = false,
+            Callback = function(value)
+                pcall(function()
+                    LocalPlayer.CameraMinZoomDistance = value
+                end)
+            end,
+        })
+        WorldBox:AddButton("Reset Min Zoom", function()
+            pcall(function()
+                LocalPlayer.CameraMinZoomDistance = defaultMinZoom
+            end)
+            MinZoomSlider:SetValue(defaultMinZoom)
+        end)
+
+        -- Simple skybox themes (IDs correspond to Roblox asset IDs)
+        local SkyboxThemes = {
+            ["Default"] = "",
+            ["Space"]   = "rbxassetid://11755937810",
+            ["Sunset"]  = "rbxassetid://9393701400",
+            ["Midnight"] = "rbxassetid://11755930464",
+        }
+        local SkyboxDropdown = WorldBox:AddDropdown("bxw_cam_skybox", {
+            Text = "Skybox Theme",
+            Values = { "Default", "Space", "Sunset", "Midnight" },
+            Default = "Default",
+            Multi = false,
+            Tooltip = "Change the skybox theme",
+        })
+        local originalSky = nil
+        local function applySky(name)
+            local lighting = game:GetService("Lighting")
+            if not originalSky then
+                -- capture original sky (clone)
+                originalSky = lighting:FindFirstChildOfClass("Sky")
+                if originalSky then
+                    originalSky = originalSky:Clone()
+                end
+            end
+            -- remove any current sky
+            local currentSky = lighting:FindFirstChildOfClass("Sky")
+            if currentSky then
+                currentSky:Destroy()
+            end
+            local id = SkyboxThemes[name]
+            if id and id ~= "" then
+                local sky = Instance.new("Sky")
+                sky.SkyboxBk = id
+                sky.SkyboxDn = id
+                sky.SkyboxFt = id
+                sky.SkyboxLf = id
+                sky.SkyboxRt = id
+                sky.SkyboxUp = id
+                sky.Parent = lighting
+            else
+                -- restore original if available
+                if originalSky then
+                    local newSky = originalSky:Clone()
+                    newSky.Parent = lighting
+                end
+            end
+        end
+        SkyboxDropdown:OnChanged(function(value)
+            applySky(value)
+        end)
+
+        ------------------------------------------------
+        -- ESP Logic
+        ------------------------------------------------
+        local espDrawings = {}
+
+        local function removePlayerESP(plr)
+            local data = espDrawings[plr]
+            if data then
+                -- Destroy drawing objects
+                if data.Box then
+                    pcall(function() data.Box:Remove() end)
+                end
+                if data.Corners then
+                    for _, ln in pairs(data.Corners) do
+                        pcall(function() ln:Remove() end)
+                    end
+                end
+                if data.Health then
+                    if data.Health.Outline then pcall(function() data.Health.Outline:Remove() end) end
+                    if data.Health.Bar then     pcall(function() data.Health.Bar:Remove() end) end
+                end
+                if data.Name then
+                    pcall(function() data.Name:Remove() end)
+                end
+                if data.Distance then
+                    pcall(function() data.Distance:Remove() end)
+                end
+                if data.Tracer then
+                    pcall(function() data.Tracer:Remove() end)
+                end
+                if data.Highlight then
+                    pcall(function() data.Highlight:Destroy() end)
+                end
+                espDrawings[plr] = nil
+            end
+        end
+
+        -- Cleanup on player removal
+        AddConnection(Players.PlayerRemoving:Connect(function(plr)
+            removePlayerESP(plr)
+        end))
+
+        -- Helper to create skeleton lines (R6/R15)
+        local skeletonJoints = {
+            -- For R15 avatars; keys are joint names, values are parent name
+            ["Head"] = "UpperTorso",
+            ["UpperTorso"] = "LowerTorso",
+            ["LowerTorso"] = "HumanoidRootPart",
+
+            ["LeftUpperArm"]  = "UpperTorso",
+            ["LeftLowerArm"]  = "LeftUpperArm",
+            ["LeftHand"]      = "LeftLowerArm",
+            ["RightUpperArm"] = "UpperTorso",
+            ["RightLowerArm"] = "RightUpperArm",
+            ["RightHand"]     = "RightLowerArm",
+
+            ["LeftUpperLeg"]  = "LowerTorso",
+            ["LeftLowerLeg"]  = "LeftUpperLeg",
+            ["LeftFoot"]      = "LeftLowerLeg",
+            ["RightUpperLeg"] = "LowerTorso",
+            ["RightLowerLeg"] = "RightUpperLeg",
+            ["RightFoot"]     = "RightLowerLeg",
+        }
+
+        -- Main update function
+        local function updateESP()
+            if not ESPEnabledToggle.Value then
+                -- hide or remove drawings
+                for _, v in pairs(espDrawings) do
+                    if v.Box then v.Box.Visible = false end
+                    if v.Corners then for _, ln in pairs(v.Corners) do ln.Visible = false end end
+                    if v.Health then
+                        if v.Health.Outline then v.Health.Outline.Visible = false end
+                        if v.Health.Bar then v.Health.Bar.Visible = false end
+                    end
+                    if v.Name then v.Name.Visible = false end
+                    if v.Distance then v.Distance.Visible = false end
+                    if v.Tracer then v.Tracer.Visible = false end
+                    if v.Highlight then v.Highlight.Enabled = false end
+                end
+                return
+            end
+
+            local cam = Workspace.CurrentCamera
+            if not cam then return end
+            local camCFrame = cam.CFrame
+            local camPos = camCFrame.Position
+
+            for _, plr in ipairs(Players:GetPlayers()) do
+                -- include local player if self ESP enabled
+                if plr ~= LocalPlayer or (SelfToggle and SelfToggle.Value) then
+                    local char = plr.Character
+                    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                    local root = char and char:FindFirstChild("HumanoidRootPart") or char and char:FindFirstChild("Torso") or char and char:FindFirstChild("UpperTorso")
+                    if hum and hum.Health > 0 and root then
+                        local skipPlayer = false
+                        -- Team check
+                        if TeamToggle.Value then
+                            local myTeam = LocalPlayer.Team
+                            local hisTeam = plr.Team
+                            if myTeam ~= nil and hisTeam ~= nil and myTeam == hisTeam then
+                                skipPlayer = true
+                            end
+                        end
+                        -- Whitelist check
+                        if not skipPlayer then
+                            local list = WhitelistDropdown.Value
+                            if list and type(list) == "table" then
+                                for _, name in ipairs(list) do
+                                    if name == plr.Name then
+                                        skipPlayer = true
+                                        break
+                                    end
+                                end
+                            end
+                        end
+
+                        if skipPlayer then
+                            -- hide drawings for this player
+                            if espDrawings[plr] then
+                                local d = espDrawings[plr]
+                                if d.Box then d.Box.Visible = false end
+                                if d.Corners then for _, ln in pairs(d.Corners) do ln.Visible = false end end
+                                if d.Health then
+                                    if d.Health.Outline then d.Health.Outline.Visible = false end
+                                    if d.Health.Bar then d.Health.Bar.Visible = false end
+                                end
+                                if d.Name then d.Name.Visible = false end
+                                if d.Distance then d.Distance.Visible = false end
+                                if d.Tracer then d.Tracer.Visible = false end
+                                if d.Highlight then d.Highlight.Enabled = false end
+                            end
+                        else
+                            -- ensure drawing objects exist
+                            local data = espDrawings[plr]
+                            if not data then
+                                data = {}
+                                espDrawings[plr] = data
+                            end
+
+                            -- highlight (chams) with customization
+                            if ChamsToggle.Value then
+                                -- determine highlight color and transparency
+                                local chamsCol = ChamsColorPicker and ChamsColorPicker.Value or BoxColorPicker.Value
+                                local chamsTrans = ChamsTransSlider and ChamsTransSlider.Value or 0.5
+                                local visibleOnly = ChamsVisibleToggle and ChamsVisibleToggle.Value or false
+                                local depthMode = visibleOnly and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                                if not data.Highlight then
+                                    local hl = Instance.new("Highlight")
+                                    hl.DepthMode = depthMode
+                                    hl.FillColor = chamsCol
+                                    hl.FillTransparency = chamsTrans
+                                    hl.OutlineColor = chamsCol
+                                    hl.OutlineTransparency = 0.0
+                                    hl.Adornee = char
+                                    hl.Parent = char
+                                    data.Highlight = hl
+                                end
+                                local hl = data.Highlight
+                                hl.Enabled = true
+                                hl.DepthMode = depthMode
+                                hl.FillColor = chamsCol
+                                hl.OutlineColor = chamsCol
+                                hl.FillTransparency = chamsTrans
+                                hl.Adornee = char
+                                -- optional: apply material to parts (reserved for future)
+                            else
+                                if data.Highlight then
+                                    data.Highlight.Enabled = false
+                                end
+                            end
+
+                            -- compute bounding box for box/health bar/tracer/position
+                            local minVec = Vector3.new(math.huge, math.huge, math.huge)
+                            local maxVec = Vector3.new(-math.huge, -math.huge, -math.huge)
+                            for _, part in ipairs(char:GetDescendants()) do
+                                if part:IsA("BasePart") then
+                                    local pos = part.Position
+                                    minVec = Vector3.new(math.min(minVec.X, pos.X), math.min(minVec.Y, pos.Y), math.min(minVec.Z, pos.Z))
+                                    maxVec = Vector3.new(math.max(maxVec.X, pos.X), math.max(maxVec.Y, pos.Y), math.max(maxVec.Z, pos.Z))
+                                end
+                            end
+                            local size = maxVec - minVec
+                            local center = (maxVec + minVec) / 2
+
+                            -- world corners for box
+                            local halfSize = size / 2
+                            local cornersWorld = {
+                                center + Vector3.new(-halfSize.X,  halfSize.Y, -halfSize.Z),
+                                center + Vector3.new( halfSize.X,  halfSize.Y, -halfSize.Z),
+                                center + Vector3.new(-halfSize.X, -halfSize.Y, -halfSize.Z),
+                                center + Vector3.new( halfSize.X, -halfSize.Y, -halfSize.Z),
+                                center + Vector3.new(-halfSize.X,  halfSize.Y,  halfSize.Z),
+                                center + Vector3.new( halfSize.X,  halfSize.Y,  halfSize.Z),
+                                center + Vector3.new(-halfSize.X, -halfSize.Y,  halfSize.Z),
+                                center + Vector3.new( halfSize.X, -halfSize.Y,  halfSize.Z),
+                            }
+
+                            -- project corners to screen
+                            local screenPoints = {}
+                            local onScreen = false
+                            for i, worldPos in ipairs(cornersWorld) do
+                                local screenPos, vis = cam:WorldToViewportPoint(worldPos)
+                                screenPoints[i] = Vector2.new(screenPos.X, screenPos.Y)
+                                onScreen = onScreen or vis
+                            end
+
+                            if not onScreen then
+                                -- hide if not on screen
+                                if data.Box then data.Box.Visible = false end
+                                if data.Corners then for _, ln in pairs(data.Corners) do ln.Visible = false end end
+                                if data.Health then
+                                    if data.Health.Outline then data.Health.Outline.Visible = false end
+                                    if data.Health.Bar then data.Health.Bar.Visible = false end
+                                end
+                                if data.Name then data.Name.Visible = false end
+                                if data.Distance then data.Distance.Visible = false end
+                                if data.Tracer then data.Tracer.Visible = false end
+                            else
+                                -- compute 2D bounding box
+                                local minX, minY = math.huge, math.huge
+                                local maxX, maxY = -math.huge, -math.huge
+                                for _, v2 in ipairs(screenPoints) do
+                                    minX = math.min(minX, v2.X)
+                                    maxX = math.max(maxX, v2.X)
+                                    minY = math.min(minY, v2.Y)
+                                    maxY = math.max(maxY, v2.Y)
+                                end
+                                local boxW, boxH = maxX - minX, maxY - minY
+
+                                -- wall check color (default color)
+                                local finalColor = BoxColorPicker.Value
+                                if WallToggle.Value then
+                                    local rayDir = (center - camPos)
+                                    local rayParams = RaycastParams.new()
+                                    rayParams.FilterDescendantsInstances = { char, LocalPlayer.Character }
+                                    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                                    local rayResult = Workspace:Raycast(camPos, rayDir, rayParams)
+                                    if rayResult then
+                                        finalColor = Color3.fromRGB(255, 0, 0) -- red if obstructed
+                                    else
+                                        finalColor = Color3.fromRGB(0, 255, 0) -- green if visible
+                                    end
+                                end
+
+                                -- Box drawing
+                                if BoxToggle.Value then
+                                    if BoxStyleDropdown.Value == "Box" then
+                                        if not data.Box then
+                                            local sq = Drawing.new("Square")
+                                            sq.Thickness = 1
+                                            sq.Filled = false
+                                            sq.Transparency = 1
+                                            data.Box = sq
+                                        end
+                                        data.Box.Visible = true
+                                        data.Box.Color = finalColor
+                                        data.Box.Position = Vector2.new(minX, minY)
+                                        data.Box.Size = Vector2.new(boxW, boxH)
+                                        -- hide corners if exist
+                                        if data.Corners then
+                                            for _, ln in pairs(data.Corners) do
+                                                ln.Visible = false
+                                            end
+                                        end
+                                    else
+                                        -- corner box style
+                                        if not data.Corners then
+                                            data.Corners = {}
+                                            for i = 1, 4 do
+                                                local ln = Drawing.new("Line")
+                                                ln.Thickness = 1
+                                                ln.Transparency = 1
+                                                data.Corners[i] = ln
+                                            end
+                                        end
+                                        -- hide full box if exists
+                                        if data.Box then
+                                            data.Box.Visible = false
+                                        end
+                                        -- set up corner lines: use 25% of width/height
+                                        local cw = boxW * 0.25
+                                        local ch = boxH * 0.25
+                                        local topLeft     = Vector2.new(minX, minY)
+                                        local topRight    = Vector2.new(maxX, minY)
+                                        local bottomLeft  = Vector2.new(minX, maxY)
+                                        local bottomRight = Vector2.new(maxX, maxY)
+                                        -- line segments: top-left horizontal and vertical
+                                        local lines = data.Corners
+                                        lines[1].Visible = true
+                                        lines[1].Color = finalColor
+                                        lines[1].From = topLeft
+                                        lines[1].To   = topLeft + Vector2.new(cw, 0)
+                                        lines[2].Visible = true
+                                        lines[2].Color = finalColor
+                                        lines[2].From = topLeft
+                                        lines[2].To   = topLeft + Vector2.new(0, ch)
+                                        -- top-right
+                                        lines[3].Visible = true
+                                        lines[3].Color = finalColor
+                                        lines[3].From = topRight
+                                        lines[3].To   = topRight + Vector2.new(-cw, 0)
+                                        lines[4].Visible = true
+                                        lines[4].Color = finalColor
+                                        lines[4].From = topRight
+                                        lines[4].To   = topRight + Vector2.new(0, ch)
+                                        -- bottom-left (reuse lines array if extended)
+                                        if #lines < 8 then
+                                            for i = #lines + 1, 8 do
+                                                local ln = Drawing.new("Line")
+                                                ln.Thickness = 1
+                                                ln.Transparency = 1
+                                                lines[i] = ln
+                                            end
+                                        end
+                                        lines[5].Visible = true
+                                        lines[5].Color = finalColor
+                                        lines[5].From = bottomLeft
+                                        lines[5].To   = bottomLeft + Vector2.new(cw, 0)
+                                        lines[6].Visible = true
+                                        lines[6].Color = finalColor
+                                        lines[6].From = bottomLeft
+                                        lines[6].To   = bottomLeft + Vector2.new(0, -ch)
+                                        -- bottom-right
+                                        lines[7].Visible = true
+                                        lines[7].Color = finalColor
+                                        lines[7].From = bottomRight
+                                        lines[7].To   = bottomRight + Vector2.new(-cw, 0)
+                                        lines[8].Visible = true
+                                        lines[8].Color = finalColor
+                                        lines[8].From = bottomRight
+                                        lines[8].To   = bottomRight + Vector2.new(0, -ch)
+                                    end
+                                else
+                                    if data.Box then data.Box.Visible = false end
+                                    if data.Corners then for _, ln in pairs(data.Corners) do ln.Visible = false end end
+                                end
+
+                                -- Health bar
+                                if HealthToggle.Value then
+                                    if not data.Health then
+                                        data.Health = {
+                                            Outline = Drawing.new("Line"),
+                                            Bar     = Drawing.new("Line"),
+                                        }
+                                        data.Health.Outline.Thickness = 3
+                                        data.Health.Outline.Transparency = 1
+                                        data.Health.Bar.Thickness = 1
+                                        data.Health.Bar.Transparency = 1
+                                    end
+                                    local outline = data.Health.Outline
+                                    local bar     = data.Health.Bar
+                                    local healthRatio = hum.Health / math.max(hum.MaxHealth, 1)
+                                    local hbX = minX - 6
+                                    local hbY1 = minY
+                                    local hbY2 = maxY
+                                    local barY2 = hbY1 + (maxY - minY) * (1 - healthRatio)
+
+                                    outline.Visible = true
+                                    outline.Color = Color3.fromRGB(0, 0, 0)
+                                    outline.From  = Vector2.new(hbX, hbY1)
+                                    outline.To    = Vector2.new(hbX, hbY2)
+                                    bar.Visible = true
+                                    -- Use custom health bar color if available
+                                    if HealthColorPicker then
+                                        bar.Color = HealthColorPicker.Value
+                                    else
+                                        bar.Color = finalColor
+                                    end
+                                    bar.From  = Vector2.new(hbX, hbY1)
+                                    bar.To    = Vector2.new(hbX, barY2)
+                                else
+                                    if data.Health then
+                                        data.Health.Outline.Visible = false
+                                        data.Health.Bar.Visible = false
+                                    end
+                                end
+
+                                -- Name tag
+                                if NameToggle.Value then
+                                    if not data.Name then
+                                        local txt = Drawing.new("Text")
+                                        txt.Center = true
+                                        txt.Outline = true
+                                        txt.Transparency = 1
+                                        data.Name = txt
+                                    end
+                                    data.Name.Visible = true
+                                    data.Name.Color = NameColorPicker.Value
+                                    data.Name.Size = NameSizeSlider.Value
+                                    data.Name.Text = plr.DisplayName or plr.Name
+                                    data.Name.Position = Vector2.new((minX + maxX) / 2, minY - 14)
+                                else
+                                    if data.Name then data.Name.Visible = false end
+                                end
+
+                                -- Distance tag
+                                if DistToggle.Value then
+                                    if not data.Distance then
+                                        local txt = Drawing.new("Text")
+                                        txt.Center = true
+                                        txt.Outline = true
+                                        txt.Transparency = 1
+                                        data.Distance = txt
+                                    end
+                                    local distStud = (root.Position - camPos).Magnitude
+                                    -- convert units if using meters (approx 1 stud = 0.28m)
+                                    local unit = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
+                                    local distNum = distStud
+                                    local suffix = " studs"
+                                    if unit == "Meters" then
+                                        distNum = distStud * 0.28
+                                        suffix = " m"
+                                    end
+                                    data.Distance.Visible = true
+                                    data.Distance.Color = DistColorPicker.Value
+                                    data.Distance.Size = DistSizeSlider.Value
+                                    data.Distance.Text = string.format("%.1f", distNum) .. suffix
+                                    data.Distance.Position = Vector2.new((minX + maxX) / 2, maxY + 2)
+                                else
+                                    if data.Distance then data.Distance.Visible = false end
+                                end
+
+                                -- Skeleton lines
+                                if SkeletonToggle and SkeletonToggle.Value then
+                                    if not data.Skeleton then
+                                        data.Skeleton = {}
+                                    end
+                                    local idx = 1
+                                    for joint, parentName in pairs(skeletonJoints) do
+                                        local part1 = char:FindFirstChild(joint)
+                                        local part2 = char:FindFirstChild(parentName)
+                                        local ln = data.Skeleton[idx]
+                                        if not ln then
+                                            ln = Drawing.new("Line")
+                                            ln.Thickness = 1
+                                            ln.Transparency = 1
+                                            data.Skeleton[idx] = ln
+                                        end
+                                        if part1 and part2 then
+                                            local sp1, vis1 = cam:WorldToViewportPoint(part1.Position)
+                                            local sp2, vis2 = cam:WorldToViewportPoint(part2.Position)
+                                            if vis1 or vis2 then
+                                                ln.Visible = true
+                                                ln.Color = (SkeletonColorPicker and SkeletonColorPicker.Value) or BoxColorPicker.Value
+                                                ln.From = Vector2.new(sp1.X, sp1.Y)
+                                                ln.To   = Vector2.new(sp2.X, sp2.Y)
+                                            else
+                                                ln.Visible = false
+                                            end
+                                        else
+                                            ln.Visible = false
+                                        end
+                                        idx = idx + 1
+                                    end
+                                    if data.Skeleton then
+                                        for j = idx, #data.Skeleton do
+                                            local ln = data.Skeleton[j]
+                                            if ln then
+                                                ln.Visible = false
+                                            end
+                                        end
+                                    end
+                                else
+                                    if data.Skeleton then
+                                        for _, ln in pairs(data.Skeleton) do
+                                            ln.Visible = false
+                                        end
+                                    end
+                                end
+
+                                -- Target info display
+                                if InfoToggle and InfoToggle.Value then
+                                    if not data.Info then
+                                        local txt = Drawing.new("Text")
+                                        txt.Center = true
+                                        txt.Outline = true
+                                        txt.Transparency = 1
+                                        data.Info = txt
+                                    end
+                                    local distStudInfo = (root.Position - camPos).Magnitude
+                                    local unitInfo = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
+                                    local distNumInfo = distStudInfo
+                                    local suffixInfo = " studs"
+                                    if unitInfo == "Meters" then
+                                        distNumInfo = distStudInfo * 0.28
+                                        suffixInfo = " m"
+                                    end
+                                    local teamName = plr.Team and plr.Team.Name or "No Team"
+                                    data.Info.Visible = true
+                                    data.Info.Color = (InfoColorPicker and InfoColorPicker.Value) or NameColorPicker.Value
+                                    data.Info.Size = (NameSizeSlider and NameSizeSlider.Value) or 14
+                                    data.Info.Text = string.format("%s | HP:%d | %.1f%s | %s", plr.DisplayName or plr.Name, hum.Health, distNumInfo, suffixInfo, teamName)
+                                    data.Info.Position = Vector2.new((minX + maxX) / 2, maxY + 16)
+                                else
+                                    if data.Info then
+                                        data.Info.Visible = false
+                                    end
+                                end
+
+                                -- Tracer line
+                                if TracerToggle.Value then
+                                    if not data.Tracer then
+                                        local ln = Drawing.new("Line")
+                                        ln.Thickness = 1
+                                        ln.Transparency = 1
+                                        data.Tracer = ln
+                                    end
+                                    local screenRoot, rootOnScreen = cam:WorldToViewportPoint(root.Position)
+                                    if rootOnScreen then
+                                        data.Tracer.Visible = true
+                                        data.Tracer.Color = TracerColorPicker.Value
+                                        data.Tracer.From = Vector2.new(screenRoot.X, screenRoot.Y)
+                                        -- draw to bottom of screen center
+                                        data.Tracer.To = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+                                    else
+                                        data.Tracer.Visible = false
+                                    end
+                                else
+                                    if data.Tracer then data.Tracer.Visible = false end
+                                end
+                            end
+                        end
+                    else
+                        -- hide if no character
+                        removePlayerESP(plr)
+                    end
+                end
+            end
+        end
+
+        -- Connect render stepped for ESP
+        AddConnection(RunService.RenderStepped:Connect(updateESP))
+    end
+
+    ------------------------------------------------
+    -- 4.4 Combat & Aimbot Tab
+    ------------------------------------------------
+    do
+        local CombatTab = Tabs.Combat
+
+        local AimBox = CombatTab:AddLeftGroupbox("Aimbot Settings", "target")
+        local ExtraBox = CombatTab:AddRightGroupbox("Extra Settings", "adjust")
+
+        -- Aimbot toggles and settings
+        local AimbotToggle = AimBox:AddToggle("bxw_aimbot_enable", {
+            Text = "Enable Aimbot",
+            Default = false,
+            Tooltip = "Smoothly aim towards enemies within FOV",
+        })
+        local SilentToggle = AimBox:AddToggle("bxw_silent_enable", {
+            Text = "Silent Aim",
+            Default = false,
+            Tooltip = "Redirect bullets (not implemented)",
+        })
+        local AimPartDropdown = AimBox:AddDropdown("bxw_aim_part", {
+            Text = "Aim Part",
+            Values = { "Head", "Torso", "HumanoidRootPart", "Closest" },
+            Default = "Head",
+            Multi = false,
+            Tooltip = "Part to aim at",
+        })
+        local FOVSlider = AimBox:AddSlider("bxw_aim_fov", {
+            Text = "Aim FOV",
+            Default = 10,
+            Min = 1,
+            Max = 50,
+            Rounding = 1,
+            Compact = false,
+        })
+        local ShowFovToggle = AimBox:AddToggle("bxw_aim_showfov", {
+            Text = "Show FOV Circle",
+            Default = false,
+        })
+        local SmoothSlider = AimBox:AddSlider("bxw_aim_smooth", {
+            Text = "Aimbot Smoothness",
+            Default = 0.1,
+            Min = 0.01,
+            Max = 1,
+            Rounding = 2,
+            Compact = false,
+        })
+        local AimTeamCheck = AimBox:AddToggle("bxw_aim_teamcheck", {
+            Text = "Team Check",
+            Default = true,
+        })
+        local TriggerbotToggle = AimBox:AddToggle("bxw_triggerbot", {
+            Text = "Triggerbot",
+            Default = false,
+            Tooltip = "Auto click when target in crosshair",
+        })
+
+        -- Additional Aimbot controls
+        local VisibilityToggle = AimBox:AddToggle("bxw_aim_visibility", {
+            Text = "Visibility Check",
+            Default = false,
+            Tooltip = "Only aim at players visible on screen",
+        })
+        local HitChanceSlider = AimBox:AddSlider("bxw_aim_hitchance", {
+            Text = "Hit Chance %",
+            Default = 100,
+            Min = 1,
+            Max = 100,
+            Rounding = 0,
+            Compact = false,
+        })
+        local RainbowToggle = AimBox:AddToggle("bxw_aim_rainbow", {
+            Text = "Rainbow FOV",
+            Default = false,
+            Tooltip = "Cycle FOV circle color through the rainbow",
+        })
+        local RainbowSpeedSlider = AimBox:AddSlider("bxw_aim_rainbowspeed", {
+            Text = "Rainbow Speed",
+            Default = 5,
+            Min = 1,
+            Max = 10,
+            Rounding = 1,
+        })
+        local FOVColorPicker = AimBox:AddColorPicker("bxw_aim_fovcolor", {
+            Text = "FOV Color",
+            Default = Color3.fromRGB(255, 255, 255),
+        })
+        local AimMethodDropdown = AimBox:AddDropdown("bxw_aim_method", {
+            Text = "Aim Method",
+            Values = { "CameraLock", "MouseDelta" },
+            Default = "CameraLock",
+            Multi = false,
+        })
+        local TargetModeDropdown = AimBox:AddDropdown("bxw_aim_targetmode", {
+            Text = "Target Mode",
+            Values = { "Closest To Crosshair", "Closest Distance", "Lowest Health" },
+            Default = "Closest To Crosshair",
+            Multi = false,
+        })
+        local ShowSnapToggle = AimBox:AddToggle("bxw_aim_snapline", {
+            Text = "Show SnapLine",
+            Default = false,
+        })
+        local SnapColorPicker = AimBox:AddColorPicker("bxw_aim_snapcolor", {
+            Text = "SnapLine Color",
+            Default = Color3.fromRGB(255, 0, 0),
+        })
+        local SnapThicknessSlider = AimBox:AddSlider("bxw_aim_snapthick", {
+            Text = "SnapLine Thickness",
+            Default = 1,
+            Min = 1,
+            Max = 5,
+            Rounding = 0,
+        })
+
+        -- TriggerBot advanced settings (in ExtraBox)
+        local TriggerTeamToggle = ExtraBox:AddToggle("bxw_trigger_teamcheck", {
+            Text = "Trigger Team Check",
+            Default = true,
+        })
+        local TriggerWallToggle = ExtraBox:AddToggle("bxw_trigger_wallcheck", {
+            Text = "Trigger Wall Check",
+            Default = false,
+        })
+        local TriggerMethodDropdown = ExtraBox:AddDropdown("bxw_trigger_method", {
+            Text = "Trigger Method",
+            Values = { "Always On", "Hold Key" },
+            Default = "Always On",
+            Multi = false,
+        })
+        local TriggerFiringDropdown = ExtraBox:AddDropdown("bxw_trigger_firemode", {
+            Text = "Firing Mode",
+            Values = { "Single", "Burst", "Auto" },
+            Default = "Single",
+            Multi = false,
+        })
+        local TriggerFovSlider = ExtraBox:AddSlider("bxw_trigger_fov", {
+            Text = "Trigger FOV",
+            Default = 10,
+            Min = 1,
+            Max = 50,
+            Rounding = 1,
+        })
+        local TriggerDelaySlider = ExtraBox:AddSlider("bxw_trigger_delay", {
+            Text = "Trigger Delay (s)",
+            Default = 0.05,
+            Min = 0,
+            Max = 1,
+            Rounding = 2,
+        })
+        local TriggerHoldSlider = ExtraBox:AddSlider("bxw_trigger_hold", {
+            Text = "Trigger HoldTime (s)",
+            Default = 0.05,
+            Min = 0.01,
+            Max = 0.5,
+            Rounding = 2,
+        })
+        local TriggerReleaseSlider = ExtraBox:AddSlider("bxw_trigger_release", {
+            Text = "Trigger ReleaseTime (s)",
+            Default = 0.05,
+            Min = 0.01,
+            Max = 0.5,
+            Rounding = 2,
+        })
+
+        -- FOV circle drawing
+        local AimbotFOVCircle = Drawing.new("Circle")
+        AimbotFOVCircle.Transparency = 0.5
+        AimbotFOVCircle.Filled = false
+        AimbotFOVCircle.Thickness = 1
+        AimbotFOVCircle.Color = Color3.fromRGB(255, 255, 255)
+
+        -- Snap line object for aimbot
+        local AimbotSnapLine = Drawing.new("Line")
+        AimbotSnapLine.Transparency = 0.7
+        AimbotSnapLine.Visible = false
+
+        -- Rainbow hue accumulator for FOV color cycling
+        local rainbowHue = 0
+
+        -- Aimbot update loop
+        local function getClosestTarget()
+            local cam = Workspace.CurrentCamera
+            local mousePos = UserInputService:GetMouseLocation()
+            local closestPlr = nil
+            local closestDist = FOVSlider.Value * 15 -- convert FOV degrees to pixel radius approx
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    local char = plr.Character
+                    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                    local root = char and char:FindFirstChild("HumanoidRootPart") or char and char:FindFirstChild("Torso") or char and char:FindFirstChild("UpperTorso")
+                    if hum and hum.Health > 0 and root then
+                        -- team check
+                        local skip = false
+                        if AimTeamCheck.Value then
+                            if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+                                skip = true
+                            end
+                        end
+                        if not skip then
+                            local aimPartName = AimPartDropdown.Value
+                            local aimPart = nil
+                            if aimPartName == "Head" then
+                                aimPart = char:FindFirstChild("Head")
+                            elseif aimPartName == "Torso" then
+                                aimPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+                            elseif aimPartName == "HumanoidRootPart" then
+                                aimPart = root
+                            else
+                                -- Closest part to crosshair
+                                local minPartDist = math.huge
+                                for _, part in ipairs(char:GetChildren()) do
+                                    if part:IsA("BasePart") then
+                                        local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
+                                        if onScreen then
+                                            local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                            if dist < minPartDist then
+                                                minPartDist = dist
+                                                aimPart = part
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            if aimPart then
+                                local screenPos, onScreen = cam:WorldToViewportPoint(aimPart.Position)
+                                if onScreen then
+                                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                                    if dist < closestDist then
+                                        closestDist = dist
+                                        closestPlr = { player = plr, part = aimPart }
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return closestPlr
+        end
+
+        -- manage triggerbot click
+        local function performClick()
+            -- some executors provide mouse1click, fallback to VirtualUser
+            pcall(function()
+                mouse1click()
+            end)
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton1(Vector2.new())
+            end)
+        end
+
+        AddConnection(RunService.RenderStepped:Connect(function()
+            -- update FOV circle and snap line colors
+            local cam = Workspace.CurrentCamera
+            if not cam then return end
+            local mouseLoc = UserInputService:GetMouseLocation()
+
+            -- Rainbow or static FOV color
+            if ShowFovToggle.Value and AimbotToggle.Value then
+                AimbotFOVCircle.Visible = true
+                AimbotFOVCircle.Radius = FOVSlider.Value * 15
+                AimbotFOVCircle.Position = mouseLoc
+                if RainbowToggle and RainbowToggle.Value then
+                    rainbowHue = (rainbowHue or 0) + (RainbowSpeedSlider.Value / 360)
+                    if rainbowHue > 1 then rainbowHue = rainbowHue - 1 end
+                    AimbotFOVCircle.Color = Color3.fromHSV(rainbowHue, 1, 1)
+                else
+                    AimbotFOVCircle.Color = FOVColorPicker.Value
+                end
+            else
+                AimbotFOVCircle.Visible = false
+            end
+
+            -- hide snap line by default
+            AimbotSnapLine.Visible = false
+
+            -- return if aimbot off
+            if not AimbotToggle.Value then
+                return
+            end
+
+            -- find target based on mode and FOV
+            local bestPlr = nil
+            local bestScore = math.huge
+            local myRoot = getRootPart()
+            if myRoot then
+                for _, plr in ipairs(Players:GetPlayers()) do
+                    if plr ~= LocalPlayer then
+                        local char = plr.Character
+                        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+                        local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
+                        if hum and hum.Health > 0 and root then
+                            -- team check
+                            local skip = false
+                            if AimTeamCheck.Value then
+                                if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+                                    skip = true
+                                end
+                            end
+                            if not skip then
+                                -- compute 2D distance to crosshair
+                                local screenPos, onScreen = cam:WorldToViewportPoint(root.Position)
+                                if onScreen then
+                                    local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mouseLoc).Magnitude
+                                    local fovLimit = FOVSlider.Value * 15
+                                    if screenDist <= fovLimit then
+                                        -- visibility check
+                                        if VisibilityToggle and VisibilityToggle.Value then
+                                            local rayParams = RaycastParams.new()
+                                            rayParams.FilterDescendantsInstances = { char, LocalPlayer.Character }
+                                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                                            local dir = (root.Position - cam.CFrame.Position)
+                                            local hit = Workspace:Raycast(cam.CFrame.Position, dir, rayParams)
+                                            if hit and hit.Instance and not hit.Instance:IsDescendantOf(char) then
+                                                goto continueTarget3
+                                            end
+                                        end
+                                        -- compute score based on target mode
+                                        local score = screenDist
+                                        local mode = TargetModeDropdown and TargetModeDropdown.Value or "Closest To Crosshair"
+                                        if mode == "Closest Distance" then
+                                            score = (root.Position - myRoot.Position).Magnitude
+                                        elseif mode == "Lowest Health" then
+                                            score = hum.Health
+                                        end
+                                        if score < bestScore then
+                                            bestScore = score
+                                            bestPlr = { player = plr, part = root, screenPos = screenPos, health = hum.Health }
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    ::continueTarget3::
+                end
+            end
+
+            if bestPlr then
+                -- apply hit chance
+                local chance = HitChanceSlider and HitChanceSlider.Value or 100
+                if math.random(0, 100) <= chance then
+                    local aimPart = bestPlr.part
+                    local camPos = cam.CFrame.Position
+                    local aimDir = (aimPart.Position - camPos).Unit
+                    -- handle aim method
+                    if AimMethodDropdown and AimMethodDropdown.Value == "MouseDelta" then
+                        local sPos = bestPlr.screenPos
+                        local delta = (Vector2.new(sPos.X, sPos.Y) - mouseLoc)
+                        -- scale by smoothing
+                        local smooth = SmoothSlider.Value
+                        delta = delta * smooth
+                        pcall(function()
+                            mousemoverel(delta.X, delta.Y)
+                        end)
+                    else
+                        -- camera lock (default)
+                        local newCFrame = CFrame.new(camPos, camPos + aimDir)
+                        local smooth = SmoothSlider.Value
+                        cam.CFrame = cam.CFrame:Lerp(newCFrame, smooth)
+                    end
+
+                    -- update snap line
+                    if ShowSnapToggle and ShowSnapToggle.Value then
+                        AimbotSnapLine.Visible = true
+                        AimbotSnapLine.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+                        AimbotSnapLine.To = Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y)
+                        AimbotSnapLine.Color = SnapColorPicker.Value
+                        AimbotSnapLine.Thickness = SnapThicknessSlider.Value
+                    end
+
+                    -- triggerbot implementation
+                    if TriggerbotToggle and TriggerbotToggle.Value then
+                        -- FOV check for trigger
+                        local tFov = (TriggerFovSlider and TriggerFovSlider.Value or 10) * 15
+                        local tDist = (Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y) - mouseLoc).Magnitude
+                        if tDist <= tFov then
+                            -- additional checks: team & wall
+                            local tSkip = false
+                            if TriggerTeamToggle and TriggerTeamToggle.Value then
+                                if bestPlr.player ~= LocalPlayer and LocalPlayer.Team and bestPlr.player.Team and LocalPlayer.Team == bestPlr.player.Team then
+                                    tSkip = true
+                                end
+                            end
+                            if not tSkip and TriggerWallToggle and TriggerWallToggle.Value then
+                                local rp2 = RaycastParams.new()
+                                rp2.FilterDescendantsInstances = { bestPlr.player.Character, LocalPlayer.Character }
+                                rp2.FilterType = Enum.RaycastFilterType.Blacklist
+                                local dir2 = (aimPart.Position - camPos)
+                                local hit2 = Workspace:Raycast(camPos, dir2, rp2)
+                                if hit2 and hit2.Instance and not hit2.Instance:IsDescendantOf(bestPlr.player.Character) then
+                                    tSkip = true
+                                end
+                            end
+                            if not tSkip then
+                                -- handle trigger fire based on mode
+                                local fireMode = TriggerFiringDropdown and TriggerFiringDropdown.Value or "Single"
+                                local method   = TriggerMethodDropdown and TriggerMethodDropdown.Value or "Always On"
+                                -- check hold key if required (use RightMouseButton as default)
+                                local holdAllowed = true
+                                if method == "Hold Key" then
+                                    holdAllowed = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                                end
+                                if holdAllowed then
+                                    local delayTime   = TriggerDelaySlider and TriggerDelaySlider.Value or 0
+                                    local holdTime    = TriggerHoldSlider and TriggerHoldSlider.Value or 0.05
+                                    local releaseTime = TriggerReleaseSlider and TriggerReleaseSlider.Value or 0.05
+                                    task.spawn(function()
+                                        task.wait(delayTime)
+                                        if fireMode == "Single" then
+                                            performClick()
+                                        elseif fireMode == "Burst" then
+                                            for i=1,3 do
+                                                performClick()
+                                                task.wait(holdTime / 3)
+                                            end
+                                        elseif fireMode == "Auto" then
+                                            local t0 = tick()
+                                            while tick() - t0 < holdTime do
+                                                performClick()
+                                                task.wait(0.05)
+                                            end
+                                            task.wait(releaseTime)
+                                        end
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end))
+    end
+
+    ------------------------------------------------
+    -- 4.5 Misc & System Tab
+    ------------------------------------------------
+    do
+        local MiscTab = Tabs.Misc
+
+        local MiscLeft  = MiscTab:AddLeftGroupbox("Game Tools", "tool")
+        local MiscRight = MiscTab:AddRightGroupbox("Environment", "sun")
+
+        -- Anti AFK toggle
+        local antiAfkConn
+        local AntiAfkToggle = MiscLeft:AddToggle("bxw_anti_afk", {
+            Text = "Anti-AFK",
+            Default = true,
+            Tooltip = "Prevent getting kicked for idling",
+        })
+        AntiAfkToggle:OnChanged(function(state)
+            if state then
+                if antiAfkConn then
+                    antiAfkConn:Disconnect()
+                    antiAfkConn = nil
+                end
+                antiAfkConn = AddConnection(LocalPlayer.Idled:Connect(function()
+                    pcall(function()
+                        VirtualUser:CaptureController()
+                        VirtualUser:ClickButton2(Vector2.new())
+                    end)
+                end))
+            else
+                if antiAfkConn then
+                    antiAfkConn:Disconnect()
+                    antiAfkConn = nil
+                end
+            end
+        end)
+
+        -- Gravity slider
+        local defaultGravity = Workspace.Gravity
+        local GravitySlider = MiscRight:AddSlider("bxw_gravity", {
+            Text = "Gravity",
+            Default = defaultGravity,
+            Min = 0,
+            Max = 300,
+            Rounding = 0,
+            Compact = false,
+            Callback = function(value)
+                Workspace.Gravity = value
+            end,
+        })
+        MiscRight:AddButton("Reset Gravity", function()
+            Workspace.Gravity = defaultGravity
+            GravitySlider:SetValue(defaultGravity)
+        end)
+
+        -- No Fog toggle
+        local fogDefaults = {
+            FogStart = game.Lighting.FogStart,
+            FogEnd   = game.Lighting.FogEnd,
+        }
+        local NoFogToggle = MiscRight:AddToggle("bxw_nofog", {
+            Text = "No Fog",
+            Default = false,
+        })
+        NoFogToggle:OnChanged(function(state)
+            if state then
+                fogDefaults.FogStart = game.Lighting.FogStart
+                fogDefaults.FogEnd   = game.Lighting.FogEnd
+                game.Lighting.FogStart = 0
+                game.Lighting.FogEnd   = 1e10
+            else
+                game.Lighting.FogStart = fogDefaults.FogStart or 0
+                game.Lighting.FogEnd   = fogDefaults.FogEnd   or 1e10
+            end
+        end)
+
+        -- Brightness slider
+        local defaultBrightness = game.Lighting.Brightness
+        local BrightnessSlider = MiscRight:AddSlider("bxw_brightness", {
+            Text = "Brightness",
+            Default = defaultBrightness,
+            Min = 0,
+            Max = 10,
+            Rounding = 1,
+            Compact = false,
+            Callback = function(value)
+                game.Lighting.Brightness = value
+            end,
+        })
+        MiscRight:AddButton("Reset Brightness", function()
+            game.Lighting.Brightness = defaultBrightness
+            BrightnessSlider:SetValue(defaultBrightness)
+        end)
+
+        -- Ambient color picker
+        local AmbientColorPicker = MiscRight:AddColorPicker("bxw_ambient_color", {
+            Text = "Ambient Color",
+            Default = game.Lighting.Ambient,
+        })
+        AmbientColorPicker:OnChanged(function(col)
+            game.Lighting.Ambient = col
+        end)
+
+        -- Additional Game Utilities and Fun features
+        MiscLeft:AddDivider()
+        MiscLeft:AddLabel("Fun & Utility")
+
+        -- SpinBot
+        local spinConn
+        local SpinToggle = MiscLeft:AddToggle("bxw_spinbot", {
+            Text = "SpinBot",
+            Default = false,
+            Tooltip = "Rotate your character continuously",
+        })
+        local SpinSpeedSlider = MiscLeft:AddSlider("bxw_spin_speed", {
+            Text = "Spin Speed",
+            Default = 5,
+            Min = 0.1,
+            Max = 10,
+            Rounding = 1,
+            Compact = false,
+        })
+        local ReverseSpinToggle = MiscLeft:AddToggle("bxw_spin_reverse", {
+            Text = "Reverse Spin",
+            Default = false,
+        })
+        SpinToggle:OnChanged(function(state)
+            if state then
+                if spinConn then
+                    spinConn:Disconnect()
+                end
+                spinConn = AddConnection(RunService.RenderStepped:Connect(function(dt)
+                    local root = getRootPart()
+                    if root then
+                        local dir = ReverseSpinToggle.Value and -1 or 1
+                        -- rotate small step each frame based on speed and delta time
+                        local step = (SpinSpeedSlider.Value or 5) * dir * dt * math.pi
+                        root.CFrame = root.CFrame * CFrame.Angles(0, step, 0)
+                    end
+                end))
+            else
+                if spinConn then
+                    spinConn:Disconnect()
+                    spinConn = nil
+                end
+            end
+        end)
+
+        -- Anti Fling
+        local antiFlingConn
+        local AntiFlingToggle2 = MiscLeft:AddToggle("bxw_antifling", {
+            Text = "Anti Fling",
+            Default = false,
+            Tooltip = "Stop extreme velocity applied by other players",
+        })
+        AntiFlingToggle2:OnChanged(function(state)
+            if state then
+                if antiFlingConn then
+                    antiFlingConn:Disconnect()
+                end
+                antiFlingConn = AddConnection(RunService.Stepped:Connect(function()
+                    local root = getRootPart()
+                    if root then
+                        if root.AssemblyLinearVelocity.Magnitude > 80 then
+                            root.AssemblyLinearVelocity = Vector3.zero
+                        end
+                        if root.AssemblyAngularVelocity.Magnitude > 80 then
+                            root.AssemblyAngularVelocity = Vector3.zero
+                        end
+                    end
+                end))
+            else
+                if antiFlingConn then
+                    antiFlingConn:Disconnect()
+                    antiFlingConn = nil
+                end
+            end
+        end)
+
+        -- Jerk Tool
+        local jerkTool
+        local JerkToggle = MiscLeft:AddToggle("bxw_jerktool", {
+            Text = "Jerk Tool",
+            Default = false,
+            Tooltip = "Tool that applies force on clicked parts",
+        })
+        JerkToggle:OnChanged(function(state)
+            if state then
+                if jerkTool then
+                    jerkTool:Destroy()
+                end
+                jerkTool = Instance.new("Tool")
+                jerkTool.Name = "JerkTool"
+                jerkTool.RequiresHandle = false
+                jerkTool.Activated:Connect(function()
+                    local mouse = LocalPlayer:GetMouse()
+                    local target = mouse.Target
+                    if target and target:IsA("BasePart") then
+                        local vel = Instance.new("BodyVelocity")
+                        vel.Velocity = (mouse.Hit.LookVector) * 60
+                        vel.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                        vel.Parent = target
+                        game.Debris:AddItem(vel, 0.25)
+                    end
+                end)
+                jerkTool.Parent = LocalPlayer.Backpack
+                Library:Notify("Jerk Tool added to Backpack", 2)
+            else
+                if jerkTool then
+                    jerkTool:Destroy()
+                    jerkTool = nil
+                end
+            end
+        end)
+
+        -- BTools button
+        MiscLeft:AddButton("BTools", function()
+            local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+            if not backpack then
+                Library:Notify("Backpack not found", 2)
+                return
+            end
+            local function addBin(binType)
+                local bin = Instance.new("HopperBin")
+                bin.BinType = binType
+                bin.Parent = backpack
+            end
+            addBin(Enum.BinType.Clone)
+            addBin(Enum.BinType.Hammer)
+            addBin(Enum.BinType.Grab)
+            Library:Notify("BTools added to Backpack", 2)
+        end)
+
+        -- Teleport Tool button
+        MiscLeft:AddButton("Teleport Tool", function()
+            local tool = Instance.new("Tool")
+            tool.Name = "TeleportTool"
+            tool.RequiresHandle = false
+            tool.Activated:Connect(function()
+                local mouse = LocalPlayer:GetMouse()
+                local targetPos = mouse.Hit and mouse.Hit.Position
+                if targetPos then
+                    local root = getRootPart()
+                    if root then
+                        root.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+                    end
+                end
+            end)
+            tool.Parent = LocalPlayer.Backpack
+            Library:Notify("Teleport Tool added to Backpack", 2)
+        end)
+
+        -- Server Hop button
+        MiscLeft:AddButton("Server Hop", function()
+            local TeleportService = game:GetService("TeleportService")
+            pcall(function()
+                TeleportService:Teleport(game.PlaceId)
+            end)
+        end)
+
+        -- F3X placeholder
+        MiscLeft:AddButton("F3X Tool", function()
+            Library:Notify("F3X tool not implemented", 2)
+        end)
+
+        MiscLeft:AddDivider()
+        -- Respawn character button
+        MiscLeft:AddButton("Respawn Character", function()
+            pcall(function()
+                LocalPlayer:LoadCharacter()
+            end)
+        end)
+
+        -- Rejoin server button
+        MiscLeft:AddButton("Rejoin Server", function()
+            pcall(function()
+                game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+            end)
+        end)
+
+        -- Unload UI button
+        MiscLeft:AddButton("Unload UI", function()
+            pcall(function()
+                Library:Unload()
+            end)
+        end)
+    end
+
+    ------------------------------------------------
+    -- 4.6 Settings Tab (Theme & Config)
+    ------------------------------------------------
+    do
+        local SettingsTab = Tabs.Settings
+        local SettingsLeft = SettingsTab:AddLeftGroupbox("UI Settings", "settings")
+        local SettingsRight = SettingsTab:AddRightGroupbox("Config & Theme", "save")
+
+        -- Attach library to ThemeManager and SaveManager
+        ThemeManager:SetLibrary(Library)
+        SaveManager:SetLibrary(Library)
+
+        -- Set folders for storing configs and themes
+        local ConfigFolder = "BxB_Universal_Settings"
+        SaveManager:SetFolder(ConfigFolder)
+        SaveManager:SetIgnoreIndexes({ "Key Info", "Game Info" })
+        ThemeManager:SetFolder(ConfigFolder)
+
+        -- Create theme picker UI
+        -- Use ThemeManager built-in UI builder
+        ThemeManager:ApplyToGroupbox(SettingsRight)
+
+        -- Config management UI
+        SaveManager:BuildConfigSection(SettingsLeft)
+
+        -- UI to reset / unload
+        SettingsLeft:AddDivider()
+        SettingsLeft:AddButton("Unload UI", function()
+            pcall(function()
+                Library:Unload()
+            end)
+        end)
+    end
     ------------------------------------------------
     -- 4.4 Theme / SaveManager (optional) ไว้ทำใน Tab Settings ภายหลัง
     ------------------------------------------------
