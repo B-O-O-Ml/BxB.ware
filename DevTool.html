@@ -220,7 +220,8 @@
     </main>
 
     <!-- CUSTOM CONFIRMATION MODAL -->
-    <div id="custom-confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden animate-fadeIn">
+    <!-- [Z-INDEX FIX] Changed z-50 to z-[60] to ensure it appears above batch modal -->
+    <div id="custom-confirm-modal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm hidden animate-fadeIn">
         <div class="glass-panel w-[400px] max-w-[90%] p-6 rounded-2xl flex flex-col gap-4 animate-scaleIn border-l-4 border-red-500">
             <div class="flex items-center gap-4">
                 <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 shrink-0">
