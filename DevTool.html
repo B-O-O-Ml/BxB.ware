@@ -45,13 +45,11 @@
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #c084fc; }
 
-        /* Custom Scrollbar specifically for inner containers */
         .custom-inner-scroll::-webkit-scrollbar { width: 4px; }
         .custom-inner-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
         .custom-inner-scroll::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
         .custom-inner-scroll::-webkit-scrollbar-thumb:hover { background: #c084fc; }
         
-        /* Hide scrollbar for nav items on mobile but allow scrolling */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
@@ -89,7 +87,6 @@
         .btn-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
         .btn-danger:hover { background: rgba(239, 68, 68, 0.25); border-color: #ef4444; transform: translateY(-1px); }
 
-        /* Notification Toast */
         #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 100; display: flex; flex-col-reverse; gap: 10px; pointer-events: none; }
         .toast { pointer-events: auto; min-width: 300px; padding: 15px; border-radius: 8px; background: #1a1a1a; border-left: 4px solid #c084fc; color: white; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transform: translateX(100%); animation: slideIn 0.3s forwards; }
         .toast.success { border-color: #4ade80; }
@@ -97,17 +94,14 @@
         @keyframes slideIn { to { transform: translateX(0); } }
         @keyframes slideOut { to { transform: translateX(120%); opacity: 0; } }
 
-        /* Syntax Highlight */
         .json-key { color: #c084fc; } .json-string { color: #a5f3fc; } .json-number { color: #fcd34d; } .json-boolean { color: #f87171; } .json-null { color: #9ca3af; }
 
-        /* Toggle Switch */
         .toggle-checkbox:checked { right: 0; border-color: #c084fc; }
         .toggle-checkbox:checked + .toggle-label { background-color: #c084fc; }
         .toggle-checkbox:checked + .toggle-label:before { transform: translateX(100%); }
         .toggle-label { width: 36px; height: 20px; position: relative; display: block; background: #333; border-radius: 20px; cursor: pointer; transition: 0.2s; }
         .toggle-label:before { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
 
-        /* Role Badges */
         .badge-base { padding: 6px 8px; font-size: 10px; border-radius: 4px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; text-align: center; width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; border: 1px solid transparent; }
         .role-owner { background: #450a0a; color: #fecaca; border-color: #991b1b; }
         .role-staff { background: #431407; color: #fed7aa; border-color: #c2410c; }
@@ -118,14 +112,12 @@
         .role-user { background: #1f2937; color: #e5e7eb; border-color: #4b5563; }
         .role-free { background: #111827; color: #9ca3af; border-color: #374151; }
 
-        /* Status Badges */
         .status-active { background: #064e3b; color: #a7f3d0; border-color: #059669; }
         .status-banned { background: #450a0a; color: #f87171; border-color: #ef4444; }
         .status-disabled { background: #1f2937; color: #9ca3af; border-color: #4b5563; }
         .status-expired { background: #334155; color: #cbd5e1; border-color: #64748b; }
         .status-test { background: #164e63; color: #a5f3fc; border-color: #0891b2; }
 
-        /* Global Status Buttons */
         .status-btn { 
             flex: 1; padding: 6px; text-align: center; font-size: 10px; text-transform: uppercase; font-weight: bold; 
             border: 1px solid #333; background: #111; color: #666; cursor: pointer; transition: all 0.2s;
@@ -135,11 +127,14 @@
         .status-btn.active-online { background: #064e3b; color: #a7f3d0; border-color: #059669; }
         .status-btn.active-maint { background: #713f12; color: #fef08a; border-color: #eab308; }
         .status-btn.active-offline { background: #450a0a; color: #fecaca; border-color: #991b1b; }
-        
         .status-btn.active-planned { background: #3b0764; color: #e9d5ff; border-color: #7e22ce; }
 
-        /* Circular Chart */
-        .pie-chart { width: 100px; height: 100px; border-radius: 50%; background: conic-gradient(var(--c1) var(--p1), var(--c2) 0 var(--p2), var(--c3) 0 var(--p3), #333 0); }
+        .role-stat-card {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center;
+            transition: transform 0.2s;
+        }
+        .role-stat-card:hover { transform: translateX(5px); background: rgba(255,255,255,0.05); }
 
     </style>
 </head>
@@ -154,12 +149,11 @@
                 <i data-lucide="file-json" class="text-lavender"></i>
                 <span>BxB<span class="text-lavender">.JSON</span> Studio</span>
             </div>
-            <!-- Scrollable Tabs on Mobile -->
             <div class="flex gap-2 overflow-x-auto no-scrollbar flex-nowrap pr-2">
-                <button onclick="changeTab('dashboard')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap"><i data-lucide="layout-dashboard" class="w-4 h-4 inline mr-1"></i>Dash</button>
-                <button onclick="changeTab('keys')" class="nav-tab active px-3 py-1.5 rounded-md text-sm font-mono transition-colors hover:text-lavender text-lavender bg-white/5 whitespace-nowrap">Keys</button>
-                <button onclick="changeTab('changelog')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap">Changelog</button>
-                <button onclick="changeTab('scriptinfo')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap">ScriptInfo</button>
+                <button type="button" onclick="changeTab('dashboard')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap"><i data-lucide="layout-dashboard" class="w-4 h-4 inline mr-1"></i>Dash</button>
+                <button type="button" onclick="changeTab('keys')" class="nav-tab active px-3 py-1.5 rounded-md text-sm font-mono transition-colors hover:text-lavender text-lavender bg-white/5 whitespace-nowrap">Keys</button>
+                <button type="button" onclick="changeTab('changelog')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap">Changelog</button>
+                <button type="button" onclick="changeTab('scriptinfo')" class="nav-tab px-3 py-1.5 rounded-md text-sm font-mono transition-colors text-gray-400 hover:text-white whitespace-nowrap">ScriptInfo</button>
             </div>
         </div>
     </nav>
@@ -188,10 +182,9 @@
                             <label for="default-hwid-toggle" class="toggle-label"></label>
                         </div>
                     </div>
-                    <!-- New Batch Button -->
-                    <button id="btn-batch" onclick="openBatchModal()" class="btn-secondary text-xs flex-grow md:flex-grow-0 justify-center hidden"><i data-lucide="layers" class="w-4 h-4"></i> Batch</button>
-                    <button onclick="importJSON()" class="btn-secondary text-xs flex-grow md:flex-grow-0 justify-center"><i data-lucide="upload" class="w-4 h-4"></i> Import</button>
-                    <button id="btn-add-entry" onclick="addNewItem()" class="btn-primary text-xs flex-grow md:flex-grow-0 justify-center"><i data-lucide="plus" class="w-4 h-4"></i> Add Entry</button>
+                    <button type="button" id="btn-batch" onclick="openBatchModal()" class="btn-secondary text-xs flex-grow md:flex-grow-0 justify-center hidden"><i data-lucide="layers" class="w-4 h-4"></i> Batch</button>
+                    <button type="button" onclick="importJSON()" class="btn-secondary text-xs flex-grow md:flex-grow-0 justify-center"><i data-lucide="upload" class="w-4 h-4"></i> Import</button>
+                    <button type="button" id="btn-add-entry" onclick="addNewItem()" class="btn-primary text-xs flex-grow md:flex-grow-0 justify-center"><i data-lucide="plus" class="w-4 h-4"></i> Add Entry</button>
                 </div>
             </div>
 
@@ -204,8 +197,8 @@
                 <div class="p-3 border-b border-white/10 bg-black/20 flex justify-between items-center">
                     <span class="text-sm font-bold font-mono text-gray-400">Preview Output</span>
                     <div class="flex gap-2">
-                        <button onclick="copyToClipboard()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Copy"><i data-lucide="copy" class="w-4 h-4"></i></button>
-                        <button onclick="downloadJSON()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Download"><i data-lucide="download" class="w-4 h-4"></i></button>
+                        <button type="button" onclick="copyToClipboard()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Copy"><i data-lucide="copy" class="w-4 h-4"></i></button>
+                        <button type="button" onclick="downloadJSON()" class="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-lavender transition-colors" title="Download"><i data-lucide="download" class="w-4 h-4"></i></button>
                     </div>
                 </div>
                 <div class="relative flex-grow bg-[#050505] overflow-auto">
@@ -231,42 +224,88 @@
                 </div>
             </div>
             <div class="flex gap-3 mt-2 justify-end">
-                <button onclick="closeConfirmModal()" class="btn-secondary text-xs">Cancel</button>
-                <button id="btn-confirm-action" class="btn-danger text-xs bg-red-500/20 hover:bg-red-500/40 text-red-500 border-red-500/50">Confirm Delete</button>
+                <button type="button" onclick="closeConfirmModal()" class="btn-secondary text-xs">Cancel</button>
+                <button type="button" id="btn-confirm-action" class="btn-danger text-xs bg-red-500/20 hover:bg-red-500/40 text-red-500 border-red-500/50">Confirm Delete</button>
             </div>
+        </div>
+    </div>
+
+    <!-- NEW FEATURE KEY MODAL -->
+    <div id="feature-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden animate-fadeIn">
+        <div class="glass-panel w-[350px] max-w-[90%] p-6 rounded-2xl flex flex-col gap-4 animate-scaleIn border-l-4 border-green-500">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">New Feature</h3>
+                <button type="button" onclick="closeFeatureModal()" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div>
+                <label class="text-[10px] text-gray-500 uppercase">Feature Key (ID)</label>
+                <input id="new-feature-key" type="text" class="input-dark mt-1" placeholder="e.g. aimbot, esp, misc">
+            </div>
+            <button type="button" onclick="confirmAddFeature()" class="btn-primary w-full justify-center">Create Module</button>
         </div>
     </div>
 
     <!-- BATCH/BULK ACTIONS MODAL -->
     <div id="batch-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden animate-fadeIn">
-        <div class="glass-panel w-[400px] max-w-[90%] p-6 rounded-2xl flex flex-col gap-4 animate-scaleIn border-l-4 border-lavender">
-            <div class="flex justify-between items-center">
+        <div class="glass-panel w-[400px] max-w-[90%] p-6 rounded-2xl flex flex-col gap-4 animate-scaleIn border-l-4 border-lavender max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-2">
                 <h3 class="text-lg font-bold text-white">Batch Tools</h3>
-                <button onclick="closeBatchModal()" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+                <button type="button" onclick="closeBatchModal()" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             
             <!-- Generate Tab -->
             <div class="bg-white/5 p-4 rounded-lg">
-                <h4 class="text-xs font-bold text-lavender mb-2 uppercase">Bulk Generate</h4>
+                <h4 class="text-xs font-bold text-lavender mb-2 uppercase flex items-center gap-2"><i data-lucide="plus-square" class="w-3 h-3"></i> Bulk Generate</h4>
                 <div class="grid grid-cols-2 gap-2 mb-2">
                     <input id="bulk-qty" type="number" class="input-dark" placeholder="Qty (e.g. 10)">
                     <select id="bulk-role" class="input-dark">
-                        <option value="user">User</option><option value="premium">Premium</option><option value="vip">VIP</option>
+                        <option value="user">User</option><option value="premium">Premium</option><option value="vip">VIP</option><option value="free">Free</option><option value="reseller">Reseller</option><option value="staff">Staff</option><option value="owner">Owner</option>
                     </select>
                 </div>
                 <div class="flex gap-2 mb-3">
                     <select id="bulk-days" class="input-dark">
                         <option value="1">1 Day</option><option value="7">7 Days</option><option value="30">30 Days</option><option value="lifetime">Lifetime</option>
                     </select>
-                    <button onclick="generateBulk()" class="btn-primary text-xs flex-grow">Generate</button>
+                    <button type="button" onclick="generateBulk()" class="btn-primary text-xs flex-grow">Generate</button>
                 </div>
             </div>
 
-            <!-- Maintenance Tab -->
-            <div class="bg-white/5 p-4 rounded-lg">
-                <h4 class="text-xs font-bold text-red-400 mb-2 uppercase">Maintenance</h4>
-                <button onclick="deleteExpiredKeys()" class="btn-danger w-full text-xs justify-center mb-2">Delete All Expired Keys</button>
-                <div class="text-[10px] text-gray-500 text-center">This will remove keys where expiration date < now</div>
+            <!-- Maintenance / Delete Tab -->
+            <div class="bg-white/5 p-4 rounded-lg border border-red-500/20">
+                <h4 class="text-xs font-bold text-red-400 mb-3 uppercase flex items-center gap-2"><i data-lucide="trash-2" class="w-3 h-3"></i> Advanced Deletion</h4>
+                
+                <!-- Expired -->
+                <button type="button" onclick="deleteExpiredKeys()" class="btn-secondary w-full text-xs justify-between mb-2 hover:border-red-400/50">
+                    <span>Delete Expired Keys</span>
+                    <i data-lucide="clock" class="w-3 h-3 text-gray-400"></i>
+                </button>
+
+                <!-- By Status -->
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <button type="button" onclick="deleteByStatus('banned')" class="btn-secondary text-xs justify-center hover:bg-red-500/10 hover:border-red-500">Del Banned</button>
+                    <button type="button" onclick="deleteByStatus('disabled')" class="btn-secondary text-xs justify-center hover:bg-gray-500/20">Del Disabled</button>
+                    <button type="button" onclick="deleteByStatus('test')" class="btn-secondary text-xs justify-center hover:bg-blue-500/20">Del Test</button>
+                    <button type="button" onclick="deleteByStatus('expired')" class="btn-secondary text-xs justify-center hover:bg-yellow-500/20">Del Expired</button>
+                </div>
+
+                <!-- By Role -->
+                <div class="flex gap-2 mb-4 pt-2 border-t border-white/5">
+                    <select id="delete-role-select" class="input-dark w-1/2 text-xs">
+                        <option value="owner">Owner</option>
+                        <option value="staff">Staff</option>
+                        <option value="vip">VIP</option>
+                        <option value="premium">Premium</option>
+                        <option value="reseller">Reseller</option>
+                        <option value="free">Free</option>
+                        <option value="user">User</option>
+                    </select>
+                    <button type="button" onclick="deleteByRole()" class="btn-danger w-1/2 text-xs justify-center">Delete Role</button>
+                </div>
+
+                <!-- Delete All -->
+                <button type="button" onclick="deleteAllKeys()" class="btn-danger w-full text-xs justify-center bg-red-600/20 border-red-600 hover:bg-red-600 hover:text-white font-bold py-2">
+                    DELETE ALL KEYS
+                </button>
             </div>
         </div>
     </div>
@@ -316,10 +355,14 @@
             }
         ];
 
+        // Sample for ScriptInfo matching requested JSON structure
         dataStore.scriptinfo.description = { short: "Universal hub", long: "Full featured hub for Roblox" };
         dataStore.scriptinfo.features = {
-            aimbot: { status: "online", min_role: "premium", description: "Legit aimbot & prediction" },
-            esp: { status: "online", min_role: "user", description: "Player ESP (box, chams)" }
+            player: { status: "online", min_role: "free", description: "Movement, teleport, camera, basic utilities." },
+            esp: { status: "online", min_role: "user", description: "Player ESP (box, corner, chams, tracers, distance)." },
+            aimbot: { status: "online", min_role: "premium", description: "Legit aimbot, random weighted hitpart, prediction." },
+            silent_aim: { status: "maintenance", min_role: "vip", description: "Silent Aim via game module. Currently under maintenance." },
+            item_esp: { status: "planned", min_role: "premium", description: "Per-game loot/item ESP via modules (coming soon)." }
         };
         dataStore.scriptinfo.game_support = [
             { place_id: 0, name: "Universal", status: "online" }
@@ -385,52 +428,42 @@
             const expired = keys.filter(k => k.status === 'expired').length;
             const banned = keys.filter(k => k.status === 'banned').length;
             
-            // Calculate Percentages for Pie Chart
-            const p1 = (active / total) * 100 || 0;
-            const p2 = p1 + ((expired / total) * 100 || 0);
-            const p3 = p2 + ((banned / total) * 100 || 0);
+            // Calculate Role Counts
+            const roleCounts = { owner:0, staff:0, vip:0, premium:0, reseller:0, free:0, user:0, trial:0 };
+            keys.forEach(k => {
+                const r = k.role.toLowerCase();
+                if(roleCounts[r] !== undefined) roleCounts[r]++;
+            });
+
+            // Role Card HTML Generator
+            const roleCard = (title, count, colorClass) => `
+                <div class="role-stat-card">
+                    <span class="text-xs font-bold uppercase text-gray-400">${title}</span>
+                    <span class="text-sm font-bold ${colorClass}">${count}</span>
+                </div>
+            `;
 
             const html = `
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between">
-                        <div><p class="text-xs text-gray-400 uppercase">Total Keys</p><h3 class="text-3xl font-bold text-white">${total}</h3></div>
-                        <div class="p-3 bg-white/5 rounded-full"><i data-lucide="key" class="w-6 h-6 text-lavender"></i></div>
-                    </div>
-                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between">
-                        <div><p class="text-xs text-gray-400 uppercase">Active Users</p><h3 class="text-3xl font-bold text-green-400">${active}</h3></div>
-                        <div class="p-3 bg-green-500/10 rounded-full"><i data-lucide="user-check" class="w-6 h-6 text-green-400"></i></div>
-                    </div>
-                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between">
-                        <div><p class="text-xs text-gray-400 uppercase">Expired</p><h3 class="text-3xl font-bold text-gray-400">${expired}</h3></div>
-                        <div class="p-3 bg-gray-500/10 rounded-full"><i data-lucide="clock" class="w-6 h-6 text-gray-400"></i></div>
-                    </div>
-                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between">
-                        <div><p class="text-xs text-gray-400 uppercase">Banned</p><h3 class="text-3xl font-bold text-red-400">${banned}</h3></div>
-                        <div class="p-3 bg-red-500/10 rounded-full"><i data-lucide="ban" class="w-6 h-6 text-red-400"></i></div>
-                    </div>
+                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between"><div><p class="text-xs text-gray-400 uppercase">Total Keys</p><h3 class="text-3xl font-bold text-white">${total}</h3></div><div class="p-3 bg-white/5 rounded-full"><i data-lucide="key" class="w-6 h-6 text-lavender"></i></div></div>
+                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between"><div><p class="text-xs text-gray-400 uppercase">Active</p><h3 class="text-3xl font-bold text-green-400">${active}</h3></div><div class="p-3 bg-green-500/10 rounded-full"><i data-lucide="user-check" class="w-6 h-6 text-green-400"></i></div></div>
+                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between"><div><p class="text-xs text-gray-400 uppercase">Expired</p><h3 class="text-3xl font-bold text-gray-400">${expired}</h3></div><div class="p-3 bg-gray-500/10 rounded-full"><i data-lucide="clock" class="w-6 h-6 text-gray-400"></i></div></div>
+                    <div class="glass-panel p-4 rounded-xl flex items-center justify-between"><div><p class="text-xs text-gray-400 uppercase">Banned</p><h3 class="text-3xl font-bold text-red-400">${banned}</h3></div><div class="p-3 bg-red-500/10 rounded-full"><i data-lucide="ban" class="w-6 h-6 text-red-400"></i></div></div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="glass-panel p-6 rounded-xl flex flex-col items-center justify-center">
-                        <h3 class="text-sm font-bold text-white mb-6 uppercase tracking-wider">Status Distribution</h3>
-                        <div class="pie-chart" style="--c1:#4ade80; --c2:#9ca3af; --c3:#f87171; --p1:${p1}%; --p2:${p2}%; --p3:${p3}%"></div>
-                        <div class="flex gap-4 mt-6 text-xs">
-                            <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-green-400"></span> Active</div>
-                            <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-gray-400"></span> Expired</div>
-                            <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-400"></span> Banned</div>
-                        </div>
+                <div class="glass-panel p-6 rounded-xl">
+                    <h3 class="text-sm font-bold text-white mb-6 uppercase tracking-wider flex items-center gap-2"><i data-lucide="users" class="w-4 h-4 text-lavender"></i> Key Role Distribution</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        ${roleCard('Owner', roleCounts.owner, 'text-red-300')}
+                        ${roleCard('Staff', roleCounts.staff, 'text-orange-300')}
+                        ${roleCard('Reseller', roleCounts.reseller, 'text-purple-300')}
+                        ${roleCard('VIP', roleCounts.vip, 'text-yellow-300')}
+                        ${roleCard('Premium', roleCounts.premium, 'text-pink-300')}
+                        ${roleCard('Trial', roleCounts.trial, 'text-blue-300')}
+                        ${roleCard('User', roleCounts.user, 'text-gray-300')}
+                        ${roleCard('Free', roleCounts.free, 'text-gray-500')}
                     </div>
-                    
-                    <div class="glass-panel p-6 rounded-xl">
-                        <h3 class="text-sm font-bold text-white mb-4 uppercase tracking-wider">Recent Activity (Mockup)</h3>
-                        <div class="space-y-3">
-                            <div class="flex justify-between text-xs border-b border-white/5 pb-2"><span>New key generated</span><span class="text-gray-500">2 mins ago</span></div>
-                            <div class="flex justify-between text-xs border-b border-white/5 pb-2"><span>User BxB-001 banned</span><span class="text-gray-500">1 hour ago</span></div>
-                            <div class="flex justify-between text-xs border-b border-white/5 pb-2"><span>Config updated</span><span class="text-gray-500">Yesterday</span></div>
-                        </div>
-                    </div>
-                </div>
-            `;
+                </div>`;
             container.innerHTML = html;
         }
 
@@ -459,12 +492,12 @@
         }
 
         function renderGlobalFields(wrapper) {
-            wrapper.innerHTML = ''; // Clear previous
+            wrapper.innerHTML = '';
             let fieldsToRender = [];
             if(currentTab === 'keys') fieldsToRender = ['status', 'message', 'version', 'last_update'];
             else if(currentTab === 'changelog') fieldsToRender = ['status', 'project', 'latest_version'];
             else if(currentTab === 'scriptinfo') fieldsToRender = ['status', 'hub_name', 'hub_code', 'version', 'channel', 'last_update'];
-            else return; // Should not happen for Dashboard
+            else return; 
             
             let html = `<h3 class="text-sm font-bold text-lavender mb-3">Global Settings</h3><div class="grid grid-cols-2 md:grid-cols-4 gap-4">`;
             fieldsToRender.forEach(key => {
@@ -472,7 +505,7 @@
                  let inputHtml = '';
                  if (key === 'status') {
                      const status = value.toLowerCase();
-                     inputHtml = `<div class="flex w-full"><button onclick="updateGlobal('status', 'online')" class="status-btn ${status==='online'?'active-online':''}">Online</button><button onclick="updateGlobal('status', 'maintenance')" class="status-btn ${status==='maintenance'?'active-maint':''}">Maint</button><button onclick="updateGlobal('status', 'offline')" class="status-btn ${status==='offline'?'active-offline':''}">Offline</button></div>`;
+                     inputHtml = `<div class="flex w-full"><button type="button" onclick="updateGlobal('status', 'online')" class="status-btn ${status==='online'?'active-online':''}">Online</button><button type="button" onclick="updateGlobal('status', 'maintenance')" class="status-btn ${status==='maintenance'?'active-maint':''}">Maint</button><button type="button" onclick="updateGlobal('status', 'offline')" class="status-btn ${status==='offline'?'active-offline':''}">Offline</button></div>`;
                  } else {
                      inputHtml = `<input type="text" class="input-dark" value="${value}" onchange="updateGlobal('${key}', this.value)">`;
                  }
@@ -482,10 +515,10 @@
             wrapper.innerHTML = html;
         }
 
-        // --- KEY CARD (With Smart Expiration & Duplicate Check) ---
+        // --- KEY CARD ---
         function renderKeyCard(container, item, index) {
             const card = document.createElement('div');
-            const isDuplicate = checkDuplicate(item.key) && item.key !== ""; // Simple duplicate check visual
+            const isDuplicate = checkDuplicate(item.key) && item.key !== "";
             
             card.className = `glass-panel p-4 rounded-xl transition-all group relative flex-shrink-0 ${item.isStarred ? 'border-yellow-500/50 bg-yellow-500/5' : (isDuplicate ? 'border-red-500/50' : 'hover:border-lavender/50')}`;
             
@@ -494,8 +527,8 @@
 
             card.innerHTML = `
                 <div class="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <button onclick="toggleStar(${index})" class="p-1 rounded hover:bg-white/10 ${item.isStarred ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}"><i data-lucide="star" class="w-4 h-4 ${item.isStarred ? 'fill-yellow-400' : ''}"></i></button>
-                    <button onclick="deleteItem(${index}, 'Key')" class="p-1 rounded hover:bg-red-500/20 text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    <button type="button" onclick="toggleStar(${index})" class="p-1 rounded hover:bg-white/10 ${item.isStarred ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}"><i data-lucide="star" class="w-4 h-4 ${item.isStarred ? 'fill-yellow-400' : ''}"></i></button>
+                    <button type="button" onclick="deleteItem(${index}, 'Key')" class="p-1 rounded hover:bg-red-500/20 text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                 </div>
                 <div class="flex flex-col gap-3">
                     <div class="w-full pr-16">
@@ -513,11 +546,10 @@
                         <div class="col-span-1">
                             <div class="flex justify-between items-center mb-1">
                                 <label class="text-[10px] text-gray-500 uppercase block">Expires</label>
-                                <!-- Smart Expiration Buttons -->
                                 <div class="flex gap-1">
-                                    <button onclick="setExpire(${index}, 1)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="+1 Day">+1D</button>
-                                    <button onclick="setExpire(${index}, 30)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="+30 Days">+30D</button>
-                                    <button onclick="setExpire(${index}, 0)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="Lifetime">INF</button>
+                                    <button type="button" onclick="setExpire(${index}, 1)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="+1 Day">+1D</button>
+                                    <button type="button" onclick="setExpire(${index}, 30)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="+30 Days">+30D</button>
+                                    <button type="button" onclick="setExpire(${index}, 0)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="Lifetime">INF</button>
                                 </div>
                             </div>
                             <input type="text" class="input-dark text-[10px]" value="${item.expire || ''}" onchange="updateKeyItem(${index}, 'expire', this.value)" placeholder="Unix/Date/Null">
@@ -529,15 +561,15 @@
             container.appendChild(card);
         }
 
-        // --- RENDER CHANGELOG & SCRIPTINFO (Same as before) ---
+        // --- CHANGELOG & SCRIPTINFO RENDERERS ---
         function renderChangelogCard(container, item, index) {
             const card = document.createElement('div'); card.className = 'glass-panel p-4 rounded-xl border-l-4 border-l-lavender flex-shrink-0';
             const renderList = (type, list, changeType = null) => {
                 if (!list) list = [];
-                const itemsHtml = list.map((txt, i) => `<div class="flex gap-2 mb-1"><span class="text-gray-600 text-xs">•</span><input type="text" class="input-dark text-xs py-1" value="${txt}" onchange="updateChangelogNested(${index}, '${type}', ${i}, this.value, '${changeType || ''}')"><button onclick="removeChangelogNested(${index}, '${type}', ${i}, '${changeType || ''}')" class="text-red-400 hover:text-red-300 opacity-50 hover:opacity-100"><i data-lucide="x" class="w-3 h-3"></i></button></div>`).join('');
-                return `<div class="h-[140px] overflow-y-auto pr-1 custom-inner-scroll space-y-1 mb-2 bg-black/20 rounded p-1 border border-white/5">${itemsHtml.length > 0 ? itemsHtml : '<div class="text-[10px] text-gray-600 italic p-2">No items</div>'}</div><button onclick="addChangelogNested(${index}, '${type}', '${changeType || ''}')" class="text-[10px] text-lavender hover:underline flex items-center gap-1 opacity-70 hover:opacity-100">+ Add Line</button>`;
+                const itemsHtml = list.map((txt, i) => `<div class="flex gap-2 mb-1"><span class="text-gray-600 text-xs">•</span><input type="text" class="input-dark text-xs py-1" value="${txt}" onchange="updateChangelogNested(${index}, '${type}', ${i}, this.value, '${changeType || ''}')"><button type="button" onclick="removeChangelogNested(${index}, '${type}', ${i}, '${changeType || ''}')" class="text-red-400 hover:text-red-300 opacity-50 hover:opacity-100"><i data-lucide="x" class="w-3 h-3"></i></button></div>`).join('');
+                return `<div class="h-[140px] overflow-y-auto pr-1 custom-inner-scroll space-y-1 mb-2 bg-black/20 rounded p-1 border border-white/5">${itemsHtml.length > 0 ? itemsHtml : '<div class="text-[10px] text-gray-600 italic p-2">No items</div>'}</div><button type="button" onclick="addChangelogNested(${index}, '${type}', '${changeType || ''}')" class="text-[10px] text-lavender hover:underline flex items-center gap-1 opacity-70 hover:opacity-100">+ Add Line</button>`;
             };
-            card.innerHTML = `<div class="flex flex-col gap-4"><div class="flex justify-between items-start gap-4"><div class="grid grid-cols-2 md:grid-cols-4 gap-3 flex-grow"><div><label class="text-[10px] text-gray-500 uppercase">Version</label><input class="input-dark font-bold text-lavender" value="${item.version}" onchange="updateChangelogItem(${index}, 'version', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Date</label><input class="input-dark" value="${item.date}" onchange="updateChangelogItem(${index}, 'date', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Channel</label><input class="input-dark" value="${item.channel || 'stable'}" onchange="updateChangelogItem(${index}, 'channel', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Status</label><input class="input-dark" value="${item.status || 'released'}" onchange="updateChangelogItem(${index}, 'status', this.value)"></div></div><button onclick="deleteItem(${index}, 'Log Entry')" class="btn-danger text-xs flex-shrink-0 mt-1"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div><div><label class="text-[10px] text-gray-500 uppercase">Title / Headline</label><input class="input-dark font-bold text-sm" value="${item.title || ''}" placeholder="e.g. Combat & ESP Update" onchange="updateChangelogItem(${index}, 'title', this.value)"></div><div class="bg-white/5 p-3 rounded-lg border border-white/5"><label class="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-2 mb-2"><i data-lucide="star" class="w-3 h-3 text-yellow-400"></i> Highlights</label>${renderList('highlights', item.highlights)}</div><div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 bg-black/20 p-3 rounded-lg"><div><h4 class="text-[10px] font-bold text-green-400 mb-2 uppercase tracking-wider">Added</h4>${renderList('changes', item.changes?.added || [], 'added')}</div><div><h4 class="text-[10px] font-bold text-yellow-400 mb-2 uppercase tracking-wider">Changed</h4>${renderList('changes', item.changes?.changed || [], 'changed')}</div><div><h4 class="text-[10px] font-bold text-blue-400 mb-2 uppercase tracking-wider">Fixed</h4>${renderList('changes', item.changes?.fixed || [], 'fixed')}</div><div><h4 class="text-[10px] font-bold text-red-400 mb-2 uppercase tracking-wider">Removed</h4>${renderList('changes', item.changes?.removed || [], 'removed')}</div></div></div>`;
+            card.innerHTML = `<div class="flex flex-col gap-4"><div class="flex justify-between items-start gap-4"><div class="grid grid-cols-2 md:grid-cols-4 gap-3 flex-grow"><div><label class="text-[10px] text-gray-500 uppercase">Version</label><input class="input-dark font-bold text-lavender" value="${item.version}" onchange="updateChangelogItem(${index}, 'version', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Date</label><input class="input-dark" value="${item.date}" onchange="updateChangelogItem(${index}, 'date', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Channel</label><input class="input-dark" value="${item.channel || 'stable'}" onchange="updateChangelogItem(${index}, 'channel', this.value)"></div><div><label class="text-[10px] text-gray-500 uppercase">Status</label><input class="input-dark" value="${item.status || 'released'}" onchange="updateChangelogItem(${index}, 'status', this.value)"></div></div><button type="button" onclick="deleteItem(${index}, 'Log Entry')" class="btn-danger text-xs flex-shrink-0 mt-1"><i data-lucide="trash-2" class="w-3 h-3"></i></button></div><div><label class="text-[10px] text-gray-500 uppercase">Title / Headline</label><input class="input-dark font-bold text-sm" value="${item.title || ''}" placeholder="e.g. Combat & ESP Update" onchange="updateChangelogItem(${index}, 'title', this.value)"></div><div class="bg-white/5 p-3 rounded-lg border border-white/5"><label class="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-2 mb-2"><i data-lucide="star" class="w-3 h-3 text-yellow-400"></i> Highlights</label>${renderList('highlights', item.highlights)}</div><div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 bg-black/20 p-3 rounded-lg"><div><h4 class="text-[10px] font-bold text-green-400 mb-2 uppercase tracking-wider">Added</h4>${renderList('changes', item.changes?.added || [], 'added')}</div><div><h4 class="text-[10px] font-bold text-yellow-400 mb-2 uppercase tracking-wider">Changed</h4>${renderList('changes', item.changes?.changed || [], 'changed')}</div><div><h4 class="text-[10px] font-bold text-blue-400 mb-2 uppercase tracking-wider">Fixed</h4>${renderList('changes', item.changes?.fixed || [], 'fixed')}</div><div><h4 class="text-[10px] font-bold text-red-400 mb-2 uppercase tracking-wider">Removed</h4>${renderList('changes', item.changes?.removed || [], 'removed')}</div></div></div>`;
             container.appendChild(card);
         }
 
@@ -546,11 +578,10 @@
              const scrollContainer = document.createElement('div');
              scrollContainer.className = 'flex flex-col gap-6 lg:overflow-y-auto lg:pr-2 lg:max-h-[600px] custom-scrollbar';
              
-             // ... (Keep existing script info inner HTML logic, omitted for brevity but logic remains same as before) ...
-             // Simplified re-injection for space saving in response, functionality preserved from previous version
+             // --- Script Info Sections (Updated Logic) ---
              const descHtml = `<div class="glass-panel p-4 rounded-xl border-l-4 border-blue-500"><h3 class="text-sm font-bold text-white mb-3">Details & Links</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label class="text-[10px] text-gray-500">Short Description</label><input class="input-dark mb-2" value="${data.description.short||''}" onchange="updateDeep('description', 'short', this.value)"><label class="text-[10px] text-gray-500">Long Description</label><textarea class="input-dark h-20" onchange="updateDeep('description', 'long', this.value)">${data.description.long||''}</textarea></div><div class="space-y-2"><div><label class="text-[10px] text-gray-500">Discord</label><input class="input-dark" value="${data.links.discord||''}" onchange="updateDeep('links', 'discord', this.value)"></div><div><label class="text-[10px] text-gray-500">GitHub</label><input class="input-dark" value="${data.links.github||''}" onchange="updateDeep('links', 'github', this.value)"></div><div><label class="text-[10px] text-gray-500">Docs</label><input class="input-dark" value="${data.links.docs||''}" onchange="updateDeep('links', 'docs', this.value)"></div></div></div></div>`;
              
-             // Safety check for roles_required and executors_support
+             // Safely get arrays
              const basicRoles = (data.roles_required?.basic || []).join(',');
              const premiumRoles = (data.roles_required?.premium_features || []).join(',');
              const staffRoles = (data.roles_required?.staff_tools || []).join(',');
@@ -561,10 +592,17 @@
 
              const configHtml = `<div class="glass-panel p-4 rounded-xl border-l-4 border-yellow-500"><h3 class="text-sm font-bold text-white mb-3">Configuration</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label class="text-[10px] text-yellow-400 font-bold mb-1 block">Required Roles</label><div class="space-y-1"><input class="input-dark text-xs" placeholder="Basic" value="${basicRoles}" onchange="updateArrayStr('roles_required', 'basic', this.value)"><input class="input-dark text-xs" placeholder="Premium" value="${premiumRoles}" onchange="updateArrayStr('roles_required', 'premium_features', this.value)"><input class="input-dark text-xs" placeholder="Staff" value="${staffRoles}" onchange="updateArrayStr('roles_required', 'staff_tools', this.value)"></div></div><div><label class="text-[10px] text-yellow-400 font-bold mb-1 block">Executors</label><div class="space-y-1"><input class="input-dark text-xs" placeholder="Stable" value="${stableExecs}" onchange="updateArrayStr('executors_support', 'stable', this.value)"><input class="input-dark text-xs" placeholder="Partial" value="${partialExecs}" onchange="updateArrayStr('executors_support', 'partial', this.value)"><input class="input-dark text-xs" placeholder="Mobile" value="${mobileExecs}" onchange="updateArrayStr('executors_support', 'mobile', this.value)"><input class="input-dark text-xs" placeholder="Notes" value="${execNotes}" onchange="updateDeep('executors_support', 'notes', this.value)"></div></div></div></div>`;
              
-             let featuresList = ''; for(const [k,f] of Object.entries(data.features||{})) featuresList += `<div class="bg-white/5 p-2 rounded flex gap-2 items-center mb-2"><div class="w-1/4 font-mono text-xs text-lavender">${k}</div><select class="input-dark w-1/6 text-[10px]" onchange="updateFeature('${k}','status',this.value)"><option value="online" ${f.status==='online'?'selected':''}>On</option><option value="planned" ${f.status==='planned'?'selected':''}>Plan</option></select><input class="input-dark w-1/3 text-[10px]" value="${f.description}" onchange="updateFeature('${k}','description',this.value)"><button onclick="deleteFeature('${k}')" class="text-red-400"><i data-lucide="x" class="w-3 h-3"></i></button></div>`;
-             const featuresHtml = `<div class="glass-panel p-4 rounded-xl border-l-4 border-green-500"><div class="flex justify-between mb-3"><h3 class="text-sm font-bold text-white">Features</h3><button onclick="addFeature()" class="btn-secondary text-[10px]">Add</button></div><div class="bg-black/20 p-2 rounded max-h-[200px] overflow-y-auto custom-inner-scroll">${featuresList}</div></div>`;
+             let featuresList = ''; for(const [k,f] of Object.entries(data.features||{})) featuresList += `<div class="bg-white/5 p-2 rounded flex gap-2 items-center mb-2"><div class="w-1/4 font-mono text-xs text-lavender">${k}</div><select class="input-dark w-1/6 text-[10px]" onchange="updateFeature('${k}','status',this.value)"><option value="online" ${f.status==='online'?'selected':''}>On</option><option value="maintenance" ${f.status==='maintenance'?'selected':''}>Maint</option><option value="planned" ${f.status==='planned'?'selected':''}>Plan</option></select><input class="input-dark w-1/6 text-[10px]" placeholder="Role" value="${f.min_role||''}" onchange="updateFeature('${k}','min_role',this.value)"><input class="input-dark w-1/3 text-[10px]" placeholder="Desc" value="${f.description||''}" onchange="updateFeature('${k}','description',this.value)"><button type="button" onclick="deleteFeature('${k}')" class="text-red-400"><i data-lucide="x" class="w-3 h-3"></i></button></div>`;
+             const featuresHtml = `<div class="glass-panel p-4 rounded-xl border-l-4 border-green-500"><div class="flex justify-between mb-3"><h3 class="text-sm font-bold text-white">Features Modules</h3><button type="button" onclick="openFeatureModal()" class="btn-secondary text-[10px]">Add Feature</button></div><div class="bg-black/20 p-2 rounded max-h-[200px] overflow-y-auto custom-inner-scroll">${featuresList}</div></div>`;
              
-             scrollContainer.innerHTML = descHtml + configHtml + featuresHtml;
+             // Game Support & Credits sections (simplified for brevity, logic remains)
+             let gamesList = ''; (data.game_support || []).forEach((g,i) => { gamesList += `<div class="flex gap-2 items-center bg-white/5 p-2 rounded mb-2"><input class="input-dark w-1/6 text-[10px]" placeholder="ID" value="${g.place_id||0}" onchange="updateGame(${i}, 'place_id', this.value)"><input class="input-dark w-1/4 text-[10px]" placeholder="Name" value="${g.name||''}" onchange="updateGame(${i}, 'name', this.value)"><select class="input-dark w-1/6 text-[10px]" onchange="updateGame(${i}, 'status', this.value)"><option value="online" ${g.status==='online'?'selected':''}>On</option><option value="maintenance" ${g.status==='maintenance'?'selected':''}>Maint</option></select><input class="input-dark w-1/4 text-[10px]" placeholder="Module" value="${g.module||''}" onchange="updateGame(${i}, 'module', this.value)"><button type="button" onclick="deleteGame(${i})" class="text-red-400"><i data-lucide="trash" class="w-3 h-3"></i></button></div>`; });
+             const gamesHtml = `<div class="glass-panel p-4 rounded-xl border-l-4 border-purple-500"><div class="flex justify-between mb-3"><h3 class="text-sm font-bold text-white">Game Support</h3><button type="button" onclick="addGameSupport()" class="btn-secondary text-[10px]">Add Game</button></div><div class="bg-black/20 p-2 rounded max-h-[200px] overflow-y-auto custom-inner-scroll">${gamesList}</div></div>`;
+
+             let creditsList = ''; (data.credits || []).forEach((c,i) => { creditsList += `<div class="flex gap-2 items-center bg-white/5 p-2 rounded mb-2"><input class="input-dark w-1/4 text-[10px]" placeholder="Role" value="${c.role||''}" onchange="updateCredit(${i}, 'role', this.value)"><input class="input-dark w-1/4 text-[10px]" placeholder="Name" value="${c.name||''}" onchange="updateCredit(${i}, 'name', this.value)"><input class="input-dark w-1/2 text-[10px]" placeholder="Note" value="${c.note||''}" onchange="updateCredit(${i}, 'note', this.value)"><button type="button" onclick="deleteCredit(${i})" class="text-red-400"><i data-lucide="trash" class="w-3 h-3"></i></button></div>`; });
+             const creditsHtml = `<div class="glass-panel p-4 rounded-xl border-l-4 border-pink-500"><div class="flex justify-between mb-3"><h3 class="text-sm font-bold text-white">Credits</h3><button type="button" onclick="addCredit()" class="btn-secondary text-[10px]">Add Credit</button></div><div class="bg-black/20 p-2 rounded max-h-[200px] overflow-y-auto custom-inner-scroll">${creditsList}</div></div>`;
+
+             scrollContainer.innerHTML = descHtml + configHtml + featuresHtml + gamesHtml + creditsHtml;
              container.appendChild(scrollContainer);
         }
 
@@ -578,91 +616,47 @@
         function updateKeyItem(index, key, val) {
             dataStore.keys.keys[index][key] = val;
             if (key === 'bind_hwid') { if(!val) delete dataStore.keys.keys[index].hwid_hash; else if(!dataStore.keys.keys[index].hwid_hash) dataStore.keys.keys[index].hwid_hash = ""; }
-            if (['bind_hwid','role','status'].includes(key)) render(); 
-            else {
-                // Real-time duplicate check visual update
-                if(key === 'key') render(); 
-                else updatePreview();
-            }
+            if (['bind_hwid','role','status'].includes(key) || key === 'key') render(); else updatePreview();
         }
         
-        // Smart Expiration Logic
         function setExpire(index, days) {
             let newVal = null;
-            if (days > 0) {
-                const date = new Date();
-                date.setDate(date.getDate() + days);
-                // Simple DD/MM/YY format or Locale String
-                newVal = date.toLocaleDateString('en-GB') + " 00:00:00"; 
+            if (days > 0) { const d = new Date(); d.setDate(d.getDate() + days); newVal = d.toLocaleDateString('en-GB') + " 00:00:00"; }
+            dataStore.keys.keys[index].expire = newVal; render();
+        }
+        function checkDuplicate(keyString) { if(!dataStore.keys.keys) return false; return dataStore.keys.keys.filter(k => k.key === keyString).length > 1; }
+
+        // Feature Modal
+        function openFeatureModal() { document.getElementById('feature-modal').classList.remove('hidden'); document.getElementById('feature-modal').classList.add('flex'); }
+        function closeFeatureModal() { document.getElementById('feature-modal').classList.add('hidden'); document.getElementById('feature-modal').classList.remove('flex'); document.getElementById('new-feature-key').value = ''; }
+        function confirmAddFeature() {
+            const key = document.getElementById('new-feature-key').value.trim();
+            if(key) {
+                if(dataStore.scriptinfo.features[key]) { showToast('Feature key exists!', 'error'); return; }
+                dataStore.scriptinfo.features[key] = { status: 'planned', min_role: 'free', description: '' };
+                render(); closeFeatureModal();
             }
-            dataStore.keys.keys[index].expire = newVal;
-            render();
         }
 
-        // Validation Logic
-        function checkDuplicate(keyString) {
-            if(!dataStore.keys.keys) return false;
-            // Check if more than 1 item has this key
-            return dataStore.keys.keys.filter(k => k.key === keyString).length > 1;
-        }
-
-        // Batch Modal Logic
-        function openBatchModal() { 
-            document.getElementById('batch-modal').classList.remove('hidden'); 
-            document.getElementById('batch-modal').classList.add('flex');
-        }
-        function closeBatchModal() { 
-            document.getElementById('batch-modal').classList.add('hidden'); 
-            document.getElementById('batch-modal').classList.remove('flex');
-        }
+        // Batch Modal
+        function openBatchModal() { document.getElementById('batch-modal').classList.remove('hidden'); document.getElementById('batch-modal').classList.add('flex'); }
+        function closeBatchModal() { document.getElementById('batch-modal').classList.add('hidden'); document.getElementById('batch-modal').classList.remove('flex'); }
+        
         function generateBulk() {
             const qty = parseInt(document.getElementById('bulk-qty').value) || 0;
             const role = document.getElementById('bulk-role').value;
             const days = document.getElementById('bulk-days').value;
-            
             if(qty <= 0) return alert("Please enter valid quantity");
-            
             let expireVal = null;
-            if(days !== 'lifetime') {
-                const d = new Date(); d.setDate(d.getDate() + parseInt(days));
-                expireVal = d.toLocaleDateString('en-GB') + " 00:00:00";
-            }
-
+            if(days !== 'lifetime') { const d = new Date(); d.setDate(d.getDate() + parseInt(days)); expireVal = d.toLocaleDateString('en-GB') + " 00:00:00"; }
             for(let i=0; i<qty; i++) {
                 const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
-                dataStore.keys.keys.unshift({
-                    key: `KEY-${randomStr}`,
-                    role: role,
-                    status: 'active',
-                    bind_hwid: true,
-                    timestamp: new Date().toISOString(),
-                    expire: expireVal,
-                    note: `Batch generated (${i+1}/${qty})`,
-                    isStarred: false
-                });
+                dataStore.keys.keys.unshift({ key: `KEY-${randomStr}`, role: role, status: 'active', bind_hwid: true, timestamp: new Date().toISOString(), expire: expireVal, note: `Batch generated`, isStarred: false });
             }
-            closeBatchModal();
-            render();
-            showToast(`Generated ${qty} keys!`, 'success');
-        }
-        function deleteExpiredKeys() {
-            const now = new Date();
-            const initialLen = dataStore.keys.keys.length;
-            dataStore.keys.keys = dataStore.keys.keys.filter(k => {
-                if(!k.expire) return true; // Lifetime/Null
-                // Try parsing
-                const expDate = new Date(k.expire);
-                // If invalid date format, assume not expired or handle differently. For demo, keep valid.
-                if(isNaN(expDate.getTime())) return true; 
-                return expDate > now;
-            });
-            const removed = initialLen - dataStore.keys.keys.length;
-            closeBatchModal();
-            render();
-            showToast(`Removed ${removed} expired keys`, 'success');
+            closeBatchModal(); render(); showToast(`Generated ${qty} keys!`, 'success');
         }
 
-        // ... Existing Update/Add/Delete functions ...
+        // ... Update Helpers ...
         function updateChangelogItem(idx, key, val) { dataStore.changelog.entries[idx][key] = val; updatePreview(); }
         function updateChangelogNested(entryIdx, type, listIdx, val, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights[listIdx] = val; } else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType][listIdx] = val; } updatePreview(); }
         function addChangelogNested(entryIdx, type, changeType) { const entry = dataStore.changelog.entries[entryIdx]; if (type === 'highlights') { if(!entry.highlights) entry.highlights = []; entry.highlights.push("New..."); } else { if(!entry.changes) entry.changes = { added:[], changed:[], fixed:[], removed:[] }; entry.changes[changeType].push("New..."); } render(); }
@@ -672,7 +666,7 @@
         function updateArrayStr(parent, key, val) { dataStore.scriptinfo[parent][key] = val.split(',').map(s=>s.trim()); updatePreview(); }
         function updateFeature(key, field, val) { dataStore.scriptinfo.features[key][field] = val; updatePreview(); }
         function deleteFeature(key) { delete dataStore.scriptinfo.features[key]; render(); }
-        function addFeature() { const name = prompt("Enter feature key:"); if(name) { dataStore.scriptinfo.features[name] = {status:'planned', min_role:'free', description:''}; render(); } }
+        
         function updateGame(idx, key, val) { if(key === 'place_id') val = parseInt(val); dataStore.scriptinfo.game_support[idx][key] = val; updatePreview(); }
         function deleteGame(idx) { dataStore.scriptinfo.game_support.splice(idx, 1); render(); }
         function addGameSupport() { dataStore.scriptinfo.game_support.push({place_id:0, name:'New Game', status:'online'}); render(); }
