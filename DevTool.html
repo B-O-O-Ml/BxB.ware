@@ -6,7 +6,6 @@
     <title>BxB.ware | JSON Studio (Enhanced)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Removed Unused Three.js to improve performance -->
     
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
     
@@ -408,6 +407,15 @@
 
         // --- RENDER LOGIC ---
         function render() {
+            // [SCROLL FIX] 1. Capture Scroll Positions
+            const mainScroll = window.scrollY;
+            const keysWrapper = document.getElementById('keys-list-wrapper');
+            const keysScroll = keysWrapper ? keysWrapper.scrollTop : 0;
+            const clWrapper = document.getElementById('changelog-list-wrapper');
+            const clScroll = clWrapper ? clWrapper.scrollTop : 0;
+            const scriptWrapper = document.getElementById('scriptinfo-list-wrapper');
+            const scriptScroll = scriptWrapper ? scriptWrapper.scrollTop : 0;
+
             const container = document.getElementById('editor-container');
             container.innerHTML = '';
             
@@ -437,6 +445,7 @@
                 editorTitle.innerText = "Changelog Editor";
                 addBtn.style.display = 'flex';
                 const listWrapper = document.createElement('div');
+                listWrapper.id = 'changelog-list-wrapper'; // [SCROLL FIX] Add ID
                 listWrapper.className = 'flex flex-col gap-6 lg:overflow-y-auto lg:pr-2 lg:max-h-[600px] custom-scrollbar';
                 container.appendChild(listWrapper);
                 dataStore.changelog.entries.forEach((item, index) => renderChangelogCard(listWrapper, item, index));
@@ -455,6 +464,18 @@
 
             updatePreview();
             lucide.createIcons();
+
+            // [SCROLL FIX] 2. Restore Scroll Positions
+            window.scrollTo(0, mainScroll);
+            
+            const newKeysWrapper = document.getElementById('keys-list-wrapper');
+            if(newKeysWrapper) newKeysWrapper.scrollTop = keysScroll;
+            
+            const newClWrapper = document.getElementById('changelog-list-wrapper');
+            if(newClWrapper) newClWrapper.scrollTop = clScroll;
+
+            const newScriptWrapper = document.getElementById('scriptinfo-list-wrapper');
+            if(newScriptWrapper) newScriptWrapper.scrollTop = scriptScroll;
         }
 
         // --- DASHBOARD RENDERER ---
@@ -562,6 +583,8 @@
             const roleOptions = ['owner', 'staff', 'vip', 'premium', 'reseller', 'free', 'user'];
             const statusOptions = ['active', 'banned', 'disabled', 'expired', 'test'];
 
+            // [MODIFIED] Removed the buttons block (+1D, +30D) as requested
+            
             card.innerHTML = `
                 <div class="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <button type="button" onclick="toggleStar(${index})" class="p-1 rounded hover:bg-white/10 ${item.isStarred ? 'text-yellow-400' : 'text-gray-500 hover:text-yellow-400'}"><i data-lucide="star" class="w-4 h-4 ${item.isStarred ? 'fill-yellow-400' : ''}"></i></button>
@@ -581,15 +604,8 @@
                         <div class="col-span-2 md:col-span-2"><div class="flex items-center justify-between mb-1"><label class="text-[10px] text-gray-500 uppercase">HWID Bind</label><div class="relative scale-75 origin-right"><input type="checkbox" id="toggle-${index}" class="toggle-checkbox absolute opacity-0 w-0 h-0" ${item.bind_hwid ? 'checked' : ''} onchange="updateKeyItem(${index}, 'bind_hwid', this.checked)"><label for="toggle-${index}" class="toggle-label"></label></div></div>${item.bind_hwid ? `<input type="text" placeholder="Hash..." class="input-dark text-[10px] animate-[fadeIn_0.3s]" value="${item.hwid_hash || ''}" onchange="updateKeyItem(${index}, 'hwid_hash', this.value)">` : '<div class="h-8 flex items-center justify-center text-[10px] text-gray-600 border border-white/5 rounded bg-white/5 italic">Not Bound</div>'}</div>
                         <div class="col-span-1"><label class="text-[10px] text-gray-500 uppercase mb-1 block">Created</label><input type="text" class="input-dark text-[10px]" value="${item.timestamp || ''}" onchange="updateKeyItem(${index}, 'timestamp', this.value)" placeholder="Unix/Date"></div>
                         <div class="col-span-1">
-                            <div class="flex justify-between items-center mb-1">
-                                <label class="text-[10px] text-gray-500 uppercase block">Expires</label>
-                                <div class="flex gap-1">
-                                    <button type="button" onclick="setExpire(${index}, 1)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="+1 Day">+1D</button>
-                                    <button type="button" onclick="setExpire(${index}, 30)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="+30 Days">+30D</button>
-                                    <button type="button" onclick="setExpire(${index}, 0)" class="text-[8px] px-1 bg-white/10 rounded hover:bg-lavender hover:text-black transition-colors" title="Lifetime">INF</button>
-                                </div>
-                            </div>
-                            <input type="text" class="input-dark text-[10px]" value="${item.expire || ''}" onchange="updateKeyItem(${index}, 'expire', this.value)" placeholder="Unix/Date/Null">
+                            <label class="text-[10px] text-gray-500 uppercase block mb-1">Expires</label>
+                            <input type="text" class="input-dark text-[10px]" value="${item.expire || ''}" onchange="updateKeyItem(${index}, 'expire', this.value)" placeholder="1d, 1hr, 1min...">
                         </div>
                     </div>
                     <div class="w-full"><div class="relative"><i data-lucide="sticky-note" class="absolute top-2 left-2 w-3 h-3 text-gray-600"></i><input type="text" placeholder="Add a note..." class="input-dark pl-7 text-gray-400 italic text-[10px]" value="${item.note || ''}" onchange="updateKeyItem(${index}, 'note', this.value)"></div></div>
@@ -613,6 +629,7 @@
         function renderScriptInfoForm(container) {
              const data = dataStore.scriptinfo;
              const scrollContainer = document.createElement('div');
+             scrollContainer.id = 'scriptinfo-list-wrapper'; // [SCROLL FIX] Add ID
              scrollContainer.className = 'flex flex-col gap-6 lg:overflow-y-auto lg:pr-2 lg:max-h-[600px] custom-scrollbar';
              
              // --- Script Info Sections (Updated Logic) ---
@@ -651,11 +668,56 @@
             saveData();
             if(key === 'status') render(); else updatePreview(); 
         }
+
+        // [FEATURE] Enhanced Expiration Date Calculator
+        function calculateExpiration(input) {
+            if (!input) return input;
+            
+            // Regex to find all pairs of (number, unit)
+            // Units: y(year), m(month), w(week), d(day), h/hr(hour), min(minute), s/sec(second)
+            const regex = /(\d+)\s*(y|m|w|d|hr|h|min|sec|s)/gi;
+            let match;
+            let hasMatch = false;
+            
+            const now = new Date();
+            
+            // Loop through all matches in the string (e.g., "1d 1hr 30min")
+            while ((match = regex.exec(input)) !== null) {
+                hasMatch = true;
+                const amount = parseInt(match[1]);
+                const unit = match[2].toLowerCase();
+                
+                switch(unit) {
+                    case 'y': now.setFullYear(now.getFullYear() + amount); break;
+                    case 'm': now.setMonth(now.getMonth() + amount); break;
+                    case 'w': now.setDate(now.getDate() + (amount * 7)); break;
+                    case 'd': now.setDate(now.getDate() + amount); break;
+                    case 'h': case 'hr': now.setHours(now.getHours() + amount); break;
+                    case 'min': now.setMinutes(now.getMinutes() + amount); break;
+                    case 's': case 'sec': now.setSeconds(now.getSeconds() + amount); break;
+                }
+            }
+            
+            if (!hasMatch) return input; // If no shorthand detected, return original input
+
+            // Format DD/MM/YYYY HH:mm:ss
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        }
+
         function updateKeyItem(index, key, val) {
+            if (key === 'expire') {
+                // Try to calculate expiration from shorthand
+                const calculatedDate = calculateExpiration(val);
+                // If calculation happened (result different from input), use it
+                // Note: calculateExpiration returns input if no match, so safe to assign
+                val = calculatedDate; 
+            }
+
             dataStore.keys.keys[index][key] = val;
             if (key === 'bind_hwid') { if(!val) delete dataStore.keys.keys[index].hwid_hash; else if(!dataStore.keys.keys[index].hwid_hash) dataStore.keys.keys[index].hwid_hash = ""; }
             saveData();
-            if (['bind_hwid','role','status'].includes(key) || key === 'key') render(); else updatePreview();
+            if (['bind_hwid','role','status'].includes(key) || key === 'key' || key === 'expire') render(); else updatePreview();
         }
         
         function setExpire(index, days) {
@@ -702,11 +764,25 @@
         function parseCustomDate(dateStr) {
             if (!dateStr) return null;
             try {
-                // assume DD/MM/YYYY
-                const parts = dateStr.split(' ')[0].split('/');
+                // Split date and time (support both "DD/MM/YYYY" and "DD/MM/YYYY HH:mm:ss")
+                const [dPart, tPart] = dateStr.trim().split(' ');
+                const parts = dPart.split('/');
+                
                 if (parts.length === 3) {
-                    // Month is 0-indexed in JS Date
-                    return new Date(parts[2], parts[1] - 1, parts[0]);
+                    const day = parseInt(parts[0]);
+                    const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+                    const year = parseInt(parts[2]);
+                    
+                    let hours = 0, minutes = 0, seconds = 0;
+                    if(tPart) {
+                        const tParts = tPart.split(':');
+                        if(tParts.length >= 2) {
+                            hours = parseInt(tParts[0]);
+                            minutes = parseInt(tParts[1]);
+                            seconds = tParts[2] ? parseInt(tParts[2]) : 0;
+                        }
+                    }
+                    return new Date(year, month, day, hours, minutes, seconds);
                 }
             } catch (e) { return null; }
             return null;
