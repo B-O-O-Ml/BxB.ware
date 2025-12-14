@@ -1,0 +1,93 @@
+{
+  "status": "online",
+  "hub_name": "Obsidian Universal Hub",
+  "hub_code": "OBSIDIAN_UNI",
+  "version": "1.5.0",
+  "channel": "stable",
+  "last_update": "2025-12-05 13:45:00",
+  "description": {
+    "short": "Universal executor-side hub for most Roblox games.",
+    "long": "Obsidian Universal Hub is a multi-purpose executor-side script designed to work across many Roblox experiences, focusing on clean UI, performance, and mobile-friendly usage."
+  },
+  "roles_required": {
+    "basic": ["free", "user", "trial"],
+    "premium_features": ["premium", "vip"],
+    "staff_tools": ["staff", "owner"]
+  },
+  "features": {
+    "player": {
+      "status": "online",
+      "min_role": "free",
+      "description": "Movement, teleport, camera, basic utilities."
+    },
+    "esp": {
+      "status": "online",
+      "min_role": "user",
+      "description": "Player ESP (box, corner, chams, tracers, distance)."
+    },
+    "aimbot": {
+      "status": "online",
+      "min_role": "premium",
+      "description": "Legit aimbot, random weighted hitpart, prediction."
+    },
+    "silent_aim": {
+      "status": "maintenance",
+      "min_role": "vip",
+      "description": "Silent Aim via game module. Currently under maintenance."
+    },
+    "item_esp": {
+      "status": "planned",
+      "min_role": "premium",
+      "description": "Per-game loot/item ESP via modules (coming soon)."
+    }
+  },
+  "executors_support": {
+    "stable": ["Synapse X", "Script-Ware", "Fluxus", "Wave"],
+    "partial": ["KRNL", "Vega X"],
+    "mobile": ["Delta", "Codex", "Arceus X"],
+    "notes": "Some features (e.g., clipboard, filesystem) may not be available on all executors."
+  },
+  "game_support": [
+    {
+      "place_id": 0,
+      "name": "Universal (any game)",
+      "status": "online"
+    },
+    {
+      "place_id": 1234567890,
+      "name": "Example FPS Game",
+      "status": "online",
+      "module": "games/fps_example.lua",
+      "min_role": "user"
+    },
+    {
+      "place_id": 2222222222,
+      "name": "Example Simulator",
+      "status": "maintenance",
+      "module": "games/sim_example.lua",
+      "min_role": "premium"
+    }
+  ],
+  "credits": [
+    {
+      "role": "owner",
+      "name": "YourNameHere",
+      "note": "Project owner & main developer"
+    },
+    {
+      "role": "developer",
+      "name": "DevFriend1",
+      "note": "ESP & Aimbot logic"
+    },
+    {
+      "role": "designer",
+      "name": "UIFriend",
+      "note": "UI/UX design for Obsidian theme"
+    }
+  ],
+  "links": {
+    "discord": "https://discord.gg/yourdiscord",
+    "github": "https://github.com/yourname/obsidian-universal",
+    "docs": "https://yourdocs.example/obsidian"
+  }
+}

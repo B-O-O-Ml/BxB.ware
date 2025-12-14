@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BxB.ware | Titan Engine Z (Ultimate)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        obsidian: { bg: '#09090b', surface: '#121214', border: '#27272a', active: '#1f1f22' },
+                        titan: { DEFAULT: '#3b82f6', glow: 'rgba(59, 130, 246, 0.5)', dark: '#1e3a8a' },
+                        stealth: { green: '#10b981', red: '#ef4444', warn: '#f59e0b', purple: '#a855f7' }
+                    },
+                    fontFamily: {
+                        sans: ['"Inter"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #09090b; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+
+        .editor-bg {
+            background-color: #0c0c0e;
+            background-image: linear-gradient(#1f1f23 1px, transparent 1px), linear-gradient(90deg, #1f1f23 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        .dropdown-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            opacity: 0;
+        }
+        .dropdown-content.open {
+            max-height: 600px;
+            opacity: 1;
+            overflow-y: auto;
+        }
+        .chevron-rotate { transition: transform 0.3s; }
+        .chevron-rotate.open { transform: rotate(180deg); }
+        
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-obsidian-bg text-gray-300 font-sans h-screen flex flex-col overflow-hidden selection:bg-titan selection:text-white">
+
+    <!-- Header -->
+    <header class="h-14 border-b border-obsidian-border bg-obsidian-bg/95 backdrop-blur flex items-center justify-between px-4 md:px-6 z-50 shrink-0">
+        <div class="flex items-center gap-4">
+            <button onclick="toggleSidebar()" class="md:hidden p-2 text-gray-400 hover:text-white"><i data-lucide="menu" class="w-5 h-5"></i></button>
+            <a href="#" class="flex items-center gap-2 group">
+                <div class="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center border border-blue-500/20 group-hover:border-blue-500/50 transition-colors">
+                    <i data-lucide="cpu" class="text-blue-500 w-5 h-5"></i>
+                </div>
+                <div class="hidden sm:block">
+                    <h1 class="font-bold text-white tracking-tight text-sm">BxB<span class="text-blue-500">.titan</span></h1>
+                    <span class="text-[10px] font-mono text-gray-500 block -mt-1">ENGINE Z (ULTIMATE)</span>
+                </div>
+            </a>
+        </div>
+
+        <div class="flex items-center gap-2 md:gap-4">
+            <div class="flex gap-2">
+                <button onclick="Titan.downloadFile()" class="hidden sm:flex px-3 py-1.5 rounded text-xs font-mono font-bold border border-obsidian-border hover:border-blue-500/50 hover:bg-blue-500/10 transition-all items-center gap-2 text-white">
+                    <i data-lucide="download" class="w-3 h-3"></i> SAVE .LUA
+                </button>
+                <div class="h-6 w-px bg-obsidian-border mx-1 hidden sm:block"></div>
+                <button onclick="applyTool('minify')" class="hidden sm:flex px-3 py-1.5 rounded text-xs font-mono font-bold border border-obsidian-border hover:border-blue-500/50 hover:bg-blue-500/10 transition-all items-center gap-2">
+                    <i data-lucide="minimize-2" class="w-3 h-3"></i> MINIFY
+                </button>
+                <button onclick="applyTool('beautify')" class="hidden sm:flex px-3 py-1.5 rounded text-xs font-mono font-bold border border-obsidian-border hover:border-blue-500/50 hover:bg-blue-500/10 transition-all items-center gap-2">
+                    <i data-lucide="align-left" class="w-3 h-3"></i> BEAUTIFY
+                </button>
+            </div>
+            <div class="h-6 w-px bg-obsidian-border mx-1"></div>
+            <button onclick="location.reload()" class="text-xs font-bold text-gray-400 hover:text-white flex items-center gap-1"><i data-lucide="refresh-cw" class="w-4 h-4"></i> <span class="hidden sm:inline">RESET</span></button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Sidebar -->
+        <aside id="sidebar" class="absolute md:relative w-80 h-full bg-obsidian-surface border-r border-obsidian-border flex flex-col z-40 transform -translate-x-full md:translate-x-0 transition-transform duration-300 shadow-2xl md:shadow-none">
+            
+            <div class="md:hidden p-4 border-b border-obsidian-border flex justify-between items-center">
+                <span class="font-bold text-blue-500">Settings</span>
+                <button onclick="toggleSidebar()"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="p-4 flex-grow overflow-y-auto space-y-4 custom-scroll">
+                
+                <!-- 1. Identity & Security -->
+                <div class="space-y-2">
+                    <h2 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2"><i data-lucide="shield-check" class="w-3 h-3"></i> Identity & Security</h2>
+                    <div class="bg-obsidian-bg border border-obsidian-border rounded p-3 space-y-3">
+                        
+                        <!-- Credit -->
+                        <div>
+                            <label class="text-[10px] text-gray-400 mb-1 block">Credit Name (Encrypted)</label>
+                            <input type="text" id="credit-input" class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors" placeholder="e.g. BxB.Ware">
+                            <div class="mt-1 flex items-center gap-2">
+                                <input type="checkbox" id="opt-silent-kill" checked class="accent-red-500 w-3 h-3">
+                                <span class="text-[10px] text-red-400 font-bold">Silent Kill (Anti-Change)</span>
+                            </div>
+                        </div>
+
+                        <!-- Webhook -->
+                        <div>
+                            <label class="text-[10px] text-gray-400 mb-1 block flex justify-between">
+                                <span>Discord Webhook (Log)</span>
+                                <span class="text-blue-500 text-[9px] bg-blue-500/10 px-1 rounded">Encrypted</span>
+                            </label>
+                            <input type="password" id="webhook-input" class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors" placeholder="https://discord.com/api/webhooks/...">
+                        </div>
+
+                        <!-- Time Bomb -->
+                        <div>
+                            <label class="text-[10px] text-gray-400 mb-1 block">Expiration Date (Time Bomb)</label>
+                            <input type="date" id="timebomb-input" class="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors uppercase">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-px bg-white/5 my-2"></div>
+
+                <!-- 2. Core Engine -->
+                <h2 class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Core Engine Z</h2>
+                <div class="bg-obsidian-bg border border-obsidian-border rounded overflow-hidden mb-4">
+                    <button onclick="toggleDropdown('algo-dropdown', 'algo-chevron')" class="w-full p-3 flex justify-between items-center hover:bg-white/5 transition-colors">
+                        <div class="text-left">
+                            <div class="text-[10px] text-gray-400 uppercase">Algorithm</div>
+                            <div id="label-algo" class="text-sm font-bold text-white mt-1">Phantom VM (Max)</div>
+                        </div>
+                        <i id="algo-chevron" data-lucide="chevron-down" class="w-4 h-4 text-gray-500 chevron-rotate"></i>
+                    </button>
+                    
+                    <div id="algo-dropdown" class="dropdown-content bg-black/20">
+                        <button onclick="setAlgo('Phantom VM (Max)', 'phantom')" class="w-full text-left px-4 py-2 text-xs text-stealth-purple hover:text-white hover:bg-white/5 border-t border-white/5 flex items-center gap-2">
+                            <i data-lucide="layers" class="w-3 h-3"></i> Phantom VM (Reconstruction)
+                        </button>
+                        <button onclick="setAlgo('Spectre AES (Block)', 'spectre')" class="w-full text-left px-4 py-2 text-xs text-stealth-green hover:text-white hover:bg-white/5 border-t border-white/5 flex items-center gap-2">
+                            <i data-lucide="shield" class="w-3 h-3"></i> Spectre AES (Block Cipher)
+                        </button>
+                        <button onclick="setAlgo('Obsidian Hex (Final)', 'lattice')" class="w-full text-left px-4 py-2 text-xs text-blue-400 hover:text-white hover:bg-white/5 border-t border-white/5 flex items-center gap-2">
+                            <i data-lucide="box" class="w-3 h-3"></i> Obsidian Hex (Best Stable)
+                        </button>
+                        <button onclick="setAlgo('Binary Storm (Base 2)', 'binary')" class="w-full text-left px-4 py-2 text-xs text-gray-300 hover:text-white hover:bg-white/5 border-t border-white/5 flex items-center gap-2">
+                            <i data-lucide="cpu" class="w-3 h-3"></i> Binary Storm
+                        </button>
+                         <button onclick="setAlgo('Bitwise Chaos (Shift)', 'bitwise')" class="w-full text-left px-4 py-2 text-xs text-gray-300 hover:text-white hover:bg-white/5 border-t border-white/5 flex items-center gap-2">
+                            <i data-lucide="shuffle" class="w-3 h-3"></i> Bitwise Chaos
+                        </button>
+                         <button onclick="setAlgo('Poly-XOR (Rolling)', 'polyxor')" class="w-full text-left px-4 py-2 text-xs text-gray-300 hover:text-white hover:bg-white/5 border-t border-white/5 flex items-center gap-2">
+                            <i data-lucide="key" class="w-3 h-3"></i> Poly-XOR
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. Modules -->
+                <div class="space-y-2">
+                    <div class="text-[10px] text-gray-400 uppercase mb-2">Modules</div>
+                    
+                    <label class="flex items-center justify-between p-3 rounded bg-obsidian-bg border border-obsidian-border cursor-pointer group hover:border-blue-500/30 transition-colors">
+                        <span class="text-xs text-gray-300 group-hover:text-white">Anti-Tamper (Crash)</span>
+                        <div class="relative inline-block w-8 h-4">
+                            <input type="checkbox" id="opt-tamper" checked class="peer sr-only">
+                            <label for="opt-tamper" class="block overflow-hidden h-4 rounded-full bg-gray-700 cursor-pointer peer-checked:bg-blue-500 transition-colors relative after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></label>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center justify-between p-3 rounded bg-obsidian-bg border border-obsidian-border cursor-pointer group hover:border-blue-500/30 transition-colors">
+                        <span class="text-xs text-gray-300 group-hover:text-white">Anti-HttpSpy (Webhook)</span>
+                        <div class="relative inline-block w-8 h-4">
+                            <input type="checkbox" id="opt-antispy" checked class="peer sr-only">
+                            <label for="opt-antispy" class="block overflow-hidden h-4 rounded-full bg-gray-700 cursor-pointer peer-checked:bg-blue-500 transition-colors relative after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></label>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center justify-between p-3 rounded bg-obsidian-bg border border-obsidian-border cursor-pointer group hover:border-blue-500/30 transition-colors">
+                        <span class="text-xs text-gray-300 group-hover:text-white">Anti-Dex (Hide Script)</span>
+                        <div class="relative inline-block w-8 h-4">
+                            <input type="checkbox" id="opt-antidex" checked class="peer sr-only">
+                            <label for="opt-antidex" class="block overflow-hidden h-4 rounded-full bg-gray-700 cursor-pointer peer-checked:bg-blue-500 transition-colors relative after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></label>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center justify-between p-3 rounded bg-obsidian-bg border border-obsidian-border cursor-pointer group hover:border-blue-500/30 transition-colors">
+                        <span class="text-xs text-gray-300 group-hover:text-white">Fake Decompile Logs</span>
+                        <div class="relative inline-block w-8 h-4">
+                            <input type="checkbox" id="opt-fake-logs" checked class="peer sr-only">
+                            <label for="opt-fake-logs" class="block overflow-hidden h-4 rounded-full bg-gray-700 cursor-pointer peer-checked:bg-blue-500 transition-colors relative after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></label>
+                        </div>
+                    </label>
+
+                     <label class="flex items-center justify-between p-3 rounded bg-obsidian-bg border border-obsidian-border cursor-pointer group hover:border-blue-500/30 transition-colors">
+                        <span class="text-xs text-gray-300 group-hover:text-white">Junk Code</span>
+                        <div class="relative inline-block w-8 h-4">
+                            <input type="checkbox" id="opt-junk" checked class="peer sr-only">
+                            <label for="opt-junk" class="block overflow-hidden h-4 rounded-full bg-gray-700 cursor-pointer peer-checked:bg-blue-500 transition-colors relative after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></label>
+                        </div>
+                    </label>
+
+                    <label class="flex items-center justify-between p-3 rounded bg-obsidian-bg border border-obsidian-border cursor-pointer group hover:border-blue-500/30 transition-colors">
+                        <span class="text-xs text-gray-300 group-hover:text-white">Watermark</span>
+                        <div class="relative inline-block w-8 h-4">
+                            <input type="checkbox" id="opt-watermark" checked class="peer sr-only">
+                            <label for="opt-watermark" class="block overflow-hidden h-4 rounded-full bg-gray-700 cursor-pointer peer-checked:bg-blue-500 transition-colors relative after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:after:translate-x-4"></label>
+                        </div>
+                    </label>
+                </div>
+                
+                <div class="bg-blue-500/5 border border-blue-500/10 p-3 rounded text-[10px] text-blue-300 mt-4">
+                    <i data-lucide="zap" class="w-3 h-3 inline mr-1"></i>
+                    <b>Engine Z:</b> Phantom VM & Anti-Spy Active.
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-obsidian-border bg-obsidian-bg">
+                <button onclick="processScript()" id="btn-process" class="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold font-mono rounded shadow-[0_0_15px_rgba(59,130,246,0.4)] transition-all active:scale-95 flex items-center justify-center gap-2">
+                    <i data-lucide="lock" class="w-4 h-4"></i> <span id="btn-text">ENCRYPT PAYLOAD</span>
+                </button>
+            </div>
+        </aside>
+        
+        <div id="sidebar-overlay" onclick="toggleSidebar()" class="absolute inset-0 bg-black/50 backdrop-blur-sm z-30 hidden md:hidden"></div>
+
+        <!-- Content -->
+        <main class="flex-1 flex flex-col min-w-0">
+            <!-- Mobile Tabs -->
+            <div class="flex md:hidden h-10 border-b border-obsidian-border bg-obsidian-surface">
+                <button onclick="switchTab('input')" id="tab-input" class="flex-1 text-xs font-bold border-b-2 border-blue-500 text-white">SOURCE</button>
+                <button onclick="switchTab('output')" id="tab-output" class="flex-1 text-xs font-bold border-b-2 border-transparent text-gray-500">RESULT</button>
+            </div>
+
+            <!-- Desktop Header -->
+            <div class="hidden md:flex h-8 bg-obsidian-surface border-b border-obsidian-border items-center justify-between px-4 text-[10px] font-mono text-gray-500">
+                <div class="flex gap-4">
+                    <span>LINES: <span id="stats-lines" class="text-gray-300">0</span></span>
+                    <span>SIZE: <span id="stats-size" class="text-gray-300">0</span> KB</span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="copyOutput()" class="hover:text-white flex items-center gap-1"><i data-lucide="copy" class="w-3 h-3"></i> COPY</button>
+                    <button onclick="clearAll()" class="hover:text-red-400 flex items-center gap-1"><i data-lucide="trash" class="w-3 h-3"></i> CLEAR</button>
+                </div>
+            </div>
+
+            <div class="flex-1 flex relative">
+                <!-- Input -->
+                <div id="view-input" class="w-full md:w-1/2 h-full flex flex-col relative border-r border-obsidian-border bg-[#0c0c0e]">
+                    <textarea id="editor-source" class="flex-1 w-full h-full bg-transparent text-gray-300 p-4 font-mono text-xs md:text-sm resize-none focus:outline-none leading-relaxed whitespace-pre z-10" placeholder="-- Paste Lua script here...&#10;print('Titan Engine Z Loaded')" spellcheck="false"></textarea>
+                </div>
+
+                <!-- Output -->
+                <div id="view-output" class="w-full md:w-1/2 h-full flex flex-col relative bg-[#050505] hidden md:flex">
+                     <div id="loader" class="absolute inset-0 bg-black/90 z-20 hidden flex-col items-center justify-center">
+                        <div class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                        <span id="loader-text" class="text-blue-400 font-mono text-xs animate-pulse">ENCRYPTING...</span>
+                    </div>
+                    <textarea id="editor-output" readonly class="flex-1 w-full h-full bg-transparent text-blue-400/90 p-4 font-mono text-xs md:text-sm resize-none focus:outline-none leading-relaxed whitespace-pre z-10" placeholder="-- Encrypted code will appear here..." spellcheck="false"></textarea>
+                    <button onclick="copyOutput()" class="md:hidden absolute top-4 right-4 bg-blue-500/20 text-blue-400 p-2 rounded-full z-30"><i data-lucide="copy" class="w-5 h-5"></i></button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-obsidian-active border border-blue-500/30 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 transform translate-y-20 opacity-0 transition-all z-50 pointer-events-none">
+        <i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i>
+        <span class="text-xs font-bold" id="toast-msg">Operation Successful</span>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const config = { algo: 'phantom' }; // Default to Phantom for Z
+
+        // --- Memory System (Auto Save/Load) ---
+        window.onload = function() {
+            const saved = localStorage.getItem('titan_config_z');
+            if(saved) {
+                const data = JSON.parse(saved);
+                document.getElementById('credit-input').value = data.credit || "BxB.Ware";
+                document.getElementById('webhook-input').value = data.webhook || "";
+                document.getElementById('opt-silent-kill').checked = data.silentKill ?? true;
+                if(data.algo) setAlgo(data.algoName, data.algo);
+            }
+        };
+
+        function saveState() {
+            const data = {
+                credit: document.getElementById('credit-input').value,
+                webhook: document.getElementById('webhook-input').value,
+                silentKill: document.getElementById('opt-silent-kill').checked,
+                algo: config.algo,
+                algoName: document.getElementById('label-algo').innerText
+            };
+            localStorage.setItem('titan_config_z', JSON.stringify(data));
+        }
+
+        // --- UI Logic ---
+        function toggleDropdown(id, chevronId) {
+            document.querySelectorAll('.dropdown-content.open').forEach(el => { if(el.id !== id) el.classList.remove('open'); });
+            document.querySelectorAll('.chevron-rotate.open').forEach(el => { if(el.id !== chevronId) el.classList.remove('open'); });
+            document.getElementById(id).classList.toggle('open');
+            document.getElementById(chevronId).classList.toggle('open');
+        }
+
+        function setAlgo(label, algo) { 
+            document.getElementById('label-algo').innerText = label; 
+            config.algo = algo; 
+            toggleDropdown('algo-dropdown', 'algo-chevron'); 
+            saveState();
+        }
+
+        // --- TITAN ENGINE Z (Ultimate) ---
+        const Titan = {
+            randVar: () => "v_" + Math.random().toString(36).substr(2, 5) + Math.floor(Math.random()*99),
+            
+            chunkString: (str, size) => {
+                const numChunks = Math.ceil(str.length / size);
+                const chunks = new Array(numChunks);
+                for (let i = 0, o = 0; i < numChunks; ++i, o += size) chunks[i] = str.substr(o, size);
+                return chunks;
+            },
+
+            minify: (code) => code.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('--')).join(' '),
+
+            beautify: (code) => {
+                let lines = code.split(/(?<=end)|(?<=;)|(?<=\n)/).map(l => l.trim()).filter(l => l.length > 0);
+                let indent = 0, res = "";
+                lines.forEach(l => {
+                    if(/^(end|else|elseif|until|\})/.test(l)) indent = Math.max(0, indent-1);
+                    res += '    '.repeat(indent) + l + '\n';
+                    if(/(\bfunction\b|\bif\b|\bdo\b|\bwhile\b|\brepeat\b|\bfor\b|\bthen\b|\{)/.test(l) && !/(\bend\b|\})/.test(l)) indent++;
+                });
+                return res;
+            },
+
+            // --- PAYLOAD GENERATION ---
+            getHeaders: () => {
+                let script = "";
+                if(document.getElementById('opt-fake-logs').checked) {
+                    script += `-- Decompiled with Synapse X v3.0.1b\n-- Date: ${new Date().toISOString().split('T')[0]}\n-- Game ID: ${Math.floor(Math.random()*999999999)}\n`;
+                    script += `-- ERROR: Opcode 0x4F (CLOSURE_NEW) failed to verify.\n-- ERROR: String constant pool corrupted.\n\n`;
+                }
+                if(document.getElementById('opt-watermark').checked) script += `-- Secured by BxB.titan Engine Z\n`;
+                return script;
+            },
+
+            getInjectedCode: () => {
+                let script = "";
+                
+                // 1. Anti-Tamper & Anti-Dex
+                if(document.getElementById('opt-tamper').checked) {
+                    script += `if not game:IsLoaded() then game.Loaded:Wait() end\n`;
+                }
+                if(document.getElementById('opt-antidex').checked) {
+                    script += `if script then script.Parent = nil end -- Anti-SaveInstance\n`;
+                }
+
+                // 2. Anti-HttpSpy
+                if(document.getElementById('opt-antispy').checked) {
+                    script += `
+local _s = string.lower
+local _r = assert
+local _g = getgenv
+if _g and (_g().HttpSpy or _g().httppspy) then while true do end end -- Spy Detect
+`;
+                }
+
+                // 3. Encrypted Credit Guard (Silent)
+                const creditName = document.getElementById('credit-input').value.trim();
+                const silentKill = document.getElementById('opt-silent-kill').checked;
+                if(creditName) {
+                    const vCreditVar = Titan.randVar();
+                    const vSecretBytes = Titan.randVar();
+                    const encoder = new TextEncoder();
+                    const bytes = encoder.encode(creditName);
+                    
+                    script += `local ${vCreditVar} = "${creditName}"\n`; 
+                    script += `local ${vSecretBytes} = {`;
+                    for(let i=0; i<bytes.length; i++) script += `${bytes[i]},`;
+                    script = script.slice(0, -1) + `}\n`; 
+                    
+                    const vCheckStr = Titan.randVar();
+                    script += `local ${vCheckStr} = ""\nfor _, b in ipairs(${vSecretBytes}) do ${vCheckStr} = ${vCheckStr} .. string.char(b) end\n`;
+                    
+                    if(silentKill) script += `if ${vCreditVar} ~= ${vCheckStr} then while true do end end\n`;
+                    else script += `if ${vCreditVar} ~= ${vCheckStr} then return end\n`;
+                }
+
+                // 4. Time Bomb
+                const expiryDate = document.getElementById('timebomb-input').value;
+                if(expiryDate) {
+                    const unixTarget = new Date(expiryDate).getTime() / 1000;
+                    const vTime = Titan.randVar();
+                    const vTarget = Titan.randVar();
+                    script += `local ${vTarget} = ${unixTarget}\n`;
+                    script += `local ${vTime} = os.time()\n`;
+                    script += `if ${vTime} > ${vTarget} then warn("Script Expired"); return end\n`;
+                }
+
+                // 5. Webhook Logger (Encrypted)
+                const webhookUrl = document.getElementById('webhook-input').value.trim();
+                if(webhookUrl) {
+                    const vReq = Titan.randVar();
+                    const encoder = new TextEncoder();
+                    const bytes = encoder.encode(webhookUrl);
+                    let byteStr = "{";
+                    for(let i=0; i<bytes.length; i++) byteStr += `${bytes[i]},`;
+                    byteStr = byteStr.slice(0, -1) + "}";
+
+                    const vUrlBytes = Titan.randVar();
+                    const vFinalUrl = Titan.randVar();
+
+                    script += `
+task.spawn(function()
+    local ${vUrlBytes} = ${byteStr}
+    local ${vFinalUrl} = ""
+    for _, b in ipairs(${vUrlBytes}) do ${vFinalUrl} = ${vFinalUrl} .. string.char(b) end
+    local ${vReq} = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+    if ${vReq} then
+        ${vReq}({
+            Url = ${vFinalUrl},
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = game:GetService("HttpService"):JSONEncode({
+                content = "",
+                embeds = {{
+                    title = "Titan Z Execution",
+                    description = "User: " .. game.Players.LocalPlayer.Name,
+                    color = 3891958
+                }}
+            })
+        })
+    end
+end)
+`;
+                }
+
+                // 6. Junk Code
+                if(document.getElementById('opt-junk').checked) {
+                     const v1 = Titan.randVar(), v2 = Titan.randVar();
+                     script += `local ${v1}=function(x)return x*3 end;local ${v2}=${v1}(os.time());\n`;
+                }
+
+                return script;
+            },
+
+            // --- ALGORITHMS ---
+
+            // A. Phantom VM (New - High Security)
+            generatePhantom: (payload) => {
+                const encoder = new TextEncoder();
+                const byteArray = encoder.encode(payload);
+                
+                // Shuffle logic
+                let indices = Array.from({length: byteArray.length}, (_, i) => i);
+                // Fisher-Yates shuffle
+                for(let i = indices.length - 1; i > 0; i--){
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [indices[i], indices[j]] = [indices[j], indices[i]];
+                }
+                
+                let shuffledBytes = new Array(byteArray.length);
+                let map = new Array(byteArray.length); // Reconstruct map
+                
+                for(let i=0; i<byteArray.length; i++) {
+                    shuffledBytes[i] = byteArray[indices[i]];
+                    map[indices[i]] = i + 1; // Lua is 1-based
+                }
+                
+                const vMap = Titan.randVar(), vData = Titan.randVar(), vRes = Titan.randVar(), vOut = Titan.randVar();
+                
+                // Chunking massive arrays
+                const dataChunks = Titan.chunkString(shuffledBytes.join(','), 10000);
+                const mapChunks = Titan.chunkString(map.join(','), 10000);
+                
+                let script = Titan.getHeaders() + `local ${vData} = {}\nlocal ${vMap} = {}\n`;
+                
+                // Build Data Table
+                script += `local function _a(t, s) for n in string.gmatch(s, "([^,]+)") do table.insert(t, tonumber(n)) end end\n`;
+                dataChunks.forEach(c => script += `_a(${vData}, "${c}")\n`);
+                mapChunks.forEach(c => script += `_a(${vMap}, "${c}")\n`);
+                
+                script += `
+local ${vRes} = {}
+for i = 1, #${vMap} do
+    local idx = ${vMap}[i]
+    table.insert(${vRes}, string.char(${vData}[idx]))
+    if i % 5000 == 0 then task.wait() end
+end
+loadstring(table.concat(${vRes}))()
+`;
+                return script;
+            },
+
+            // B. Spectre AES (Block Cipher Simulation)
+            generateSpectre: (payload) => {
+                const encoder = new TextEncoder();
+                const byteArray = encoder.encode(payload);
+                const key = Math.floor(Math.random() * 255);
+                const iv = Math.floor(Math.random() * 255);
+                
+                let encrypted = [];
+                let prev = iv;
+                
+                // CBC-like Chain
+                for(let i=0; i<byteArray.length; i++) {
+                    let b = byteArray[i] ^ prev ^ key;
+                    encrypted.push(b);
+                    prev = b; // Chain
+                }
+                
+                const vData = Titan.randVar(), vRes = Titan.randVar();
+                const chunks = Titan.chunkString(encrypted.join(','), 10000);
+                
+                let script = Titan.getHeaders() + `local ${vData} = {}\nlocal function _p(s) for n in string.gmatch(s, "([^,]+)") do table.insert(${vData}, tonumber(n)) end end\n`;
+                chunks.forEach(c => script += `_p("${c}")\n`);
+                
+                script += `
+local ${vRes} = {}
+local p = ${iv}
+local k = ${key}
+for i, b in ipairs(${vData}) do
+    local d = bit32.bxor(b, p, k)
+    table.insert(${vRes}, string.char(d))
+    p = b
+    if i % 5000 == 0 then task.wait() end
+end
+loadstring(table.concat(${vRes}))()
+`;
+                return script;
+            },
+
+            // C. Obsidian Hex (Standard Stable)
+            generateLattice: (payload) => {
+                const encoder = new TextEncoder();
+                const byteArray = encoder.encode(payload);
+                const key = Math.floor(Math.random() * 200) + 10;
+                let hexString = "";
+                for(let i=0; i < byteArray.length; i++) {
+                    const byte = byteArray[i] ^ key; 
+                    let hex = byte.toString(16).toUpperCase();
+                    if(hex.length < 2) hex = "0" + hex;
+                    hexString += hex;
+                }
+                
+                const chunks = Titan.chunkString(hexString, 10000);
+                const vTab = Titan.randVar(), vRes = Titan.randVar(), vFunc = Titan.randVar(), vKey = Titan.randVar();
+                
+                let script = Titan.getHeaders() + `local ${vTab} = {}\n`;
+                chunks.forEach((chunk, idx) => script += `${vTab}[${idx+1}] = "${chunk}"\n`);
+                
+                script += `
+local ${vRes} = table.concat(${vTab})
+local ${vKey} = ${key}
+local function ${vFunc}(s)
+    local r = {}
+    for i = 1, #s, 2 do
+        local b = tonumber(string.sub(s, i, i+1), 16)
+        if b then table.insert(r, string.char(bit32.bxor(b, ${vKey}))) end
+        if i % 4000 == 1 then task.wait() end 
+    end
+    return table.concat(r)
+end
+loadstring(${vFunc}(${vRes}))()`;
+                return script;
+            },
+
+            generateBinary: (payload) => {
+                 const encoder = new TextEncoder();
+                 const byteArray = encoder.encode(payload);
+                 let binString = "";
+                 for(let i=0; i<byteArray.length; i++) {
+                     let bin = byteArray[i].toString(2);
+                     while(bin.length < 8) bin = "0" + bin;
+                     binString += bin;
+                 }
+                 const chunks = Titan.chunkString(binString, 10000);
+                 const vTab = Titan.randVar(), vRes = Titan.randVar(), vFunc = Titan.randVar();
+                 let script = Titan.getHeaders() + `local ${vTab} = {}\n`;
+                 chunks.forEach((c, i) => script += `${vTab}[${i+1}] = "${c}"\n`);
+                 script += `
+local ${vRes} = table.concat(${vTab})
+local function ${vFunc}(s)
+    local r = {}
+    for i = 1, #s, 8 do
+        local b = tonumber(string.sub(s, i, i+7), 2)
+        if b then table.insert(r, string.char(b)) end
+        if i % 4000 == 1 then task.wait() end
+    end
+    return table.concat(r)
+end
+loadstring(${vFunc}(${vRes}))()`;
+                return script;
+            },
+
+            generateBitwise: (payload) => {
+                const key = Math.floor(Math.random() * 50) + 1;
+                const encoder = new TextEncoder();
+                const byteArray = encoder.encode(payload);
+                let data = [];
+                for(let i=0; i<byteArray.length; i++) {
+                    let b = (byteArray[i] + key) % 255;
+                    data.push(b);
+                }
+                const chunks = Titan.chunkString(data.join(','), 10000);
+                const vTab = Titan.randVar(), vStr = Titan.randVar(), vFunc = Titan.randVar();
+                let script = Titan.getHeaders() + `local ${vTab} = {}\n`;
+                chunks.forEach((c, i) => script += `${vTab}[${i+1}] = "${c}"\n`);
+                script += `
+local ${vStr} = table.concat(${vTab})
+local function ${vFunc}(s)
+    local r = {}
+    local k = ${key}
+    for n in string.gmatch(s, "([^,]+)") do
+        local b = tonumber(n)
+        if b then
+             local d = (b - k) % 255
+             if d < 0 then d = d + 255 end
+             table.insert(r, string.char(d))
+        end
+    end
+    return table.concat(r)
+end
+loadstring(${vFunc}(${vStr}))()`;
+                return script;
+            },
+            
+            generatePolyXOR: (payload) => {
+                const encoder = new TextEncoder();
+                const byteArray = encoder.encode(payload);
+                let startKey = Math.floor(Math.random() * 200) + 1;
+                let key = startKey;
+                let hexString = "";
+                for(let i=0; i<byteArray.length; i++) {
+                    let b = byteArray[i] ^ key;
+                    key = (key * 1664525 + 1013904223) % 256;
+                    let hex = b.toString(16).toUpperCase();
+                    if(hex.length<2) hex="0"+hex;
+                    hexString += hex;
+                }
+                const chunks = Titan.chunkString(hexString, 10000);
+                const vTab = Titan.randVar(), vRes = Titan.randVar(), vFunc = Titan.randVar();
+                let script = Titan.getHeaders() + `local ${vTab} = {}\n`;
+                chunks.forEach((c, i) => script += `${vTab}[${i+1}] = "${c}"\n`);
+                script += `
+local ${vRes} = table.concat(${vTab})
+local function ${vFunc}(s)
+    local r = {}
+    local k = ${startKey}
+    for i = 1, #s, 2 do
+        local b = tonumber(string.sub(s, i, i+1), 16)
+        if b then
+            table.insert(r, string.char(bit32.bxor(b, k)))
+            k = (k * 1664525 + 1013904223) % 256
+        end
+        if i % 4000 == 1 then task.wait() end
+    end
+    return table.concat(r)
+end
+loadstring(${vFunc}(${vRes}))()`;
+                return script;
+            },
+
+            // --- MAIN PROCESS ---
+            process: async (code) => {
+                let fullPayload = Titan.getInjectedCode() + "\n" + code;
+                if(fullPayload.length > 500000) fullPayload = Titan.minify(fullPayload);
+
+                let output = "";
+                switch(config.algo) {
+                    case 'phantom': output = Titan.generatePhantom(fullPayload); break;
+                    case 'spectre': output = Titan.generateSpectre(fullPayload); break;
+                    case 'binary': output = Titan.generateBinary(fullPayload); break;
+                    case 'bitwise': output = Titan.generateBitwise(fullPayload); break;
+                    case 'polyxor': output = Titan.generatePolyXOR(fullPayload); break;
+                    default: output = Titan.generateLattice(fullPayload); break;
+                }
+                return output;
+            },
+
+            downloadFile: () => {
+                const text = document.getElementById('editor-output').value;
+                if(!text) return showToast("No output to save!");
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "Titan_Protected.lua";
+                a.click();
+                window.URL.revokeObjectURL(url);
+                showToast("File Saved!");
+            }
+        };
+
+        // --- Interaction Logic ---
+        const els = {
+            source: document.getElementById('editor-source'),
+            output: document.getElementById('editor-output'),
+            statsLines: document.getElementById('stats-lines'),
+            statsSize: document.getElementById('stats-size'),
+            loader: document.getElementById('loader'),
+            loaderText: document.getElementById('loader-text')
+        };
+
+        els.source.addEventListener('input', () => {
+            const val = els.source.value;
+            els.statsLines.innerText = val.split('\n').length;
+            els.statsSize.innerText = (new Blob([val]).size / 1024).toFixed(2);
+            saveState(); // Auto save
+        });
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = msg;
+            t.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => t.classList.add('translate-y-20', 'opacity-0'), 2500);
+        }
+
+        async function processScript() {
+            const code = els.source.value;
+            if(!code.trim()) return showToast("No code provided!");
+
+            const btn = document.getElementById('btn-process');
+            const originalText = document.getElementById('btn-text').innerText;
+            btn.disabled = true;
+            document.getElementById('btn-text').innerText = "PROCESSING...";
+            
+            if(window.innerWidth < 768) switchTab('output');
+            els.loader.classList.remove('hidden');
+            els.loader.classList.add('flex');
+            
+            if(code.length > 100000) els.loaderText.innerText = "HEAVY TASK...";
+
+            setTimeout(async () => {
+                try {
+                    const res = await Titan.process(code);
+                    els.output.value = res;
+                    showToast("Success! (" + (res.length/1024).toFixed(2) + " KB)");
+                } catch(e) {
+                    console.error(e);
+                    showToast("Error: " + e.message);
+                }
+                els.loader.classList.add('hidden');
+                els.loader.classList.remove('flex');
+                els.loaderText.innerText = "ENCRYPTING...";
+                btn.disabled = false;
+                document.getElementById('btn-text').innerText = originalText;
+            }, 300);
+        }
+
+        function applyTool(type) {
+            const code = els.source.value;
+            if(!code) return showToast("Empty source!");
+            if(type==='minify') els.source.value = Titan.minify(code);
+            if(type==='beautify') els.source.value = Titan.beautify(code);
+            showToast("Applied: " + type);
+        }
+
+        function copyOutput() {
+            if(!els.output.value) return;
+            navigator.clipboard.writeText(els.output.value);
+            showToast("Copied to clipboard");
+        }
+
+        function clearAll() {
+            els.source.value = '';
+            els.output.value = '';
+            showToast("Cleared");
+        }
+
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            const ov = document.getElementById('sidebar-overlay');
+            sb.classList.toggle('-translate-x-full');
+            ov.classList.toggle('hidden');
+        }
+
+        function switchTab(t) {
+            const vIn = document.getElementById('view-input');
+            const vOut = document.getElementById('view-output');
+            const tIn = document.getElementById('tab-input');
+            const tOut = document.getElementById('tab-output');
+            
+            if(t==='input') {
+                vIn.classList.remove('hidden'); vOut.classList.add('hidden');
+                tIn.classList.replace('border-blue-500', 'border-transparent'); tIn.classList.replace('text-white', 'text-gray-500');
+                tOut.classList.replace('border-transparent', 'border-blue-500'); tOut.classList.replace('text-gray-500', 'text-white');
+                tIn.classList.replace('border-blue-500', 'border-transparent'); tIn.classList.replace('text-white', 'text-gray-500');
+            } else {
+                vIn.classList.add('hidden'); vOut.classList.remove('hidden'); vOut.classList.add('flex');
+                tOut.classList.replace('border-transparent', 'border-blue-500'); tOut.classList.replace('text-gray-500', 'text-white');
+                tIn.classList.replace('border-blue-500', 'border-transparent'); tIn.classList.replace('text-white', 'text-gray-500');
+            }
+        }
+    </script>
+</body>
+</html>

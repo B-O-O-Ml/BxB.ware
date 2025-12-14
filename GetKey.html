@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BxB.ware | Get Key</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { lavender: { DEFAULT: '#c084fc', glow: 'rgba(192, 132, 252, 0.5)' }, dark: { bg: '#030005', card: '#0a050f' } },
+                    fontFamily: { sans: ['"Space Grotesk"', 'sans-serif'], mono: ['"JetBrains Mono"', 'monospace'] },
+                    animation: { 'pulse-glow': 'pulseGlow 3s infinite' },
+                    keyframes: { pulseGlow: { '0%, 100%': { boxShadow: '0 0 10px rgba(192, 132, 252, 0.2)' }, '50%': { boxShadow: '0 0 25px rgba(192, 132, 252, 0.6)' } } }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass-panel { background: rgba(13, 10, 20, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(192, 132, 252, 0.15); }
+        .step-check { transition: all 0.3s ease; }
+        .step-check.completed { background: #10b981; border-color: #10b981; color: white; }
+    </style>
+</head>
+<body class="bg-dark-bg text-white min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
+    
+    <!-- Background -->
+    <div class="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 z-0"></div>
+    <div class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-lavender-DEFAULT rounded-full blur-[150px] opacity-10"></div>
+
+    <div class="relative z-10 w-full max-w-md px-6">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold tracking-tighter flex items-center justify-center gap-2">
+                <i data-lucide="key" class="text-lavender"></i> BxB Key System
+            </h1>
+            <p class="text-gray-400 text-sm mt-2">Complete the steps below to generate your 24h key.</p>
+        </div>
+
+        <div class="glass-panel p-6 rounded-2xl shadow-2xl">
+            <!-- Steps -->
+            <div class="space-y-4 mb-6">
+                <!-- Step 1 -->
+                <a href="https://linkvertise.com/your-link-1" target="_blank" onclick="completeStep(1)" class="flex items-center justify-between p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer group">
+                    <div class="flex items-center gap-3">
+                        <div id="icon-1" class="w-8 h-8 rounded-full border border-lavender/30 flex items-center justify-center text-xs font-mono text-lavender step-check">1</div>
+                        <span class="font-medium text-sm">Complete Checkpoint 1</span>
+                    </div>
+                    <i data-lucide="external-link" class="w-4 h-4 text-gray-500 group-hover:text-white"></i>
+                </a>
+
+                <!-- Step 2 -->
+                <a href="https://linkvertise.com/your-link-2" target="_blank" onclick="completeStep(2)" class="flex items-center justify-between p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer group opacity-50 pointer-events-none" id="step-2-link">
+                    <div class="flex items-center gap-3">
+                        <div id="icon-2" class="w-8 h-8 rounded-full border border-lavender/30 flex items-center justify-center text-xs font-mono text-lavender step-check">2</div>
+                        <span class="font-medium text-sm">Complete Checkpoint 2</span>
+                    </div>
+                    <i data-lucide="external-link" class="w-4 h-4 text-gray-500 group-hover:text-white"></i>
+                </a>
+            </div>
+
+            <!-- Generate Button -->
+            <button id="gen-btn" disabled class="w-full py-3 rounded-lg bg-white/5 text-gray-500 font-bold cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4"></i> Generate Key
+            </button>
+
+            <!-- Key Display (Hidden) -->
+            <div id="key-container" class="hidden mt-4">
+                <div class="bg-black/50 p-3 rounded-lg border border-lavender/30 flex items-center justify-between">
+                    <code class="font-mono text-lavender text-sm" id="key-text">Generating...</code>
+                    <button onclick="copyKey()" class="p-2 hover:bg-white/10 rounded-md"><i data-lucide="copy" class="w-4 h-4"></i></button>
+                </div>
+                <p class="text-[10px] text-gray-500 mt-2 text-center">Expires in 24 hours.</p>
+            </div>
+        </div>
+
+        <div class="text-center mt-6 text-xs text-gray-600 font-mono">
+            &copy; 2025 BxB.ware Security
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        let steps = { 1: false, 2: false };
+
+        function completeStep(step) {
+            steps[step] = true;
+            
+            // Visual Update
+            const icon = document.getElementById(`icon-${step}`);
+            icon.classList.add('completed');
+            icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+
+            // Unlock next step
+            if(step === 1) {
+                const next = document.getElementById('step-2-link');
+                next.classList.remove('opacity-50', 'pointer-events-none');
+            }
+
+            // Check all
+            if(steps[1] && steps[2]) {
+                const btn = document.getElementById('gen-btn');
+                btn.disabled = false;
+                btn.classList.remove('bg-white/5', 'text-gray-500', 'cursor-not-allowed');
+                btn.classList.add('bg-lavender', 'text-black', 'hover:bg-white', 'shadow-[0_0_20px_rgba(192,132,252,0.4)]');
+                btn.innerHTML = `<i data-lucide="unlock" class="w-4 h-4"></i> Get Key Now`;
+                btn.onclick = generateKey;
+                lucide.createIcons();
+            }
+        }
+
+        function generateKey() {
+            // Logic จริงต้องเรียก API ไปที่ Server
+            // นี่คือ Demo
+            const btn = document.getElementById('gen-btn');
+            const container = document.getElementById('key-container');
+            const keyText = document.getElementById('key-text');
+
+            btn.classList.add('hidden');
+            container.classList.remove('hidden');
+            
+            // Random Key Mockup
+            const randomKey = 'BxB-Ware-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+            keyText.innerText = randomKey;
+        }
+
+        function copyKey() {
+            const key = document.getElementById('key-text').innerText;
+            navigator.clipboard.writeText(key);
+            alert('Key copied!');
+        }
+    </script>
+</body>
+</html>

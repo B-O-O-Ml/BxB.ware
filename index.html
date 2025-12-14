@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BxB.ware | Universal Script Nexus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        lavender: { DEFAULT: '#c084fc', glow: 'rgba(192, 132, 252, 0.5)' },
+                        obsidian: { bg: '#0f0f0f', sidebar: '#0a0a0a', border: '#2a2a2a' },
+                        dark: { bg: '#030005', card: '#0a050f' }
+                    },
+                    fontFamily: {
+                        sans: ['"Space Grotesk"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    animation: {
+                        'pulse-glow': 'pulseGlow 3s infinite',
+                        'scroll': 'scroll 20s linear infinite',
+                        'cursor-blink': 'blink 1s step-end infinite',
+                        'ping-short': 'ping 0.5s cubic-bezier(0, 0, 0.2, 1) 1',
+                    },
+                    keyframes: {
+                        pulseGlow: { '0%, 100%': { boxShadow: '0 0 10px rgba(192, 132, 252, 0.2)' }, '50%': { boxShadow: '0 0 25px rgba(192, 132, 252, 0.6)' } },
+                        scroll: { '0%': { transform: 'translateX(0)' }, '100%': { transform: 'translateX(-50%)' } },
+                        blink: { '0%, 100%': { opacity: '1' }, '50%': { opacity: '0' } }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* General Styles */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #030005; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #c084fc; }
+
+        .glass-panel {
+            background: rgba(13, 10, 20, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(192, 132, 252, 0.15);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+            transition: transform 0.1s ease-out;
+        }
+
+        .hover-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .hover-card:hover { transform: translateY(-5px); border-color: rgba(192, 132, 252, 0.5); box-shadow: 0 0 30px rgba(192, 132, 252, 0.15); }
+
+        /* Modal */
+        .modal { opacity: 0; visibility: hidden; transition: all 0.3s ease; }
+        .modal.active { opacity: 1; visibility: visible; }
+        .modal-content { transform: scale(0.95) translateY(20px); transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .modal.active .modal-content { transform: scale(1) translateY(0); }
+
+        /* Obsidian UI Simulator Styles */
+        .obsidian-window { font-family: 'JetBrains Mono', monospace; background-color: #0f0f0f; border: 1px solid #333; color: #dcdcdc; display: flex; flex-direction: column; overflow: hidden; }
+        .obsidian-header { height: 40px; background-color: #0f0f0f; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; }
+        .obsidian-sidebar { width: 45px; background-color: #0a0a0a; border-right: 1px solid #2a2a2a; display: flex; flex-direction: column; align-items: center; padding-top: 10px; gap: 15px; }
+        .obsidian-tab-icon { width: 24px; height: 24px; color: #666; cursor: pointer; transition: color 0.2s; }
+        .obsidian-tab-icon:hover, .obsidian-tab-icon.active { color: #7b68ee; }
+        .obsidian-content { flex-grow: 1; padding: 10px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start; }
+        .obs-groupbox { background-color: #0f0f0f; border: 1px solid #2a2a2a; padding: 10px; position: relative; margin-top: 10px; }
+        .obs-groupbox-title { position: absolute; top: -10px; left: 10px; background-color: #0f0f0f; padding: 0 5px; font-size: 12px; color: #dcdcdc; }
+        .obs-element { margin-bottom: 8px; font-size: 11px; }
+        .obs-toggle { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .obs-toggle-switch { width: 32px; height: 16px; background-color: #2a2a2a; border-radius: 8px; position: relative; transition: background-color 0.2s; }
+        .obs-toggle.active .obs-toggle-switch { background-color: #7b68ee; }
+        .obs-toggle-knob { width: 12px; height: 12px; background-color: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: left 0.2s; }
+        .obs-toggle.active .obs-toggle-knob { left: 18px; }
+        .obs-slider-container { margin-top: 5px; }
+        .obs-slider-header { display: flex; justify-content: space-between; color: #aaa; margin-bottom: 2px; }
+        .obs-slider-track { height: 12px; background-color: #1a1a1a; border: 1px solid #2a2a2a; position: relative; cursor: pointer; }
+        .obs-slider-fill { height: 100%; background-color: #7b68ee; width: 50%; }
+        .obs-dropdown, .obs-button { background-color: #1a1a1a; border: 1px solid #2a2a2a; padding: 6px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: #dcdcdc; width: 100%; }
+        .obs-button { justify-content: center; } .obs-button:hover { background-color: #2a2a2a; }
+        .obs-color-picker { width: 16px; height: 16px; border: 1px solid #333; cursor: pointer; }
+        .obs-search { background-color: #111; border: 1px solid #333; padding: 4px 10px; display: flex; align-items: center; width: 250px; color: #666; }
+
+        /* 3D Engine Styles */
+        #canvas-container { width: 100%; height: 100%; border-radius: 1rem; overflow: hidden; position: relative; cursor: crosshair; }
+        canvas { outline: none; }
+        .esp-overlay-text { position: absolute; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: bold; color: white; text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; pointer-events: none; transform: translate(-50%, -100%); display: none; z-index: 20; }
+        .esp-healthbar { position: absolute; width: 4px; border-radius: 2px; background-color: #222; display: none; z-index: 19; transform: translate(0, 0); border: 1px solid black; }
+        .esp-healthbar-inner { width: 100%; height: 100%; background-color: #00ff00; bottom: 0; position: absolute; transition: height 0.2s ease-out; }
+        
+        #crosshair { position: absolute; width: 20px; height: 20px; border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%); z-index: 30; transition: border-color 0.1s; }
+        #crosshair::after { content: ''; position: absolute; top: 50%; left: 50%; width: 4px; height: 4px; background: white; border-radius: 50%; transform: translate(-50%, -50%); }
+        #crosshair.locked { border-color: #ef4444; background-color: rgba(239, 68, 68, 0.1); }
+        #crosshair.locked::after { background: #ef4444; }
+        #fov-circle { position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 10; display: none; }
+        #prediction-line { position: absolute; height: 2px; background-color: yellow; transform-origin: 0 50%; opacity: 0.6; display: none; z-index: 25; pointer-events: none; }
+        
+        .esp-btn.active { background-color: #c084fc; color: black; border-color: #c084fc; box-shadow: 0 0 15px rgba(192, 132, 252, 0.4); }
+        .aim-part-btn.active { background-color: #c084fc; color: black; }
+
+        .cursor-bar { display: inline-block; width: 3px; height: 1em; background-color: #c084fc; vertical-align: middle; animation: blink 1s step-end infinite; }
+        
+        /* Slider Input */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: #c084fc; cursor: pointer; margin-top: -4px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+        .social-link:hover { color: #c084fc; transform: scale(1.1); }
+    </style>
+</head>
+<body class="bg-dark-bg text-white overflow-x-hidden relative min-h-screen flex flex-col">
+
+    <!-- Particle Canvas -->
+    <canvas id="particles-bg" class="fixed top-0 left-0 w-full h-full pointer-events-none z-0 opacity-40"></canvas>
+
+    <!-- Nav -->
+    <nav class="fixed top-0 w-full z-40 border-b border-white/5 bg-dark-bg/80 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-xl font-bold tracking-tighter cursor-pointer group">
+                <i data-lucide="cpu" class="text-lavender group-hover:text-white transition-colors"></i>
+                <span class="hover:text-lavender transition-colors">BxB<span class="text-lavender">.ware</span></span>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="openModal('changelog')" class="text-xs font-mono text-gray-400 hover:text-white transition-colors flex items-center gap-1"><i data-lucide="history" class="w-3 h-3"></i> Changelog</button>
+                <a href="https://discord.gg/yourdiscord" target="_blank" class="text-xs font-mono text-gray-400 hover:text-lavender transition-colors flex items-center gap-1"><i data-lucide="message-circle" class="w-3 h-3"></i> Discord</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="relative z-10 flex-grow flex flex-col justify-center pt-24 pb-10">
+        <div class="max-w-7xl mx-auto px-6 w-full">
+            
+            <!-- Hero Section -->
+            <div class="flex flex-col lg:flex-row items-center justify-between gap-12 mb-20">
+                <div class="lg:w-1/2 space-y-6">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-lavender/30 bg-lavender/5 text-lavender text-xs font-mono">
+                        <span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-lavender opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-lavender"></span></span> Status: UNDETECTED
+                    </div>
+                    <h1 class="text-5xl lg:text-7xl font-bold leading-none tracking-tight h-[2.2em] lg:h-[2.5em]">
+                        Break the <br>
+                        <span id="typewriter-text" class="text-transparent bg-clip-text bg-gradient-to-r from-lavender to-purple-600">Boundaries.</span><span class="cursor-bar"></span>
+                    </h1>
+                    <p class="text-gray-400 max-w-md text-lg leading-relaxed">The most advanced universal script hub. Optimized for performance, designed for domination.</p>
+                    <div class="flex gap-4">
+                         <a href="#interactive-demo" class="px-6 py-3 rounded-lg border border-white/10 hover:bg-white/5 transition-all flex items-center gap-2 text-sm font-bold">Try Interactive Demo <i data-lucide="arrow-down" class="w-4 h-4"></i></a>
+                         <a href="#status-dashboard" class="px-6 py-3 rounded-lg border border-transparent text-lavender hover:bg-lavender/10 transition-all flex items-center gap-2 text-sm font-bold">Check Status</a>
+                    </div>
+                </div>
+                <div class="lg:w-1/2 w-full">
+                    <div class="glass-panel rounded-xl overflow-hidden shadow-2xl">
+                        <div class="bg-black/40 px-4 py-2 flex items-center gap-2 border-b border-white/5"><span class="text-xs text-gray-500 font-mono ml-2">Loader.lua</span></div>
+                        <div class="p-6 bg-[#080808] relative">
+                            <div class="overflow-x-auto pb-2 mb-2"><pre class="font-mono text-sm text-lavender whitespace-nowrap selection:bg-lavender selection:text-black">loadstring(game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_Loaded.lua"))()</pre></div>
+                            <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                                <button onclick="copyScript(this)" class="flex-1 bg-white text-black hover:bg-gray-200 font-bold py-3 rounded-lg flex items-center justify-center gap-2"><i data-lucide="copy" class="w-4 h-4"></i><span>Copy Script</span></button>
+                                <a href="getkey.html" target="_blank" class="flex-1 bg-lavender text-black hover:bg-purple-400 font-bold py-3 rounded-lg flex items-center justify-center gap-2"><i data-lucide="key" class="w-4 h-4"></i><span>Get Key Link</span></a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATUS DASHBOARD -->
+            <div id="status-dashboard" class="mb-24 scroll-mt-24">
+                <div class="glass-panel p-6 rounded-2xl border border-lavender/20">
+                    <div class="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
+                        <h2 class="text-lg font-bold flex items-center gap-2"><i data-lucide="activity" class="text-lavender"></i> Support Executor</h2>
+                        <div class="flex items-center gap-2 text-xs font-mono text-green-400"><span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> All Systems Operational</div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-white/5 rounded-lg p-3 flex flex-col gap-1 hover:bg-white/10 transition-colors"><span class="text-xs text-gray-400 font-mono">Wave (PC)</span><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-sm font-bold">Working</span></div></div>
+                        <div class="bg-white/5 rounded-lg p-3 flex flex-col gap-1 hover:bg-white/10 transition-colors"><span class="text-xs text-gray-400 font-mono">Solara (PC)</span><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-sm font-bold">Working</span></div></div>
+                        <div class="bg-white/5 rounded-lg p-3 flex flex-col gap-1 hover:bg-white/10 transition-colors"><span class="text-xs text-gray-400 font-mono">Seliware (PC)</span><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-sm font-bold">Working</span></div></div>
+                        <div class="bg-white/5 rounded-lg p-3 flex flex-col gap-1 hover:bg-white/10 transition-colors"><span class="text-xs text-gray-400 font-mono">Delta (Mobile)</span><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-sm font-bold">Working</span></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- INTERACTIVE DEMO (SWITCHER) -->
+            <div id="interactive-demo" class="mb-24 flex flex-col items-center scroll-mt-24">
+                <div class="flex items-center gap-4 mb-6">
+                    <h2 class="text-2xl font-bold">Interactive Demo</h2>
+                    <!-- BUTTONS -->
+                    <div class="flex bg-white/5 rounded-lg p-1 border border-white/10">
+                        <button onclick="switchView('visual')" id="btn-view-visual" class="px-4 py-1.5 text-xs font-bold rounded-md bg-lavender text-black transition-all">Visual Engine</button>
+                        <button onclick="switchView('ui')" id="btn-view-ui" class="px-4 py-1.5 text-xs font-bold rounded-md text-gray-400 hover:text-white transition-all">UI Simulator</button>
+                    </div>
+                </div>
+
+                <!-- VIEW 1: VISUAL ENGINE -->
+                <div id="view-visual" class="w-full flex flex-col lg:flex-row gap-6 max-w-5xl transition-opacity duration-300">
+                    <!-- 3D Canvas -->
+                    <div class="glass-panel p-2 rounded-2xl relative w-full lg:w-2/3 h-[450px] shadow-2xl border-lavender/20">
+                        <div id="canvas-container">
+                            <div id="fov-circle"></div> <div id="crosshair"></div> <div id="prediction-line"></div>
+                            <div id="esp-nametag" class="esp-overlay-text">Dummy_Player [Lvl 100]</div>
+                            <div id="esp-distance" class="esp-overlay-text text-gray-300 !text-[8px]" style="margin-top: 12px;">15m</div>
+                            <div id="esp-healthbar" class="esp-healthbar"><div id="healthbar-fill" class="esp-healthbar-inner"></div></div>
+                        </div>
+                        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-wrap justify-center gap-2 bg-black/60 backdrop-blur-md p-2 rounded-xl border border-white/10 w-max max-w-[95%]">
+                            <button onclick="toggleESP('chams', this)" class="esp-btn px-2 py-1 text-[9px] font-mono font-bold rounded border border-white/20 text-white hover:bg-white/10">CHAMS</button>
+                            <button onclick="toggleESP('box', this)" class="esp-btn px-2 py-1 text-[9px] font-mono font-bold rounded border border-white/20 text-white hover:bg-white/10">BOX</button>
+                            <button onclick="toggleESP('skeleton', this)" class="esp-btn px-2 py-1 text-[9px] font-mono font-bold rounded border border-white/20 text-white hover:bg-white/10">SKEL</button>
+                            <button onclick="toggleESP('headDot', this)" class="esp-btn px-2 py-1 text-[9px] font-mono font-bold rounded border border-white/20 text-white hover:bg-white/10">DOT</button>
+                            <button onclick="toggleESP('nametag', this)" class="esp-btn px-2 py-1 text-[9px] font-mono font-bold rounded border border-white/20 text-white hover:bg-white/10">NAME</button>
+                            <button onclick="toggleESP('healthbar', this)" class="esp-btn px-2 py-1 text-[9px] font-mono font-bold rounded border border-white/20 text-white hover:bg-white/10">HP</button>
+                        </div>
+                        <div class="absolute top-4 left-4 z-20 pointer-events-none">
+                            <span id="fps-counter" class="text-green-500 text-[10px] font-mono font-bold">FPS: 60 | <span class="text-white animate-pulse">CLICK DUMMY TO SHOOT</span></span>
+                        </div>
+                    </div>
+
+                    <!-- Aimbot Settings -->
+                    <div class="glass-panel p-6 rounded-2xl w-full lg:w-1/3 flex flex-col gap-6 h-[450px]">
+                        <div class="flex items-center gap-2 border-b border-white/10 pb-3">
+                            <i data-lucide="crosshair" class="text-lavender"></i>
+                            <h3 class="font-bold">Aimbot Config</h3>
+                        </div>
+                        <div class="flex-grow space-y-5">
+                            <!-- Aimbot Toggle -->
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium">Enable Aimbot</span>
+                                <button id="aim-toggle" onclick="toggleAimbot()" class="w-10 h-5 rounded-full bg-white/10 relative transition-colors"><div class="w-3 h-3 bg-white rounded-full absolute top-1 left-1 transition-transform"></div></button>
+                            </div>
+                            <!-- FOV Toggle -->
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-400">Show FOV</span>
+                                <button id="fov-toggle" onclick="toggleFOV()" class="w-10 h-5 rounded-full bg-white/10 relative transition-colors"><div class="w-3 h-3 bg-white rounded-full absolute top-1 left-1 transition-transform"></div></button>
+                            </div>
+                            <!-- Smoothness -->
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-xs text-gray-400"><span>Smoothness</span><span id="smooth-val">10</span></div>
+                                <input type="range" min="1" max="20" value="10" class="w-full" oninput="updateSmooth(this.value)">
+                            </div>
+                             <!-- Prediction -->
+                             <div class="space-y-2">
+                                <div class="flex justify-between text-xs text-gray-400"><span>Prediction</span><span id="pred-val">0</span></div>
+                                <input type="range" min="0" max="100" value="0" class="w-full" oninput="updatePredictionVal(this.value)">
+                            </div>
+                            <!-- Aim Part -->
+                            <div class="space-y-2">
+                                <span class="text-xs text-gray-400">Aim Part</span>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button onclick="setAimPart('Head', this)" class="aim-part-btn active bg-lavender text-black text-xs font-bold py-2 rounded">Head</button>
+                                    <button onclick="setAimPart('Torso', this)" class="aim-part-btn bg-white/5 hover:bg-white/10 text-gray-400 text-xs font-bold py-2 rounded">Torso</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VIEW 2: UI SIMULATOR -->
+                <div id="view-ui" class="hidden w-full max-w-4xl h-[550px] transition-opacity duration-300">
+                    <div class="obsidian-window w-full h-full rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-[#333]">
+                        <div class="obsidian-header">
+                            <div class="flex items-center gap-3">
+                                <div class="w-6 h-6 border-2 border-white rounded-b-lg flex items-center justify-center text-[10px] font-bold">U</div>
+                                <div class="flex flex-col leading-none"><span class="text-red-500 font-bold text-sm">BxB.ware <span class="text-[#444]">|</span> <span class="text-red-500">Premium</span></span><span class="text-[#666] text-[10px]" id="header-subtitle">Key Status / Info</span></div>
+                            </div>
+                            <div class="flex items-center gap-2"><div class="obs-search rounded flex items-center"><i data-lucide="search" class="w-3 h-3 mr-2"></i><span class="text-xs">Search</span></div><i data-lucide="move" class="w-4 h-4 text-[#444]"></i></div>
+                        </div>
+                        <div class="flex flex-grow overflow-hidden">
+                            <div class="obsidian-sidebar">
+                                <div class="obsidian-tab-icon active" onclick="switchSimTab('info', this)"><i data-lucide="database" class="w-5 h-5"></i></div>
+                                <div class="obsidian-tab-icon" onclick="switchSimTab('player', this)"><i data-lucide="users" class="w-5 h-5"></i></div>
+                                <div class="obsidian-tab-icon" onclick="switchSimTab('visuals', this)"><i data-lucide="eye" class="w-5 h-5"></i></div>
+                                <div class="obsidian-tab-icon" onclick="switchSimTab('combat', this)"><i data-lucide="crosshair" class="w-5 h-5"></i></div>
+                                <div class="obsidian-tab-icon" onclick="switchSimTab('misc', this)"><i data-lucide="gamepad-2" class="w-5 h-5"></i></div>
+                                <div class="obsidian-tab-icon" onclick="switchSimTab('settings', this)"><i data-lucide="settings" class="w-5 h-5"></i></div>
+                            </div>
+                            <div id="sim-content" class="obsidian-content"></div>
+                        </div>
+                        <div class="h-6 bg-[#0f0f0f] border-t border-[#2a2a2a] flex items-center justify-center text-[10px] text-[#444]">No Footer<i data-lucide="maximize-2" class="w-3 h-3 absolute right-2 text-[#444]"></i></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CORE MODULES -->
+            <div class="mb-24">
+                <div class="flex items-center justify-between mb-8">
+                    <h2 class="text-2xl font-bold">Core Modules <span class="text-gray-500 text-sm font-normal ml-2">(Click for details)</span></h2>
+                    <div class="h-px bg-white/10 flex-grow ml-6"></div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Combat -->
+                    <div onclick="openModal('aimbot')" class="glass-panel p-6 rounded-2xl hover-card cursor-pointer group relative overflow-hidden flex flex-col justify-between">
+                        <div>
+                            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><i data-lucide="crosshair" class="w-24 h-24 text-lavender"></i></div>
+                            <div class="w-12 h-12 bg-lavender/10 rounded-lg flex items-center justify-center mb-4 text-lavender"><i data-lucide="crosshair" class="w-6 h-6"></i></div>
+                            <h3 class="text-xl font-bold mb-2">Combat / Aimbot</h3><p class="text-sm text-gray-400">Legit & Rage modes with advanced prediction.</p>
+                        </div>
+                        <div class="mt-4 flex items-center text-xs text-lavender font-mono group-hover:text-white transition-colors">
+                            <span>View Configs & Logs</span>
+                            <i data-lucide="arrow-right" class="w-3 h-3 ml-2 group-hover:translate-x-1 transition-transform"></i>
+                        </div>
+                    </div>
+                    <!-- Visuals -->
+                    <div onclick="openModal('visuals')" class="glass-panel p-6 rounded-2xl hover-card cursor-pointer group relative overflow-hidden flex flex-col justify-between">
+                        <div>
+                            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><i data-lucide="eye" class="w-24 h-24 text-lavender"></i></div>
+                            <div class="w-12 h-12 bg-lavender/10 rounded-lg flex items-center justify-center mb-4 text-lavender"><i data-lucide="eye" class="w-6 h-6"></i></div>
+                            <h3 class="text-xl font-bold mb-2">ESP / Visuals</h3><p class="text-sm text-gray-400">High performance ESP with Chams & Tracers.</p>
+                        </div>
+                        <div class="mt-4 flex items-center text-xs text-lavender font-mono group-hover:text-white transition-colors">
+                            <span>View Configs & Logs</span>
+                            <i data-lucide="arrow-right" class="w-3 h-3 ml-2 group-hover:translate-x-1 transition-transform"></i>
+                        </div>
+                    </div>
+                    <!-- Game / Movement (New) -->
+                    <div onclick="openModal('game')" class="glass-panel p-6 rounded-2xl hover-card cursor-pointer group relative overflow-hidden flex flex-col justify-between">
+                        <div>
+                            <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><i data-lucide="gamepad-2" class="w-24 h-24 text-lavender"></i></div>
+                            <div class="w-12 h-12 bg-lavender/10 rounded-lg flex items-center justify-center mb-4 text-lavender"><i data-lucide="move" class="w-6 h-6"></i></div>
+                            <h3 class="text-xl font-bold mb-2">Game & Movement</h3><p class="text-sm text-gray-400">Custom Game Modules & Player physics (Fly/Speed).</p>
+                        </div>
+                        <div class="mt-4 flex items-center text-xs text-lavender font-mono group-hover:text-white transition-colors">
+                            <span>View Configs & Logs</span>
+                            <i data-lucide="arrow-right" class="w-3 h-3 ml-2 group-hover:translate-x-1 transition-transform"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CREDITS (UPDATED) -->
+            <div class="mb-10 text-center">
+                <h2 class="text-xl font-bold mb-6">Development Team</h2>
+                <div class="flex flex-wrap justify-center gap-6">
+                    <!-- BXMQZ -->
+                    <div class="glass-panel px-6 py-5 rounded-2xl flex flex-col items-center gap-3 border border-lavender/20 w-64 hover:border-lavender/50 transition-colors">
+                        <div class="flex items-center gap-4 w-full">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-lavender to-purple-800 flex items-center justify-center font-bold text-black text-xl">B</div>
+                            <div class="text-left"><div class="font-bold">BXMQZ</div><div class="text-xs text-gray-400 font-mono">Lead Developer</div></div>
+                        </div>
+                        <div class="flex gap-4 mt-2 w-full justify-center pt-3 border-t border-white/5">
+                            <a href="#" class="social-link transition-transform" title="Facebook"><i data-lucide="facebook" class="w-4 h-4"></i></a>
+                            <a href="#" class="social-link transition-transform" title="Instagram"><i data-lucide="instagram" class="w-4 h-4"></i></a>
+                            <a href="#" class="social-link transition-transform" title="GitHub"><i data-lucide="github" class="w-4 h-4"></i></a>
+                            <a href="#" class="social-link transition-transform" title="TikTok">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+                            </a>
+                        </div>
+                    </div>
+                    <!-- Obsidian -->
+                    <div class="glass-panel px-6 py-5 rounded-2xl flex flex-col items-center gap-3 border border-lavender/20 w-64 hover:border-lavender/50 transition-colors">
+                        <div class="flex items-center gap-4 w-full">
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-gray-700 to-gray-900 flex items-center justify-center font-bold text-white border border-white/10 text-xl">UI</div>
+                            <div class="text-left"><div class="font-bold">Obsidian Lib</div><div class="text-xs text-gray-400 font-mono">Interface Engine</div></div>
+                        </div>
+                        <div class="flex gap-4 mt-2 w-full justify-center pt-3 border-t border-white/5">
+                            <a href="#" class="social-link transition-transform" title="GitHub"><i data-lucide="github" class="w-4 h-4"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mb-10 text-center text-gray-500 text-sm">BxB.ware © 2025. All rights reserved.</div>
+        </div>
+    </main>
+
+    <!-- Bottom Status Bar -->
+    <div class="fixed bottom-0 w-full bg-dark-card border-t border-white/5 py-1 px-4 z-50 flex justify-between items-center text-[10px] font-mono text-gray-500 uppercase tracking-widest">
+        <div class="flex items-center gap-4"><span class="flex items-center gap-2"><div class="w-1.5 h-1.5 rounded-full bg-green-500"></div> Servers: Online</span><span class="hidden md:inline"> |  Latest: v2.5.0</span></div>
+        <div>BxB.ware © 2025</div>
+    </div>
+
+    <!-- MODAL -->
+    <div id="info-modal" class="modal fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div onclick="closeModal()" class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+        <div class="modal-content glass-panel w-full max-w-2xl rounded-2xl relative overflow-hidden flex flex-col max-h-[80vh]">
+            <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <div class="flex items-center gap-3"><div id="modal-icon" class="p-2 bg-lavender/20 rounded-lg text-lavender"></div><div><h3 id="modal-title" class="text-xl font-bold"></h3><p id="modal-subtitle" class="text-xs text-gray-400 font-mono"></p></div></div>
+                <button onclick="closeModal()" class="p-2 hover:bg-white/10 rounded-lg transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <div class="mb-6"><h4 class="text-sm font-bold text-lavender mb-3 uppercase tracking-wider">Overview</h4><p id="modal-desc" class="text-gray-300 text-sm leading-relaxed"></p></div>
+                <div class="bg-black/30 rounded-xl p-4 border border-white/5"><h4 class="text-sm font-bold text-white mb-3 flex items-center gap-2"><i data-lucide="git-commit" class="w-4 h-4 text-lavender"></i> Recent Changelogs</h4><ul id="modal-logs" class="space-y-3 font-mono text-xs text-gray-400"></ul></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // --- VIEW SWITCHER ---
+        function switchView(viewName) {
+            const visual = document.getElementById('view-visual');
+            const ui = document.getElementById('view-ui');
+            const btnVisual = document.getElementById('btn-view-visual');
+            const btnUi = document.getElementById('btn-view-ui');
+
+            if (viewName === 'visual') {
+                visual.classList.remove('hidden');
+                ui.classList.add('hidden');
+                btnVisual.classList.add('bg-lavender', 'text-black');
+                btnVisual.classList.remove('text-gray-400');
+                btnUi.classList.remove('bg-lavender', 'text-black');
+                btnUi.classList.add('text-gray-400');
+            } else {
+                visual.classList.add('hidden');
+                ui.classList.remove('hidden');
+                btnUi.classList.add('bg-lavender', 'text-black');
+                btnUi.classList.remove('text-gray-400');
+                btnVisual.classList.remove('bg-lavender', 'text-black');
+                btnVisual.classList.add('text-gray-400');
+            }
+        }
+
+        // --- UI SIMULATOR DATA ---
+        const simData = {
+            info: `<div class="obs-groupbox"><div class="obs-groupbox-title">Key / Role</div><div class="obs-element text-[#ccc] font-bold mb-2">Key Information</div><hr class="border-[#333] mb-2"><div class="obs-element">Key: <span class="text-white">OWNER</span></div><div class="obs-element">Role: <span class="text-yellow-400">Owner</span></div><div class="obs-element">Status: <span class="text-white">active</span></div><div class="obs-element">Tier: <span class="text-white">Dev tier</span></div><div class="obs-element">Note: <span class="text-white">Normal user key (unix timestamp)</span></div><div class="obs-element">Created at: <span class="text-white">05/12/24 - 07:20:00</span></div><div class="obs-element">Expire at: <span class="text-white">05/01/26 - 00:00:00</span></div><div class="obs-element">Time left: <span class="text-white">27d 11h 1m</span></div><hr class="border-[#333] my-2"><div class="obs-element text-yellow-500">Key is bound to your HWID. Sharing key may result in ban.</div></div><div class="obs-groupbox"><div class="obs-groupbox-title">Game / System</div><div class="obs-element text-[#ccc] font-bold mb-2">Game / System / Player</div><hr class="border-[#333] mb-2"><div class="obs-element">Game: <span class="text-white">Bee Swarm Simulator (PlaceId: 1537690962)</span></div><div class="obs-element">JobId: <span class="text-white">759dae59-d10c-4648-8aab-ee427534f24a</span></div><div class="obs-element">Player: <span class="text-white">wbya (418233044)</span></div><div class="obs-element">FPS: <span class="text-white">199</span></div><div class="obs-element">Ping: <span class="text-white">64461 ms</span></div><div class="obs-element">Memory: <span class="text-white">0 MB</span></div><hr class="border-[#333] my-2"><div class="obs-element text-[#ccc] font-bold mb-2">Credits</div><div class="obs-element">Owner: <span class="text-white">YOUR_NAME_HERE</span></div><div class="obs-element">UI: <span class="text-white">Obsidian UI Library</span></div><div class="obs-element">Discord: <span class="text-white">yourdiscord</span></div></div>`,
+            player: `<div class="obs-groupbox"><div class="obs-groupbox-title">Movement & Character</div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Custom WalkSpeed</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>WalkSpeed</span><span>16/200</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 8%;"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Lock on spawn</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Custom JumpPower</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>JumpPower</span><span>50/200</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 25%;"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Lock on spawn</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Infinite Jump</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Fly (WASD / Space / Ctrl)</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Fly speed</span><span>60/200</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 30%;"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>NoClip</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-button">Reset movement</div></div><div class="obs-groupbox"><div class="obs-groupbox-title">Teleport / Utility / View</div><div class="obs-element text-[#ccc] font-bold">Teleport to Player</div><div class="obs-element">Target player</div><div class="obs-dropdown mb-2"><span>---</span><i data-lucide="chevron-down" class="w-3 h-3"></i></div><div class="obs-button mb-1">Teleport now</div><div class="obs-button mb-2">Refresh player list</div><hr class="border-[#333] mb-2"><div class="obs-element text-[#ccc] font-bold">View / Camera</div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Enable FOV changer</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>FOV</span><span>70/120</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 58%;"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Fullbright (world)</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-button mb-1">Rejoin server</div><div class="obs-button">Server hop (random)</div></div>`,
+            visuals: `<div class="obs-groupbox"><div class="obs-groupbox-title">Player ESP</div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Enable ESP</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element">Box mode</div><div class="obs-dropdown mb-2"><span>Box</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>3D Chams (Highlight)</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Head dot</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Name & distance</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Health bar</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Tracer</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Offscreen arrows</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Limit ESP by FOV</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>ESP FOV radius (px)</span><span>500/1000</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 50%;"></div></div></div></div><div class="obs-groupbox"><div class="obs-groupbox-title">Filter / Visual / Whitelist</div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Team check</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Ignore friends</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Visible only (ESP)</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Wall check (สำหรับสีแดง/เขียว)</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Max distance</span><span>1000/5000</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 20%;"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Max players</span><span>30/100</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 30%;"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Update interval (ms)</span><span>80/250</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 32%;"></div></div></div><hr class="border-[#333] my-2"><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Distance fade</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Fade start</span><span>500/5000</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 10%;"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Fade end</span><span>2000/5000</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 40%;"></div></div></div><hr class="border-[#333] my-2"><div class="obs-element text-[#ccc] font-bold">Manual whitelist</div><div class="obs-element">Whitelist players</div><div class="obs-dropdown mb-2"><span>---</span><i data-lucide="chevron-down" class="w-3 h-3"></i></div><div class="obs-element">Whitelisted: (none)</div><div class="obs-button">Refresh player list</div></div>`,
+            combat: `<div class="obs-groupbox"><div class="obs-groupbox-title">Core Aimbot</div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Enable Aimbot</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element">Mode</div><div class="obs-dropdown mb-2"><span>Legit</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-element">Aim type</div><div class="obs-dropdown mb-2"><span>Hold</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>FOV radius</span><span>120/360</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 33%;"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Show FOV circle</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Smooth (1-20)</span><span>5/20</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 25%;"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Hit chance (%)</span><span>100/100</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 100%;"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Team check</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Ignore friends</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-toggle active" onclick="toggleObs(this)"><span>Visible only (Aimbot)</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Max distance</span><span>1000/5000</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 20%;"></div></div></div><div class="obs-element">Activation: Right mouse button</div></div><div class="obs-groupbox"><div class="obs-groupbox-title">Target / Extra</div><div class="obs-element">Aim part mode</div><div class="obs-dropdown mb-2"><span>Head</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-element text-[#ccc] font-bold">RandomWeighted: part weights</div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Head weight</span><span>60/100</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 60%;"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Chest weight</span><span>25/100</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 25%;"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Arms weight</span><span>10/100</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 10%;"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>Legs weight</span><span>5/100</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 5%;"></div></div></div><hr class="border-[#333] my-2"><div class="obs-element text-[#ccc] font-bold">Extra (Skeleton / Silent / Trigger)</div><div class="obs-element">SilentAim / Triggerbot / Recoil ต้องต่อกับ module per-game</div></div>`,
+            misc: `<div class="obs-groupbox"><div class="obs-groupbox-title">Anti-AFK / Safety</div><div class="obs-element obs-toggle" onclick="toggleObs(this)"><span>Enable Anti-AFK</span><div class="obs-toggle-switch"><div class="obs-toggle-knob"></div></div></div><div class="obs-element obs-slider-container"><div class="obs-slider-header"><span>AFK interval (sec)</span><span>60/600</span></div><div class="obs-slider-track"><div class="obs-slider-fill" style="width: 10%;"></div></div></div><div class="obs-button">Panic (Unload Hub)</div></div><div class="obs-groupbox"><div class="obs-groupbox-title">System / Devtools</div><div class="obs-element text-[#ccc] font-bold">Server tools (duplicate)</div><div class="obs-element">Server hop / Rejoin มีใน Player Tab แล้ว</div><hr class="border-[#333] my-2"><div class="obs-element text-[#ccc] font-bold">Dev tools (stub)</div><div class="obs-element">สามารถเพิ่ม Logger / Console / ESP debug ภายหลัง</div></div>`,
+            settings: `<div class="obs-groupbox"><div class="obs-groupbox-title">Themes</div><div class="obs-element flex justify-between"><span>Background color</span><div class="obs-color-picker bg-[#0f0f0f]"></div></div><div class="obs-element flex justify-between"><span>Main color</span><div class="obs-color-picker bg-[#1a1a1a]"></div></div><div class="obs-element flex justify-between"><span>Accent color</span><div class="obs-color-picker bg-[#7b68ee]"></div></div><div class="obs-element flex justify-between"><span>Outline color</span><div class="obs-color-picker bg-[#333]"></div></div><div class="obs-element flex justify-between"><span>Font color</span><div class="obs-color-picker bg-white"></div></div><div class="obs-element">Font Face</div><div class="obs-dropdown mb-2"><span>Code</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-element">Theme list</div><div class="obs-dropdown mb-2"><span>Default</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-button mb-2">Set as default</div><hr class="border-[#333] my-2"><div class="obs-element">Custom theme name</div><input type="text" class="w-full bg-[#111] border border-[#333] mb-2 px-1 text-xs"><div class="obs-button mb-2">Create theme</div><div class="obs-element">Custom themes</div><div class="obs-dropdown mb-2"><span>---</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-button mb-1">Load theme</div><div class="obs-button mb-1">Overwrite theme</div><div class="obs-button mb-1">Delete theme</div><div class="obs-button mb-1">Refresh list</div><div class="obs-button mb-1">Set as default</div><div class="obs-button">Reset default</div></div><div class="obs-groupbox"><div class="obs-groupbox-title">Config / Misc</div><div class="obs-element text-[#ccc] font-bold">Config</div><hr class="border-[#333] mb-2"><div class="obs-button mb-1">Unload Hub</div><div class="obs-button mb-2">Copy Discord</div><div class="flex items-center gap-1 text-[#7b68ee] font-bold mt-4 mb-2"><i data-lucide="folder" class="w-4 h-4"></i> Configuration</div><div class="obs-element">Config name</div><input type="text" class="w-full bg-[#111] border border-[#333] mb-2 px-1 text-xs"><div class="obs-button mb-2">Create config</div><div class="obs-element">Config list</div><div class="obs-dropdown mb-2"><span>---</span><i data-lucide="chevron-up" class="w-3 h-3"></i></div><div class="obs-button mb-1">Load config</div><div class="obs-button mb-1">Overwrite config</div><div class="obs-button mb-1">Delete config</div><div class="obs-button mb-1">Refresh list</div><div class="obs-button mb-1">Set as autoload</div><div class="obs-button mb-2">Reset autoload</div><div class="obs-element">Current autoload config: none</div></div>`
+        };
+
+        const subtitles = { info: "Key Status / Info", player: "Player Tool", visuals: "ESP Client", combat: "Combat Client", misc: "Misc Client", settings: "UI/UX Settings" };
+
+        function switchSimTab(tab, el) {
+            document.querySelectorAll('.obsidian-tab-icon').forEach(t => t.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById('header-subtitle').innerText = subtitles[tab];
+            document.getElementById('sim-content').innerHTML = simData[tab];
+            lucide.createIcons();
+            
+            // Add interactivity to sliders in UI Simulator
+            const trackElements = document.querySelectorAll('.obs-slider-track');
+            trackElements.forEach(track => {
+                let isDragging = false;
+                
+                const updateSlider = (clientX) => {
+                    const rect = track.getBoundingClientRect();
+                    const percent = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+                    track.querySelector('.obs-slider-fill').style.width = (percent * 100) + '%';
+                    const textSpan = track.parentElement.querySelector('.obs-slider-header span:last-child');
+                    if(textSpan) {
+                         const parts = textSpan.innerText.split('/');
+                         if(parts.length === 2) {
+                             const max = parseInt(parts[1]);
+                             const val = Math.round(max * percent);
+                             textSpan.innerText = `${val}/${max}`;
+                         }
+                    }
+                };
+
+                track.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    updateSlider(e.clientX);
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (isDragging) {
+                        updateSlider(e.clientX);
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    isDragging = false;
+                });
+            });
+        }
+        function toggleObs(el) { el.classList.toggle('active'); }
+        // Initialize Sim
+        switchSimTab('info', document.querySelector('.obsidian-tab-icon'));
+
+        // --- TYPEWRITER ---
+        const typeWriterElement = document.getElementById('typewriter-text');
+        const words = ["Boundaries.", "Limits.", "Rules.", "Game."];
+        let wordIndex = 0, charIndex = 0, isDeleting = false;
+        function typeLoop() {
+            const currentWord = words[wordIndex];
+            if(isDeleting) { typeWriterElement.innerText = currentWord.substring(0, charIndex - 1); charIndex--; }
+            else { typeWriterElement.innerText = currentWord.substring(0, charIndex + 1); charIndex++; }
+            if(!isDeleting && charIndex === currentWord.length) { isDeleting = true; setTimeout(typeLoop, 2000); return; }
+            if(isDeleting && charIndex === 0) { isDeleting = false; wordIndex = (wordIndex + 1) % words.length; }
+            setTimeout(typeLoop, isDeleting ? 50 : 150);
+        }
+        typeLoop();
+
+        function copyScript(btn) { navigator.clipboard.writeText('loadstring(game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_Loaded.lua"))()'); btn.innerText = "COPIED!"; setTimeout(() => btn.innerText = "Copy Script", 1000); }
+
+        // --- 3D ENGINE ---
+        let scene, camera, renderer, characterGroup, boxHelper;
+        let skeletonHelper, headDotMesh;
+        let nametagEl, distanceEl, healthbarEl, crosshairEl, fovCircleEl, predLineEl;
+        let espState = { chams: false, box: false, skeleton: false, headDot: false, nametag: false, healthbar: false, distance: false };
+        let aimState = { enabled: false, fov: false, smooth: 10, part: 'Head', predict: false };
+        let currentCrosshair = { x: 0, y: 0 }, targetCrosshair = { x: 0, y: 0 }; 
+        let materials = { 
+            normal: new THREE.MeshLambertMaterial({ color: 0x888888 }), 
+            chams: new THREE.MeshBasicMaterial({ color: 0xc084fc, depthTest: false, transparent: true, opacity: 0.6 }),
+            hit: new THREE.MeshBasicMaterial({ color: 0xff0000 })
+        };
+        let controls, raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+        let headRef, feetRef; 
+        let dummyHealth = 100;
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+            nametagEl = document.getElementById('esp-nametag'); distanceEl = document.getElementById('esp-distance'); healthbarEl = document.getElementById('esp-healthbar');
+            crosshairEl = document.getElementById('crosshair'); fovCircleEl = document.getElementById('fov-circle'); predLineEl = document.getElementById('prediction-line');
+            
+            currentCrosshair.x = container.clientWidth / 2; currentCrosshair.y = container.clientHeight / 2;
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.z = 8; camera.position.y = 1;
+            
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Correct light initialization
+            const ambientLight = new THREE.AmbientLight(0x404040, 2);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(1, 1, 2).normalize();
+            scene.add(dirLight);
+
+            characterGroup = new THREE.Group();
+            const createLimb = (w, h, d, x, y, z, name) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials.normal); m.position.set(x, y, z); m.name=name; return m; };
+            characterGroup.add(createLimb(1, 1, 1, 0, 2.5, 0, 'Head'), createLimb(1.6, 1.8, 0.8, 0, 1, 0, 'Torso'), createLimb(0.8, 2, 0.8, -1.3, 1, 0, 'LeftArm'), createLimb(0.8, 2, 0.8, 1.3, 1, 0, 'RightArm'), createLimb(0.7, 2, 0.8, -0.4, -1.1, 0, 'LeftLeg'), createLimb(0.7, 2, 0.8, 0.4, -1.1, 0, 'RightLeg'));
+            scene.add(characterGroup);
+
+            // Height References
+            headRef = new THREE.Object3D(); headRef.position.set(0, 3.2, 0); characterGroup.add(headRef);
+            feetRef = new THREE.Object3D(); feetRef.position.set(0, -2.2, 0); characterGroup.add(feetRef);
+
+            boxHelper = new THREE.Box3Helper(new THREE.Box3().setFromObject(characterGroup), 0xffffff); boxHelper.visible = false; scene.add(boxHelper);
+            
+            headDotMesh = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), new THREE.MeshBasicMaterial({ color: 0xff0000, depthTest: false, transparent: true }));
+            headDotMesh.position.set(0, 2.5, 0); headDotMesh.visible = false; characterGroup.add(headDotMesh);
+
+            const pts = [new THREE.Vector3(0, 2.5, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1.3, 1, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(1.3, 1, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-0.4, -1.1, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0.4, -1.1, 0)];
+            skeletonHelper = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
+            skeletonHelper.visible = false; characterGroup.add(skeletonHelper);
+            
+            // Shooting Logic Restored
+            container.addEventListener('mousedown', (event) => {
+                const rect = container.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / container.clientWidth) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / container.clientHeight) * 2 + 1;
+                
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(characterGroup.children);
+                
+                if (intersects.length > 0) {
+                    shootDummy();
+                }
+            });
+
+            window.addEventListener('resize', () => { camera.aspect = container.clientWidth/container.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(container.clientWidth, container.clientHeight); });
+            animate();
+        }
+
+        function shootDummy() {
+            // Flash Red
+            characterGroup.children.forEach(c => {
+                if(c.isMesh && c !== headDotMesh) {
+                    c.material = materials.hit;
+                    setTimeout(() => {
+                        c.material = espState.chams ? materials.chams : materials.normal;
+                    }, 100);
+                }
+            });
+
+            // Damage
+            dummyHealth -= 10;
+            if(dummyHealth < 0) dummyHealth = 0;
+            const bar = document.getElementById('healthbar-fill');
+            if(bar) bar.style.height = dummyHealth + '%';
+
+            // Reset if dead
+            if(dummyHealth === 0) {
+                 setTimeout(() => {
+                    dummyHealth = 100;
+                    if(bar) bar.style.height = '100%';
+                 }, 1000);
+            }
+        }
+
+        function toScreenPosition(obj, camera, container) {
+            const v = new THREE.Vector3(); obj.updateMatrixWorld(); v.setFromMatrixPosition(obj.matrixWorld); v.project(camera);
+            return { x: (v.x * container.clientWidth/2) + container.clientWidth/2, y: -(v.y * container.clientHeight/2) + container.clientHeight/2 };
+        }
+
+        let time = 0;
+        function animate() {
+            requestAnimationFrame(animate);
+            const container = document.getElementById('canvas-container'); if(!container) return;
+            controls.update();
+            time += 0.01;
+            
+            if (characterGroup) {
+                if(espState.box || espState.healthbar) boxHelper.box.setFromObject(characterGroup);
+                
+                // ESP Overlays
+                if (espState.nametag || espState.distance) {
+                    const sp = toScreenPosition(headRef, camera, container);
+                    if(espState.nametag) { nametagEl.style.display = 'block'; nametagEl.style.left = sp.x+'px'; nametagEl.style.top = sp.y+'px'; } else nametagEl.style.display = 'none';
+                    if(espState.distance) { distanceEl.style.display = 'block'; distanceEl.style.left = sp.x+'px'; distanceEl.style.top = sp.y+'px'; } else distanceEl.style.display = 'none';
+                }
+                if (espState.healthbar) {
+                    // Correct dynamic height calculation
+                    const topPos = toScreenPosition(headRef, camera, container);
+                    const botPos = toScreenPosition(feetRef, camera, container);
+                    const h = Math.abs(botPos.y - topPos.y);
+                    
+                    healthbarEl.style.display = 'block'; 
+                    healthbarEl.style.left = (topPos.x - h/3 - 5)+'px'; 
+                    healthbarEl.style.top = topPos.y+'px'; 
+                    healthbarEl.style.height = h+'px';
+                } else healthbarEl.style.display = 'none';
+                
+                // Aimbot
+                if(aimState.enabled) {
+                    crosshairEl.classList.add('locked');
+                    const boneY = aimState.part === 'Head' ? 2.5 : 1.0;
+                    const tObj = new THREE.Object3D(); tObj.position.set(0, boneY, 0); characterGroup.add(tObj);
+                    if(aimState.predict) tObj.position.x += 0.5;
+                    targetCrosshair = toScreenPosition(tObj, camera, container); characterGroup.remove(tObj);
+                    
+                    if(aimState.predict) {
+                        const dist = Math.sqrt(Math.pow(targetCrosshair.x - currentCrosshair.x, 2) + Math.pow(targetCrosshair.y - currentCrosshair.y, 2));
+                        predLineEl.style.display = 'block'; predLineEl.style.width = dist+'px'; predLineEl.style.left = currentCrosshair.x+'px'; predLineEl.style.top = currentCrosshair.y+'px';
+                        predLineEl.style.transform = `rotate(${Math.atan2(targetCrosshair.y - currentCrosshair.y, targetCrosshair.x - currentCrosshair.x) * 180 / Math.PI}deg)`;
+                    } else predLineEl.style.display = 'none';
+                } else {
+                    crosshairEl.classList.remove('locked'); predLineEl.style.display = 'none';
+                    targetCrosshair = { x: (container.clientWidth/2) + Math.sin(time)*50, y: (container.clientHeight/2) + Math.cos(time)*30 };
+                }
+                const lerp = 1 / (aimState.smooth * 2);
+                currentCrosshair.x += (targetCrosshair.x - currentCrosshair.x) * lerp;
+                currentCrosshair.y += (targetCrosshair.y - currentCrosshair.y) * lerp;
+                crosshairEl.style.left = currentCrosshair.x+'px'; crosshairEl.style.top = currentCrosshair.y+'px';
+            }
+            renderer.render(scene, camera);
+        }
+
+        // --- Controls Logic ---
+        function switchView(viewName) {
+            const visual = document.getElementById('view-visual');
+            const ui = document.getElementById('view-ui');
+            const btnVisual = document.getElementById('btn-view-visual');
+            const btnUi = document.getElementById('btn-view-ui');
+
+            if (viewName === 'visual') {
+                visual.classList.remove('hidden');
+                ui.classList.add('hidden');
+                btnVisual.classList.add('bg-lavender', 'text-black');
+                btnVisual.classList.remove('text-gray-400');
+                btnUi.classList.remove('bg-lavender', 'text-black');
+                btnUi.classList.add('text-gray-400');
+            } else {
+                visual.classList.add('hidden');
+                ui.classList.remove('hidden');
+                btnUi.classList.add('bg-lavender', 'text-black');
+                btnUi.classList.remove('text-gray-400');
+                btnVisual.classList.remove('bg-lavender', 'text-black');
+                btnVisual.classList.add('text-gray-400');
+            }
+        }
+
+        function toggleESP(f, b) { espState[f] = !espState[f]; b.classList.toggle('active', espState[f]); updateVisuals(); }
+        
+        function toggleAimbot() { 
+            aimState.enabled = !aimState.enabled; 
+            const btn = document.getElementById('aim-toggle');
+            if(aimState.enabled) {
+                btn.classList.remove('bg-white/10'); btn.classList.add('bg-green-500');
+                btn.querySelector('div').classList.add('translate-x-5');
+            } else {
+                btn.classList.add('bg-white/10'); btn.classList.remove('bg-green-500');
+                btn.querySelector('div').classList.remove('translate-x-5');
+            }
+        }
+        function toggleFOV() { 
+            aimState.fov = !aimState.fov; 
+            const btn = document.getElementById('fov-toggle');
+            document.getElementById('fov-circle').style.display = aimState.fov ? 'block' : 'none'; 
+            if(aimState.fov) {
+                btn.classList.remove('bg-white/10'); btn.classList.add('bg-green-500');
+                btn.querySelector('div').classList.add('translate-x-5');
+            } else {
+                btn.classList.add('bg-white/10'); btn.classList.remove('bg-green-500');
+                btn.querySelector('div').classList.remove('translate-x-5');
+            }
+        }
+        function updateSmooth(v) { aimState.smooth = parseInt(v); document.getElementById('smooth-val').innerText = v; }
+        function togglePrediction() { 
+            aimState.predict = !aimState.predict; 
+            const btn = document.getElementById('pred-toggle');
+            const slider = document.getElementById('pred-slider-container');
+            if(aimState.predict) {
+                btn.classList.remove('bg-white/10'); btn.classList.add('bg-green-500');
+                btn.querySelector('div').classList.add('translate-x-5');
+                slider.style.display = 'block';
+            } else {
+                btn.classList.add('bg-white/10'); btn.classList.remove('bg-green-500');
+                btn.querySelector('div').classList.remove('translate-x-5');
+                slider.style.display = 'none';
+            }
+        }
+        function updatePredictionVal(v) {
+             document.getElementById('pred-val').innerText = v;
+             // Only logic visual effect update here if needed
+        }
+
+        function setAimPart(p, b) { aimState.part = p; document.querySelectorAll('.aim-part-btn').forEach(x => x.classList.remove('active', 'bg-lavender', 'text-black')); b.classList.add('active', 'bg-lavender', 'text-black'); }
+        function updateVisuals() { characterGroup.children.forEach(c => { if (c.isMesh && c !== headDotMesh) c.material = espState.chams ? materials.chams : materials.normal; }); boxHelper.visible = espState.box; skeletonHelper.visible = espState.skeleton; headDotMesh.visible = espState.headDot; }
+        
+        window.addEventListener('DOMContentLoaded', init3D);
+
+        // Particles & Modal
+        const cvs = document.getElementById('particles-bg'); const ctx = cvs.getContext('2d');
+        function resize() { cvs.width=window.innerWidth; cvs.height=window.innerHeight; }
+        window.addEventListener('resize', resize); resize();
+        let pts = []; for(let i=0;i<50;i++) pts.push({x:Math.random()*cvs.width, y:Math.random()*cvs.height, vx:(Math.random()-.5)*.5, vy:(Math.random()-.5)*.5});
+        function animParts() { ctx.clearRect(0,0,cvs.width,cvs.height); ctx.fillStyle = 'rgba(192, 132, 252, 0.3)'; pts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; if(p.x<0)p.x=cvs.width; if(p.x>cvs.width)p.x=0; if(p.y<0)p.y=cvs.height; if(p.y>cvs.height)p.y=0; ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill(); }); requestAnimationFrame(animParts); }
+        animParts();
+
+        const modalData = { 
+            aimbot: { title: "Combat & Aimbot", subtitle: "Module v2.1", icon: "crosshair", desc: "Our Aimbot engine features 'Deadzone' logic and randomized hit-chance.", logs: ["[v2.5] Nearest bone logic", "[v2.4] Fixed prediction"] },
+            visuals: { title: "ESP & Visuals", subtitle: "Module v3.0", icon: "eye", desc: "High performance ESP with Chams & Tracers.", logs: ["[v3.0] Offscreen arrows", "[v2.9] Optimized render loop"] },
+            game: { title: "Game & Movement", subtitle: "Module v1.5", icon: "gamepad-2", desc: "Specific game modules (Blox Fruits, etc.) and player physics modifications like Fly, Noclip, Speed.", logs: ["[v1.5] Added Fly bypass", "[v1.2] Blox Fruits Auto-farm"] },
+            changelog: { title: "Changelog", subtitle: "History", icon: "history", desc: "Latest Updates", logs: ["[v2.5] Release", "[v2.4] Fixes"] } 
+        };
+        function openModal(key) { const d = modalData[key]; if(!d) return; document.getElementById('modal-title').innerText=d.title; document.getElementById('modal-subtitle').innerText=d.subtitle; document.getElementById('modal-desc').innerText=d.desc; document.getElementById('modal-icon').innerHTML=`<i data-lucide="${d.icon}" class="w-6 h-6"></i>`; document.getElementById('modal-logs').innerHTML=d.logs.map(l=>`<li class="flex gap-3"><span class="text-lavender/50">></span><span>${l}</span></li>`).join(''); document.getElementById('info-modal').classList.add('active'); }
+        function closeModal() { document.getElementById('info-modal').classList.remove('active'); }
+    </script>
+</body>
+</html>

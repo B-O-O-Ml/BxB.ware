@@ -1,0 +1,158 @@
+{
+  "status": "online",
+  "message": "Key server online",
+  "version": "1.2.0",
+  "last_update": "2025-12-05 14:30:00",
+  "keys": [
+      {
+      "key": "BxB-Ware-PremiumFree",
+      "role": "premium",
+      "status": "active",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/05/25 00:00:00",
+      "expire": "1/08/26 00:00:00",
+      "note": "Global free key (no HWID binding, 1 Month!!)"
+    },
+    {
+      "key": "FREE",
+      "role": "free",
+      "status": "active",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/05/25 00:00:00",
+      "expire": null,
+      "note": "Global free key (no HWID binding, never expires)"
+    },
+    {
+      "key": "OWNER",
+      "role": "owner",
+      "status": "active",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": 1733383200,
+      "expire": "1/05/26 00:00:00",
+      "note": "Normal user key (unix timestamp)"
+    },
+    {
+      "key": "USER-BASIC-1234",
+      "role": "owner",
+      "status": "banned",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": 1733383200,
+      "expire": "1/05/26 00:00:00",
+      "note": "Normal user key (unix timestamp)"
+    },
+    {
+      "key": "TRIAL-1DAY-USER",
+      "role": "trial",
+      "status": "active",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/05/25 10:00:00",
+      "expire": "12/06/25 10:00:00",
+      "note": "1 day trial key (bind HWID)"
+    },
+    {
+      "key": "USER-BASIC-1234",
+      "role": "user",
+      "status": "active",
+      "bind_hwid": true,
+      "hwid_hash": "1122AABB7788CCDD",
+      "timestamp": 1733383200,
+      "expire": 1735975200,
+      "note": "Normal user key (unix timestamp)"
+    },
+    {
+      "key": "PREMIUM-OBSIDIAN-777",
+      "role": "premium",
+      "status": "active",
+      "bind_hwid": true,
+      "hwid_hash": "FFEEDDCCBBAA0099",
+      "timestamp": "12/01/25 00:00:00",
+      "expire": "12/31/2025 23:59:59",
+      "note": "Premium key (MM/DD/YYYY format)"
+    },
+    {
+      "key": "VIP-TH-ULTIMATE",
+      "role": "vip",
+      "status": "active",
+      "bind_hwid": true,
+      "hwid_hash": "9988776655443322",
+      "timestamp": "05/12/25 00:00:00",
+      "expire": "31/12/25 23:59:59",
+      "note": "VIP key (DD/MM/YY format)"
+    },
+    {
+      "key": "RESELLER-KEY-ABC",
+      "role": "reseller",
+      "status": "active",
+      "bind_hwid": true,
+      "hwid_hash": "ABCDABCDABCDABCD",
+      "timestamp": 1733356800,
+      "expire": 1736035200,
+      "note": "Reseller key"
+    },
+    {
+      "key": "STAFF-DEV-TEAM",
+      "role": "staff",
+      "status": "active",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/01/25 12:00:00",
+      "expire": null,
+      "note": "Staff key (no HWID binding, lifetime)"
+    },
+    {
+      "key": "OWNER-MASTER-KEY",
+      "role": "owner",
+      "status": "active",
+      "bind_hwid": true,
+      "hwid_hash": "MASTERHWIDHASH0001",
+      "timestamp": "01/01/25 00:00:00",
+      "expire": null,
+      "note": "Owner key"
+    },
+    {
+      "key": "BANNED-TEST-USER",
+      "role": "user",
+      "status": "banned",
+      "bind_hwid": true,
+      "hwid_hash": "BANNEDHWID001122",
+      "timestamp": "11/01/25 00:00:00",
+      "expire": null,
+      "note": "This key is banned"
+    },
+    {
+      "key": "DISABLED-OLD-KEY",
+      "role": "premium",
+      "status": "disabled",
+      "bind_hwid": true,
+      "hwid_hash": "OLDDISABLEDHWID",
+      "timestamp": "10/01/25 00:00:00",
+      "expire": "10/15/25 00:00:00",
+      "note": "Old premium key, disabled by admin"
+    },
+    {
+      "key": "EXPIRED-KEY-EXAMPLE",
+      "role": "user",
+      "status": "expired",
+      "bind_hwid": true,
+      "hwid_hash": "EXPIREDHWID123",
+      "timestamp": "09/01/25 00:00:00",
+      "expire": "09/05/25 00:00:00",
+      "note": "Example expired key"
+    },
+    {
+      "key": "MAINT-TEST-KEY",
+      "role": "test",
+      "status": "test",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": "12/05/25 13:00:00",
+      "expire": null,
+      "note": "Test key for developer / QA"
+    }
+  ]
+}

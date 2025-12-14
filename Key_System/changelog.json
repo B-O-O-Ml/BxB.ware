@@ -1,0 +1,80 @@
+{
+  "status": "online",
+  "project": "Obsidian Universal Hub",
+  "latest_version": "1.5.0",
+  "entries": [
+    {
+      "version": "1.5.0",
+      "date": "2025-12-05 13:45:00",
+      "channel": "stable",
+      "status": "released",
+      "title": "Combat & ESP upgrade",
+      "highlights": [
+        "Improved aimbot smoothing and weighted hitpart logic.",
+        "Added ESP distance fade and ESP FOV limiter.",
+        "Added free-key (no HWID) support in Key UI."
+      ],
+      "changes": {
+        "added": [
+          "Support for free keys (bind_hwid = false) without HWID check.",
+          "RandomWeighted aimpart mode (Head/Chest/Arms/Legs with sliders).",
+          "ESP FOV circle limiter for performance."
+        ],
+        "changed": [
+          "ESP box scaling now adapts to distance for better readability.",
+          "Aimbot smoothness range changed to 0.05–1.00 for better control."
+        ],
+        "fixed": [
+          "Fixed groupbox layout not updating when resizing window.",
+          "Fixed MainHub crash when Drawing API is not available."
+        ],
+        "removed": []
+      }
+    },
+    {
+      "version": "1.4.0",
+      "date": "2025-11-28 21:10:00",
+      "channel": "stable",
+      "status": "released",
+      "title": "Key UI & MainHub integration",
+      "highlights": [
+        "Added second layer keycheck for MainHub.",
+        "Integrated Key UI with MainHub loader."
+      ],
+      "changes": {
+        "added": [
+          "Key UI window with Info/Status/Script Info/Changelog tabs.",
+          "MainHub loader that accepts (Exec, keydata, keycheck) parameters.",
+          "Key auto-load from local file for valid keys."
+        ],
+        "changed": [
+          "Refactored Exec abstraction for multi-executor support."
+        ],
+        "fixed": [
+          "Fixed issue where status text overlapped in Status groupbox."
+        ],
+        "removed": []
+      }
+    },
+    {
+      "version": "1.3.0",
+      "date": "2025-11-20 18:30:00",
+      "channel": "beta",
+      "status": "deprecated",
+      "title": "Early ESP & Player build",
+      "highlights": [
+        "Initial ESP (box + name + tracer).",
+        "Basic Player tab (WalkSpeed, JumpPower, Fly, NoClip)."
+      ],
+      "changes": {
+        "added": [
+          "Player tab with Movement/Character controls.",
+          "ESP box + tracers with simple settings."
+        ],
+        "changed": [],
+        "fixed": [],
+        "removed": []
+      }
+    }
+  ]
+}
