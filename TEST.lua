@@ -5,7 +5,7 @@ local Players            = game:GetService("Players")
 local RunService         = game:GetService("RunService")
 local Stats              = game:GetService("Stats")
 local MarketplaceService = game:GetService("MarketplaceService")
-local UserInputService   = game:GetService("UserInputService") -- เพิ่มบรรทัดนี้
+local UserInputService   = game:GetService("UserInputService") 
 -- VirtualUser for simulating user input (Anti-AFK)
 local VirtualUser        = game:GetService("VirtualUser")
 
