@@ -423,12 +423,12 @@ local function MainHub(Exec, keydata, authToken)
     local ExpireLabel   = safeRichLabel(KeyBox, string.format("<b>Expire:</b> %s", expireDisplay))
     local TimeLeftLabel = safeRichLabel(KeyBox, string.format("<b>Time left:</b> %s", timeLeftDisplay))
 
-    -- อัปเดต Expire / Time left แบบ realtime (ทุก ~1 วินาที)
+    -- Update Expire / Time left in real time. Refresh more frequently (~0.25s)
     do
         local acc = 0
         AddConnection(RunService.Heartbeat:Connect(function(dt)
             acc = acc + dt
-            if acc < 1 then
+            if acc < 0.25 then
                 return
             end
             acc = 0
@@ -523,7 +523,8 @@ local function MainHub(Exec, keydata, authToken)
         local acc = 0
         AddConnection(RunService.Heartbeat:Connect(function(dt)
             acc = acc + dt
-            if acc < 0.5 then
+            -- Update more frequently (~0.25s) for smoother display
+            if acc < 0.25 then
                 return
             end
             acc = 0
@@ -552,6 +553,9 @@ local function MainHub(Exec, keydata, authToken)
             if okMem and type(mem) == "number" then
                 memMb = math.floor(mem)
             end
+
+            -- Update players count as well so the label reflects the actual server state
+            updatePlayersLabel()
 
             if PerfLabel and PerfLabel.TextLabel then
                 PerfLabel.TextLabel.Text = string.format(
@@ -1484,6 +1488,20 @@ local function MainHub(Exec, keydata, authToken)
                 if data.Highlight then
                     pcall(function() data.Highlight:Destroy() end)
                 end
+                -- remove skeleton lines
+                if data.Skeleton then
+                    for _, ln in pairs(data.Skeleton) do
+                        pcall(function() ln:Remove() end)
+                    end
+                end
+                -- remove head dot
+                if data.HeadDot then
+                    pcall(function() data.HeadDot:Remove() end)
+                end
+                -- remove info tag
+                if data.Info then
+                    pcall(function() data.Info:Remove() end)
+                end
                 espDrawings[plr] = nil
             end
         end
@@ -1919,6 +1937,7 @@ local function MainHub(Exec, keydata, authToken)
 
                                 -- Skeleton lines
                                 if SkeletonToggle and SkeletonToggle.Value then
+                                    -- initialise skeleton table if not present
                                     if not data.Skeleton then
                                         data.Skeleton = {}
                                     end
@@ -1926,6 +1945,7 @@ local function MainHub(Exec, keydata, authToken)
                                     for joint, parentName in pairs(skeletonJoints) do
                                         local part1 = char:FindFirstChild(joint)
                                         local part2 = char:FindFirstChild(parentName)
+                                        -- ensure drawing line exists at this index
                                         local ln = data.Skeleton[idx]
                                         if not ln then
                                             ln = Drawing.new("Line")
@@ -1934,23 +1954,24 @@ local function MainHub(Exec, keydata, authToken)
                                             data.Skeleton[idx] = ln
                                         end
                                         if part1 and part2 then
+                                            -- project both parts onto screen
                                             local sp1, vis1 = cam:WorldToViewportPoint(part1.Position)
                                             local sp2, vis2 = cam:WorldToViewportPoint(part2.Position)
                                             if vis1 or vis2 then
-                                                ln.Visible = true
-                                            local skCol = (Options.bxw_esp_skeleton_color and Options.bxw_esp_skeleton_color.Value) or (Options.bxw_esp_box_color and Options.bxw_esp_box_color.Value) or Color3.fromRGB(255,255,255)
-                                                -- Apply wall check colors to skeleton if enabled
+                                                -- choose base colour from user settings
+                                                local skCol = (Options.bxw_esp_skeleton_color and Options.bxw_esp_skeleton_color.Value) or (Options.bxw_esp_box_color and Options.bxw_esp_box_color.Value) or Color3.fromRGB(255,255,255)
+                                                -- override with wall check colour
                                                 if WallToggle.Value then
                                                     skCol = finalColor
                                                 end
-                                                -- Smart ESP: adjust each skeleton segment based on line-of-sight
                                                 if SmartEspToggle and SmartEspToggle.Value then
+                                                    -- perform per-endpoint visibility check to adjust colour per segment
                                                     local rpSk = RaycastParams.new()
                                                     rpSk.FilterDescendantsInstances = { char, LocalPlayer.Character }
                                                     rpSk.FilterType = Enum.RaycastFilterType.Blacklist
-                                                    local dir1 = (part1.Position - camPos)
+                                                    local dir1 = part1.Position - camPos
                                                     local hit1 = Workspace:Raycast(camPos, dir1, rpSk)
-                                                    local dir2 = (part2.Position - camPos)
+                                                    local dir2 = part2.Position - camPos
                                                     local hit2 = Workspace:Raycast(camPos, dir2, rpSk)
                                                     local blocked1 = hit1 and hit1.Instance and not hit1.Instance:IsDescendantOf(char)
                                                     local blocked2 = hit2 and hit2.Instance and not hit2.Instance:IsDescendantOf(char)
@@ -1958,7 +1979,7 @@ local function MainHub(Exec, keydata, authToken)
                                                         ln.Visible = false
                                                     else
                                                         ln.Visible = true
-                                                        -- Color red if any end is blocked, green if both ends are visible
+                                                        -- assign colour based on whether either end is blocked
                                                         if blocked1 or blocked2 then
                                                             ln.Color = Color3.fromRGB(255, 0, 0)
                                                         else
@@ -1968,10 +1989,11 @@ local function MainHub(Exec, keydata, authToken)
                                                         ln.To   = Vector2.new(sp2.X, sp2.Y)
                                                     end
                                                 else
+                                                    -- normal skeleton segment
                                                     ln.Visible = true
                                                     ln.Color = skCol
-                                                    ln.From = Vector2.new(sp1.X, sp1.Y)
-                                                    ln.To   = Vector2.new(sp2.X, sp2.Y)
+                                                    ln.From  = Vector2.new(sp1.X, sp1.Y)
+                                                    ln.To    = Vector2.new(sp2.X, sp2.Y)
                                                 end
                                             else
                                                 ln.Visible = false
@@ -1981,6 +2003,7 @@ local function MainHub(Exec, keydata, authToken)
                                         end
                                         idx = idx + 1
                                     end
+                                    -- hide any unused skeleton lines
                                     if data.Skeleton then
                                         for j = idx, #data.Skeleton do
                                             local ln = data.Skeleton[j]
@@ -1990,6 +2013,7 @@ local function MainHub(Exec, keydata, authToken)
                                         end
                                     end
                                 else
+                                    -- skeleton not enabled: hide all lines
                                     if data.Skeleton then
                                         for _, ln in pairs(data.Skeleton) do
                                             ln.Visible = false
