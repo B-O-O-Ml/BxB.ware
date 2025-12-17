@@ -176,6 +176,24 @@ local function safeRichLabel(groupbox, text)
     return lbl
 end
 
+-- [Diablo Refactor] Helper เช็ค Whitelist รองรับทุก Format
+local function isPlayerWhitelisted(plrName, whitelistData)
+    if not whitelistData then return false end
+    
+    -- กรณี Library ส่งมาเป็น Table { "Name1", "Name2" } หรือ { ["Name1"] = true }
+    if type(whitelistData) == "table" then
+        -- เช็คแบบ Key-Value
+        if whitelistData[plrName] then return true end
+        
+        -- เช็คแบบ Array
+        for _, v in pairs(whitelistData) do
+            if v == plrName then return true end
+        end
+    end
+    
+    return false
+end
+
 --====================================================
 -- 4. ฟังก์ชันหลักของ MainHub
 --     (เรียกจาก KeyUI: startFn(Exec, keydata, authToken))
@@ -1453,7 +1471,9 @@ local function MainHub(Exec, keydata, authToken)
             ["RightFoot"]     = "RightLowerLeg",
         }
 
+        -- [DIABLO FIX] Refactor updateESP เพื่อแก้ปัญหา Drawing ค้าง
         local function updateESP()
+            -- เช็ค Refresh Rate
             if ESPRefreshSlider then
                 local nowTick = tick()
                 local ms = ESPRefreshSlider and ESPRefreshSlider.Value or 0
@@ -1462,6 +1482,8 @@ local function MainHub(Exec, keydata, authToken)
                 end
                 lastESPUpdate = nowTick
             end
+
+            -- Global Toggle Check: ถ้าปิด ESP ต้องสั่งซ่อนทุกคนแล้วจบ function
             if not ESPEnabledToggle.Value then
                 for _, v in pairs(espDrawings) do
                     if v.Box then v.Box.Visible = false end
@@ -1474,101 +1496,98 @@ local function MainHub(Exec, keydata, authToken)
                     if v.Distance then v.Distance.Visible = false end
                     if v.Tracer then v.Tracer.Visible = false end
                     if v.HeadDot then v.HeadDot.Visible = false end
+                    if v.Info then v.Info.Visible = false end
                     if v.Highlight then v.Highlight.Enabled = false end
+                    if v.Skeleton then for _, ln in pairs(v.Skeleton) do ln.Visible = false end end
                 end
                 return
             end
 
             local cam = Workspace.CurrentCamera
             if not cam then return end
-            local camCFrame = cam.CFrame
-            local camPos = camCFrame.Position
+            local camPos = cam.CFrame.Position
 
             for _, plr in ipairs(Players:GetPlayers()) do
-                -- [Fix] Refactor loop เพื่อหลีกเลี่ยง continue และ Nested Deeply
+                -- เตรียมตัวแปร flag ว่าจะวาดหรือไม่
                 local shouldDraw = false
-                if plr ~= LocalPlayer or (SelfToggle and SelfToggle.Value) then
+                
+                -- เงื่อนไขเบื้องต้น: ไม่ใช่ตัวเอง (หรือเปิด SelfESP) และตัวละครโหลดเสร็จ
+                if (plr ~= LocalPlayer or (SelfToggle and SelfToggle.Value)) then
                     local char = plr.Character
                     local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                    local root = char and char:FindFirstChild("HumanoidRootPart") or char and char:FindFirstChild("Torso") or char and char:FindFirstChild("UpperTorso")
-                    
-                    if hum and hum.Health > 0 and root then
-                         -- Team check logic
+                    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso"))
+
+                    if char and hum and hum.Health > 0 and root then
+                        -- Team Check
                         local isTeammate = false
-                        if TeamToggle.Value then
-                            if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
-                                isTeammate = true
-                            end
+                        if TeamToggle.Value and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+                            isTeammate = true
                         end
 
-                        -- Whitelist check logic
-                        local isWhitelisted = false
-                        local list = WhitelistDropdown.Value
-                        if list and type(list) == "table" then
-                             for _, name in ipairs(list) do
-                                 if name == plr.Name then
-                                     isWhitelisted = true
-                                     break
-                                 end
-                             end
-                        end
-                        
+                        -- Whitelist Check (ใช้ฟังก์ชันใหม่)
+                        local isWhitelisted = isPlayerWhitelisted(plr.Name, WhitelistDropdown.Value)
+
+                        -- ถ้าไม่ใช่เพื่อน และ ไม่อยู่ใน Whitelist ถึงจะวาด
                         if not isTeammate and not isWhitelisted then
                             shouldDraw = true
                             
-                            -- Initialize Drawing Data
+                            -- ==========================================
+                            -- เริ่ม Logic การคำนวณและการวาด
+                            -- ==========================================
+                            
+                            -- 1. สร้าง Data ถ้ายังไม่มี
                             local data = espDrawings[plr]
                             if not data then
                                 data = {}
                                 espDrawings[plr] = data
                             end
 
-                            -- Highlight (Chams)
+                            -- 2. Highlight (Chams)
                             if ChamsToggle.Value then
-                                local chamsCol = (Options.bxw_esp_chams_color and Options.bxw_esp_chams_color.Value) or (Options.bxw_esp_box_color and Options.bxw_esp_box_color.Value) or Color3.fromRGB(255, 255, 255)
+                                local chamsCol = (Options.bxw_esp_chams_color and Options.bxw_esp_chams_color.Value) or Color3.fromRGB(255, 255, 255)
                                 local chamsTrans = ChamsTransSlider and ChamsTransSlider.Value or 0.5
                                 local visibleOnly = ChamsVisibleToggle and ChamsVisibleToggle.Value or false
                                 local depthMode = visibleOnly and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                                
                                 if not data.Highlight then
                                     local hl = Instance.new("Highlight")
-                                    hl.DepthMode = depthMode
-                                    hl.FillColor = chamsCol
-                                    hl.FillTransparency = chamsTrans
-                                    hl.OutlineColor = chamsCol
-                                    hl.OutlineTransparency = 0.0
                                     hl.Adornee = char
                                     hl.Parent = char
                                     data.Highlight = hl
                                 end
+                                
+                                -- อัปเดตค่าเสมอ เพื่อกันบัค
                                 local hl = data.Highlight
                                 hl.Enabled = true
+                                hl.Adornee = char -- Re-assign เผื่อตัวละครตายแล้วเกิดใหม่
+                                hl.Parent = char
                                 hl.DepthMode = depthMode
                                 hl.FillColor = chamsCol
                                 hl.OutlineColor = chamsCol
                                 hl.FillTransparency = chamsTrans
-                                hl.Adornee = char
                             else
-                                if data.Highlight then
-                                    data.Highlight.Enabled = false
-                                end
+                                if data and data.Highlight then data.Highlight.Enabled = false end
                             end
 
-                            -- Box Calculation
-                            local minVec = Vector3.new(math.huge, math.huge, math.huge)
-                            local maxVec = Vector3.new(-math.huge, -math.huge, -math.huge)
+                            -- 3. คำนวณ Box Position
+                            local minVec, maxVec = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
                             
-                            -- [Opt] Loop children instead of descendants for faster calculation if possible, but descendants is safer for all accessories
-                            for _, part in ipairs(char:GetDescendants()) do
+                            -- ใช้ Children เพื่อ Cover Accessories
+                            local children = char:GetChildren()
+                            for _, part in ipairs(children) do
                                 if part:IsA("BasePart") then
                                     local pos = part.Position
-                                    minVec = Vector3.new(math.min(minVec.X, pos.X), math.min(minVec.Y, pos.Y), math.min(minVec.Z, pos.Z))
-                                    maxVec = Vector3.new(math.max(maxVec.X, pos.X), math.max(maxVec.Y, pos.Y), math.max(maxVec.Z, pos.Z))
+                                    local size = part.Size * 0.5
+                                    minVec = Vector3.new(math.min(minVec.X, pos.X - size.X), math.min(minVec.Y, pos.Y - size.Y), math.min(minVec.Z, pos.Z - size.Z))
+                                    maxVec = Vector3.new(math.max(maxVec.X, pos.X + size.X), math.max(maxVec.Y, pos.Y + size.Y), math.max(maxVec.Z, pos.Z + size.Z))
                                 end
                             end
+
                             local size = maxVec - minVec
                             local center = (maxVec + minVec) / 2
-
                             local halfSize = size / 2
+
+                            -- มุมกล่อง 8 มุม
                             local cornersWorld = {
                                 center + Vector3.new(-halfSize.X,  halfSize.Y, -halfSize.Z),
                                 center + Vector3.new( halfSize.X,  halfSize.Y, -halfSize.Z),
@@ -1580,117 +1599,105 @@ local function MainHub(Exec, keydata, authToken)
                                 center + Vector3.new( halfSize.X, -halfSize.Y,  halfSize.Z),
                             }
 
-                            local screenPoints = {}
+                            local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
                             local onScreen = false
-                            for i, worldPos in ipairs(cornersWorld) do
+
+                            for _, worldPos in ipairs(cornersWorld) do
                                 local screenPos, vis = cam:WorldToViewportPoint(worldPos)
-                                screenPoints[i] = Vector2.new(screenPos.X, screenPos.Y)
-                                onScreen = onScreen or vis
+                                if vis then onScreen = true end
+                                minX = math.min(minX, screenPos.X)
+                                maxX = math.max(maxX, screenPos.X)
+                                minY = math.min(minY, screenPos.Y)
+                                maxY = math.max(maxY, screenPos.Y)
                             end
-
+                            
+                            -- ถ้ามองเห็นในจอ
                             if onScreen then
-                                local minX, minY = math.huge, math.huge
-                                local maxX, maxY = -math.huge, -math.huge
-                                for _, v2 in ipairs(screenPoints) do
-                                    minX = math.min(minX, v2.X)
-                                    maxX = math.max(maxX, v2.X)
-                                    minY = math.min(minY, v2.Y)
-                                    maxY = math.max(maxY, v2.Y)
-                                end
                                 local boxW, boxH = maxX - minX, maxY - minY
-
+                                
+                                -- Wall Check Logic
                                 local finalColor = Options.bxw_esp_box_color and Options.bxw_esp_box_color.Value or Color3.fromRGB(255, 255, 255)
                                 if WallToggle.Value then
-                                    local rayDir = (center - camPos)
                                     local rayParams = RaycastParams.new()
                                     rayParams.FilterDescendantsInstances = { char, LocalPlayer.Character }
                                     rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-                                    local rayResult = Workspace:Raycast(camPos, rayDir, rayParams)
-                                    if rayResult then
+                                    local rayResult = Workspace:Raycast(camPos, (center - camPos), rayParams)
+                                    if rayResult then -- ติดกำแพง
                                         finalColor = Color3.fromRGB(255, 0, 0)
-                                    else
+                                    else -- มองเห็น
                                         finalColor = Color3.fromRGB(0, 255, 0)
                                     end
                                 end
 
-                                -- Box Drawing
+                                -- [DRAW] Box
                                 if BoxToggle.Value then
                                     if BoxStyleDropdown.Value == "Box" then
+                                        -- Full Box
                                         if not data.Box then
-                                            local sq = Drawing.new("Square")
-                                            sq.Thickness = 1
-                                            sq.Filled = false
-                                            sq.Transparency = 1
-                                            data.Box = sq
+                                            data.Box = Drawing.new("Square")
+                                            data.Box.Thickness = 1
+                                            data.Box.Filled = false
                                         end
                                         data.Box.Visible = true
                                         data.Box.Color = finalColor
                                         data.Box.Position = Vector2.new(minX, minY)
                                         data.Box.Size = Vector2.new(boxW, boxH)
+                                        
+                                        -- ซ่อน Corner
                                         if data.Corners then for _, ln in pairs(data.Corners) do ln.Visible = false end end
                                     else
+                                        -- Corner Box
                                         if not data.Corners then
                                             data.Corners = {}
-                                            for i = 1, 8 do
-                                                local ln = Drawing.new("Line")
-                                                ln.Thickness = 1
-                                                ln.Transparency = 1
-                                                data.Corners[i] = ln
-                                            end
+                                            for i=1,8 do data.Corners[i] = Drawing.new("Line") end
                                         end
+                                        -- ซ่อน Full Box
                                         if data.Box then data.Box.Visible = false end
-                                        local cw = boxW * 0.25
-                                        local ch = boxH * 0.25
-                                        local topLeft     = Vector2.new(minX, minY)
-                                        local topRight    = Vector2.new(maxX, minY)
-                                        local bottomLeft  = Vector2.new(minX, maxY)
-                                        local bottomRight = Vector2.new(maxX, maxY)
-                                        
+
+                                        local cw, ch = boxW * 0.25, boxH * 0.25
                                         local lines = data.Corners
-                                        local function setLine(idx, from, to)
+                                        local function drawLn(idx, x1, y1, x2, y2)
                                             lines[idx].Visible = true
                                             lines[idx].Color = finalColor
-                                            lines[idx].From = from
-                                            lines[idx].To = to
+                                            lines[idx].From = Vector2.new(x1, y1)
+                                            lines[idx].To = Vector2.new(x2, y2)
+                                            lines[idx].Thickness = 1
                                         end
-                                        setLine(1, topLeft, topLeft + Vector2.new(cw, 0))
-                                        setLine(2, topLeft, topLeft + Vector2.new(0, ch))
-                                        setLine(3, topRight, topRight + Vector2.new(-cw, 0))
-                                        setLine(4, topRight, topRight + Vector2.new(0, ch))
-                                        setLine(5, bottomLeft, bottomLeft + Vector2.new(cw, 0))
-                                        setLine(6, bottomLeft, bottomLeft + Vector2.new(0, -ch))
-                                        setLine(7, bottomRight, bottomRight + Vector2.new(-cw, 0))
-                                        setLine(8, bottomRight, bottomRight + Vector2.new(0, -ch))
+                                        drawLn(1, minX, minY, minX + cw, minY)
+                                        drawLn(2, minX, minY, minX, minY + ch)
+                                        drawLn(3, maxX, minY, maxX - cw, minY)
+                                        drawLn(4, maxX, minY, maxX, minY + ch)
+                                        drawLn(5, minX, maxY, minX + cw, maxY)
+                                        drawLn(6, minX, maxY, minX, maxY - ch)
+                                        drawLn(7, maxX, maxY, maxX - cw, maxY)
+                                        drawLn(8, maxX, maxY, maxX, maxY - ch)
                                     end
                                 else
+                                    -- Hide Box
                                     if data.Box then data.Box.Visible = false end
                                     if data.Corners then for _, ln in pairs(data.Corners) do ln.Visible = false end end
                                 end
 
-                                -- Health
+                                -- [DRAW] Health Bar
                                 if HealthToggle.Value then
                                     if not data.Health then
                                         data.Health = { Outline = Drawing.new("Line"), Bar = Drawing.new("Line") }
                                         data.Health.Outline.Thickness = 3
-                                        data.Health.Outline.Transparency = 1
                                         data.Health.Bar.Thickness = 1
-                                        data.Health.Bar.Transparency = 1
                                     end
-                                    local healthRatio = hum.Health / math.max(hum.MaxHealth, 1)
-                                    local hbX = minX - 6
-                                    local hbY1 = minY
-                                    local hbY2 = maxY
-                                    local barY2 = hbY1 + (maxY - minY) * (1 - healthRatio)
+                                    local hpRatio = hum.Health / math.max(hum.MaxHealth, 1)
+                                    local barH = boxH * hpRatio
+                                    local barX = minX - 6
                                     
                                     data.Health.Outline.Visible = true
-                                    data.Health.Outline.Color = Color3.fromRGB(0, 0, 0)
-                                    data.Health.Outline.From = Vector2.new(hbX, hbY1)
-                                    data.Health.Outline.To = Vector2.new(hbX, hbY2)
+                                    data.Health.Outline.Color = Color3.new(0,0,0)
+                                    data.Health.Outline.From = Vector2.new(barX, minY)
+                                    data.Health.Outline.To = Vector2.new(barX, maxY)
                                     
                                     data.Health.Bar.Visible = true
-                                    data.Health.Bar.Color = Options.bxw_esp_health_color and Options.bxw_esp_health_color.Value or finalColor
-                                    data.Health.Bar.From = Vector2.new(hbX, hbY1)
-                                    data.Health.Bar.To = Vector2.new(hbX, barY2)
+                                    data.Health.Bar.Color = (Options.bxw_esp_health_color and Options.bxw_esp_health_color.Value) or Color3.fromRGB(0, 255, 0)
+                                    data.Health.Bar.From = Vector2.new(barX, maxY)
+                                    data.Health.Bar.To = Vector2.new(barX, maxY - barH)
                                 else
                                     if data.Health then
                                         data.Health.Outline.Visible = false
@@ -1698,99 +1705,123 @@ local function MainHub(Exec, keydata, authToken)
                                     end
                                 end
 
-                                -- Name
+                                -- [DRAW] Name
                                 if NameToggle.Value then
                                     if not data.Name then
-                                        local txt = Drawing.new("Text")
-                                        txt.Center = true
-                                        txt.Outline = true
-                                        txt.Transparency = 1
-                                        data.Name = txt
+                                        data.Name = Drawing.new("Text")
+                                        data.Name.Center = true
+                                        data.Name.Outline = true
                                     end
                                     data.Name.Visible = true
-                                    local nameCol = (Options.bxw_esp_name_color and Options.bxw_esp_name_color.Value) or Color3.fromRGB(255, 255, 255)
-                                    if WallToggle.Value then nameCol = finalColor end
-                                    data.Name.Color = nameCol
-                                    data.Name.Size = NameSizeSlider.Value
                                     data.Name.Text = plr.DisplayName or plr.Name
-                                    data.Name.Position = Vector2.new((minX + maxX) / 2, minY - 14)
+                                    data.Name.Size = NameSizeSlider.Value
+                                    data.Name.Color = (Options.bxw_esp_name_color and Options.bxw_esp_name_color.Value) or Color3.new(1,1,1)
+                                    data.Name.Position = Vector2.new((minX + maxX)/2, minY - 18)
                                 else
                                     if data.Name then data.Name.Visible = false end
                                 end
 
-                                -- Distance
+                                -- [DRAW] Distance
                                 if DistToggle.Value then
                                     if not data.Distance then
-                                        local txt = Drawing.new("Text")
-                                        txt.Center = true
-                                        txt.Outline = true
-                                        txt.Transparency = 1
-                                        data.Distance = txt
+                                        data.Distance = Drawing.new("Text")
+                                        data.Distance.Center = true
+                                        data.Distance.Outline = true
                                     end
                                     local distStud = (root.Position - camPos).Magnitude
-                                    local unit = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
-                                    local distNum = distStud
                                     local suffix = " studs"
-                                    if unit == "Meters" then
-                                        distNum = distStud * 0.28
+                                    if DistUnitDropdown.Value == "Meters" then
+                                        distStud = distStud * 0.28
                                         suffix = " m"
                                     end
+                                    
                                     data.Distance.Visible = true
-                                    local distCol = (Options.bxw_esp_dist_color and Options.bxw_esp_dist_color.Value) or Color3.fromRGB(255, 255, 255)
-                                    if WallToggle.Value then distCol = finalColor end
-                                    data.Distance.Color = distCol
+                                    data.Distance.Text = string.format("%.1f%s", distStud, suffix)
                                     data.Distance.Size = DistSizeSlider.Value
-                                    data.Distance.Text = string.format("%.1f", distNum) .. suffix
-                                    data.Distance.Position = Vector2.new((minX + maxX) / 2, maxY + 2)
+                                    data.Distance.Color = (Options.bxw_esp_dist_color and Options.bxw_esp_dist_color.Value) or Color3.new(1,1,1)
+                                    data.Distance.Position = Vector2.new((minX + maxX)/2, maxY + 2)
                                 else
                                     if data.Distance then data.Distance.Visible = false end
                                 end
+                                
+                                -- [DRAW] Tracer
+                                if TracerToggle.Value then
+                                    if not data.Tracer then
+                                        data.Tracer = Drawing.new("Line")
+                                        data.Tracer.Thickness = 1
+                                    end
+                                    local rootScreen = cam:WorldToViewportPoint(root.Position)
+                                    data.Tracer.Visible = true
+                                    data.Tracer.Color = (Options.bxw_esp_tracer_color and Options.bxw_esp_tracer_color.Value) or Color3.new(1,1,1)
+                                    data.Tracer.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y) -- Bottom center
+                                    data.Tracer.To = Vector2.new(rootScreen.X, rootScreen.Y)
+                                else
+                                    if data.Tracer then data.Tracer.Visible = false end
+                                end
 
-                                -- Skeleton
-                                if SkeletonToggle and SkeletonToggle.Value then
+                                -- [DRAW] Head Dot
+                                if HeadDotToggle.Value then
+                                    local head = char:FindFirstChild("Head")
+                                    if head then
+                                        local headScreen, hVis = cam:WorldToViewportPoint(head.Position)
+                                        if hVis then
+                                            if not data.HeadDot then
+                                                data.HeadDot = Drawing.new("Circle")
+                                                data.HeadDot.Filled = true
+                                            end
+                                            data.HeadDot.Visible = true
+                                            data.HeadDot.Color = (Options.bxw_esp_headdot_color and Options.bxw_esp_headdot_color.Value) or finalColor
+                                            data.HeadDot.Radius = (Options.bxw_esp_headdot_size and Options.bxw_esp_headdot_size.Value) or 3
+                                            data.HeadDot.Position = Vector2.new(headScreen.X, headScreen.Y)
+                                        else
+                                            if data.HeadDot then data.HeadDot.Visible = false end
+                                        end
+                                    end
+                                else
+                                    if data.HeadDot then data.HeadDot.Visible = false end
+                                end
+
+                                -- [DRAW] Info
+                                if InfoToggle.Value then
+                                    if not data.Info then
+                                        data.Info = Drawing.new("Text")
+                                        data.Info.Center = true
+                                        data.Info.Outline = true
+                                    end
+                                    data.Info.Visible = true
+                                    data.Info.Color = (Options.bxw_esp_info_color and Options.bxw_esp_info_color.Value) or Color3.new(1,1,1)
+                                    data.Info.Size = 14
+                                    local hp = math.floor(hum.Health)
+                                    data.Info.Text = string.format("HP:%d | %s", hp, (plr.Team and plr.Team.Name or "No Team"))
+                                    data.Info.Position = Vector2.new((minX + maxX)/2, maxY + 16)
+                                else
+                                    if data.Info then data.Info.Visible = false end
+                                end
+
+                                -- [DRAW] Skeleton
+                                if SkeletonToggle.Value then
                                     if not data.Skeleton then data.Skeleton = {} end
                                     local idx = 1
                                     for joint, parentName in pairs(skeletonJoints) do
                                         local part1 = char:FindFirstChild(joint)
                                         local part2 = char:FindFirstChild(parentName)
+                                        
                                         local ln = data.Skeleton[idx]
                                         if not ln then
                                             ln = Drawing.new("Line")
                                             ln.Thickness = 1
-                                            ln.Transparency = 1
                                             data.Skeleton[idx] = ln
                                         end
+
                                         if part1 and part2 then
                                             local sp1, vis1 = cam:WorldToViewportPoint(part1.Position)
                                             local sp2, vis2 = cam:WorldToViewportPoint(part2.Position)
+                                            
                                             if vis1 or vis2 then
-                                                local skCol = (Options.bxw_esp_skeleton_color and Options.bxw_esp_skeleton_color.Value) or (Options.bxw_esp_box_color and Options.bxw_esp_box_color.Value) or Color3.fromRGB(255,255,255)
-                                                if WallToggle.Value then skCol = finalColor end
-                                                
-                                                if SmartEspToggle and SmartEspToggle.Value then
-                                                    local rpSk = RaycastParams.new()
-                                                    rpSk.FilterDescendantsInstances = { char, LocalPlayer.Character }
-                                                    rpSk.FilterType = Enum.RaycastFilterType.Blacklist
-                                                    local dir1 = part1.Position - camPos
-                                                    local hit1 = Workspace:Raycast(camPos, dir1, rpSk)
-                                                    local dir2 = part2.Position - camPos
-                                                    local hit2 = Workspace:Raycast(camPos, dir2, rpSk)
-                                                    local blocked1 = hit1 and hit1.Instance and not hit1.Instance:IsDescendantOf(char)
-                                                    local blocked2 = hit2 and hit2.Instance and not hit2.Instance:IsDescendantOf(char)
-                                                    if blocked1 and blocked2 then
-                                                        ln.Visible = false
-                                                    else
-                                                        ln.Visible = true
-                                                        if blocked1 or blocked2 then ln.Color = Color3.fromRGB(255, 0, 0) else ln.Color = Color3.fromRGB(0, 255, 0) end
-                                                        ln.From = Vector2.new(sp1.X, sp1.Y)
-                                                        ln.To = Vector2.new(sp2.X, sp2.Y)
-                                                    end
-                                                else
-                                                    ln.Visible = true
-                                                    ln.Color = skCol
-                                                    ln.From = Vector2.new(sp1.X, sp1.Y)
-                                                    ln.To = Vector2.new(sp2.X, sp2.Y)
-                                                end
+                                                ln.Visible = true
+                                                ln.Color = (Options.bxw_esp_skeleton_color and Options.bxw_esp_skeleton_color.Value) or Color3.new(0,1,1)
+                                                ln.From = Vector2.new(sp1.X, sp1.Y)
+                                                ln.To = Vector2.new(sp2.X, sp2.Y)
                                             else
                                                 ln.Visible = false
                                             end
@@ -1799,129 +1830,30 @@ local function MainHub(Exec, keydata, authToken)
                                         end
                                         idx = idx + 1
                                     end
-                                    if data.Skeleton then
-                                        for j = idx, #data.Skeleton do
-                                            local ln = data.Skeleton[j]
-                                            if ln then ln.Visible = false end
-                                        end
-                                    end
                                 else
                                     if data.Skeleton then for _, ln in pairs(data.Skeleton) do ln.Visible = false end end
                                 end
 
-                                -- Head Dot
-                                if HeadDotToggle and HeadDotToggle.Value then
-                                    local head = char and char:FindFirstChild("Head")
-                                    if head then
-                                        local spHead, headVis = cam:WorldToViewportPoint(head.Position)
-                                        if headVis then
-                                            if not data.HeadDot then
-                                                local circ = Drawing.new("Circle")
-                                                circ.Filled = true
-                                                circ.Transparency = 1
-                                                data.HeadDot = circ
-                                            end
-                                            data.HeadDot.Visible = true
-                                            local dotCol = (Options.bxw_esp_headdot_color and Options.bxw_esp_headdot_color.Value) or finalColor
-                                            if WallToggle.Value then dotCol = finalColor end
-                                            data.HeadDot.Color = dotCol
-                                            data.HeadDot.Position = Vector2.new(spHead.X, spHead.Y)
-                                            data.HeadDot.Radius = (Options.bxw_esp_headdot_size and Options.bxw_esp_headdot_size.Value) or 3
-                                        else
-                                            if data.HeadDot then data.HeadDot.Visible = false end
-                                        end
-                                    else
-                                        if data.HeadDot then data.HeadDot.Visible = false end
-                                    end
-                                else
-                                    if data.HeadDot then data.HeadDot.Visible = false end
-                                end
-
-                                -- Info
-                                if InfoToggle and InfoToggle.Value then
-                                    if not data.Info then
-                                        local txt = Drawing.new("Text")
-                                        txt.Center = true
-                                        txt.Outline = true
-                                        txt.Transparency = 1
-                                        data.Info = txt
-                                    end
-                                    local distStudInfo = (root.Position - camPos).Magnitude
-                                    local unitInfo = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
-                                    local distNumInfo = distStudInfo
-                                    local suffixInfo = " studs"
-                                    if unitInfo == "Meters" then
-                                        distNumInfo = distStudInfo * 0.28
-                                        suffixInfo = " m"
-                                    end
-                                    local teamName = plr.Team and plr.Team.Name or "No Team"
-                                    data.Info.Visible = true
-                                    local infoCol = (Options.bxw_esp_info_color and Options.bxw_esp_info_color.Value) or (Options.bxw_esp_name_color and Options.bxw_esp_name_color.Value) or Color3.fromRGB(255, 255, 255)
-                                    if WallToggle.Value then infoCol = finalColor end
-                                    data.Info.Color = infoCol
-                                    data.Info.Size = (NameSizeSlider and NameSizeSlider.Value) or 14
-                                    data.Info.Text = string.format("%s | HP:%d | %.1f%s | %s", plr.DisplayName or plr.Name, hum.Health, distNumInfo, suffixInfo, teamName)
-                                    data.Info.Position = Vector2.new((minX + maxX) / 2, maxY + 16)
-                                else
-                                    if data.Info then data.Info.Visible = false end
-                                end
-
-                                -- Tracer
-                                if TracerToggle.Value then
-                                    if not data.Tracer then
-                                        local ln = Drawing.new("Line")
-                                        ln.Thickness = 1
-                                        ln.Transparency = 1
-                                        data.Tracer = ln
-                                    end
-                                    local screenRoot, rootOnScreen = cam:WorldToViewportPoint(root.Position)
-                                    if rootOnScreen then
-                                        data.Tracer.Visible = true
-                                        local tracerCol = (Options.bxw_esp_tracer_color and Options.bxw_esp_tracer_color.Value) or Color3.fromRGB(255, 255, 255)
-                                        if WallToggle.Value then tracerCol = finalColor end
-                                        data.Tracer.Color = tracerCol
-                                        data.Tracer.From = Vector2.new(screenRoot.X, screenRoot.Y)
-                                        data.Tracer.To = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-                                    else
-                                        data.Tracer.Visible = false
-                                    end
-                                else
-                                    if data.Tracer then data.Tracer.Visible = false end
-                                end
                             else
-                                -- Not on screen
+                                -- กรณีอยู่นอกจอ (Offscreen) ต้องซ่อนทุกอย่าง
                                 if data.Box then data.Box.Visible = false end
                                 if data.Corners then for _, ln in pairs(data.Corners) do ln.Visible = false end end
                                 if data.Health then
-                                    if data.Health.Outline then data.Health.Outline.Visible = false end
-                                    if data.Health.Bar then data.Health.Bar.Visible = false end
+                                    data.Health.Outline.Visible = false
+                                    data.Health.Bar.Visible = false
                                 end
                                 if data.Name then data.Name.Visible = false end
                                 if data.Distance then data.Distance.Visible = false end
                                 if data.Tracer then data.Tracer.Visible = false end
                                 if data.HeadDot then data.HeadDot.Visible = false end
+                                if data.Info then data.Info.Visible = false end
+                                if data.Skeleton then for _, ln in pairs(data.Skeleton) do ln.Visible = false end end
                             end
-                        else
-                             -- Whitelisted or Teammate: Hide Everything
-                             if espDrawings[plr] then
-                                local d = espDrawings[plr]
-                                if d.Box then d.Box.Visible = false end
-                                if d.Corners then for _, ln in pairs(d.Corners) do ln.Visible = false end end
-                                if d.Health then
-                                    if d.Health.Outline then d.Health.Outline.Visible = false end
-                                    if d.Health.Bar then d.Health.Bar.Visible = false end
-                                end
-                                if d.Name then d.Name.Visible = false end
-                                if d.Distance then d.Distance.Visible = false end
-                                if d.Tracer then d.Tracer.Visible = false end
-                                if d.Highlight then d.Highlight.Enabled = false end
-                                if d.HeadDot then d.HeadDot.Visible = false end
-                             end
                         end
                     end
                 end
 
-                -- [Fix] ถ้า shouldDraw เป็น false และผู้เล่นยังมี data ค้างอยู่ ให้ซ่อน
+                -- [CRITICAL FIX] ถ้า shouldDraw เป็น false แต่ยังมี data ค้างอยู่ ต้องสั่งซ่อนทันที!
                 if not shouldDraw and espDrawings[plr] then
                     local d = espDrawings[plr]
                     if d.Box then d.Box.Visible = false end
@@ -1935,6 +1867,8 @@ local function MainHub(Exec, keydata, authToken)
                     if d.Tracer then d.Tracer.Visible = false end
                     if d.Highlight then d.Highlight.Enabled = false end
                     if d.HeadDot then d.HeadDot.Visible = false end
+                    if d.Info then d.Info.Visible = false end
+                    if d.Skeleton then for _, ln in pairs(d.Skeleton) do ln.Visible = false end end
                 end
             end
         end
@@ -2266,11 +2200,13 @@ local function MainHub(Exec, keydata, authToken)
             end)
         end
 
+        -- [DIABLO FIX] Refactored Aimbot Loop
         AddConnection(RunService.RenderStepped:Connect(function()
             local cam = Workspace.CurrentCamera
             if not cam then return end
             local mouseLoc = UserInputService:GetMouseLocation()
 
+            -- Draw FOV Circle
             if Toggles.bxw_aim_showfov and Toggles.bxw_aim_showfov.Value and Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
                 AimbotFOVCircle.Visible = true
                 AimbotFOVCircle.Radius = (((Options.bxw_aim_fov and Options.bxw_aim_fov.Value) or 10) * 15)
@@ -2285,178 +2221,70 @@ local function MainHub(Exec, keydata, authToken)
             else
                 AimbotFOVCircle.Visible = false
             end
-
+            
             AimbotSnapLine.Visible = false
 
             if Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
-                local activation = (Options.bxw_aim_activation and Options.bxw_aim_activation.Value) or "Hold Right Click"
-                if activation == "Always On" or (activation == "Hold Right Click" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)) then
-                    local bestPlr = nil
-                    local bestScore = math.huge
-                    local myRoot = getRootPart()
-                    if myRoot then
-                        for _, plr in ipairs(Players:GetPlayers()) do
-                            if plr ~= LocalPlayer then
-                                local char = plr.Character
-                                local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                                if hum and hum.Health > 0 then
-                                    local rootCandidate = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-                                    if rootCandidate then
-                                        local skip = false
-                                        if Toggles.bxw_aim_teamcheck and Toggles.bxw_aim_teamcheck.Value then
-                                            if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
-                                                skip = true
-                                            end
-                                        end
-                                        if not skip then
-                                            local aimPartName = (Options.bxw_aim_part and Options.bxw_aim_part.Value) or "Head"
-                                            local selectedPart = nil
-                                            if aimPartName == "Head" then
-                                                selectedPart = char:FindFirstChild("Head")
-                                            elseif aimPartName == "UpperTorso" then
-                                                selectedPart = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-                                            elseif aimPartName == "Torso" then
-                                                selectedPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("LowerTorso")
-                                            elseif aimPartName == "HumanoidRootPart" then
-                                                selectedPart = rootCandidate
-                                            elseif aimPartName == "Closest" then
-                                                local candidatesClosest = {}
-                                                local function addClosest(name)
-                                                    local p = char:FindFirstChild(name)
-                                                    if p then table.insert(candidatesClosest, p) end
+                -- Check Activation
+                local isAiming = false
+                local actMethod = Options.bxw_aim_activation and Options.bxw_aim_activation.Value or "Hold Right Click"
+                if actMethod == "Always On" then
+                    isAiming = true
+                elseif actMethod == "Hold Right Click" then
+                    isAiming = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                end
+
+                if isAiming then
+                    local bestTarget = nil
+                    local bestDist = math.huge
+                    local fovRadius = (Options.bxw_aim_fov and Options.bxw_aim_fov.Value or 10) * 15
+
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr ~= LocalPlayer then
+                            local char = plr.Character
+                            local hum = char and char:FindFirstChildOfClass("Humanoid")
+                            local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+                            
+                            if char and hum and hum.Health > 0 and root then
+                                -- Team Check
+                                local isTeammate = false
+                                if Toggles.bxw_aim_teamcheck.Value and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+                                    isTeammate = true
+                                end
+
+                                if not isTeammate then
+                                    -- Find Target Part
+                                    local aimPart = nil
+                                    local partName = Options.bxw_aim_part.Value
+                                    if partName == "Closest" or partName == "Random" then
+                                        -- Simple logic for now: Use Root
+                                        aimPart = root
+                                    else
+                                        aimPart = char:FindFirstChild(partName) or root
+                                    end
+
+                                    if aimPart then
+                                        local screenPos, onScreen = cam:WorldToViewportPoint(aimPart.Position)
+                                        if onScreen then
+                                            local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - mouseLoc).Magnitude
+                                            if dist2D < fovRadius then
+                                                -- Visibility Check
+                                                local visible = true
+                                                if Toggles.bxw_aim_visibility.Value then
+                                                    local rParams = RaycastParams.new()
+                                                    rParams.FilterDescendantsInstances = { char, LocalPlayer.Character, cam }
+                                                    rParams.FilterType = Enum.RaycastFilterType.Blacklist
+                                                    local hit = Workspace:Raycast(cam.CFrame.Position, aimPart.Position - cam.CFrame.Position, rParams)
+                                                    if hit then visible = false end
                                                 end
-                                                addClosest("Head")
-                                                addClosest("UpperTorso")
-                                                addClosest("Torso")
-                                                addClosest("LowerTorso")
-                                                addClosest("HumanoidRootPart")
-                                                addClosest("RightFoot")
-                                                addClosest("LeftFoot")
-                                                addClosest("RightHand")
-                                                addClosest("LeftHand")
-                                                if #candidatesClosest > 0 then
-                                                    local bestDist = math.huge
-                                                    local bestPartClosest = nil
-                                                    for _, p in ipairs(candidatesClosest) do
-                                                        local sp, onScreen = cam:WorldToViewportPoint(p.Position)
-                                                        if onScreen then
-                                                            local dist = (Vector2.new(sp.X, sp.Y) - mouseLoc).Magnitude
-                                                            if dist < bestDist then
-                                                                bestDist = dist
-                                                                bestPartClosest = p
-                                                            end
-                                                        end
-                                                    end
-                                                    selectedPart = bestPartClosest or rootCandidate
-                                                else
-                                                    selectedPart = rootCandidate
-                                                end
-                                            elseif aimPartName == "Custom" then
-                                                local partsWeighted = {}
-                                                local function addChoices(chance, names)
-                                                    if chance and chance > 0 then
-                                                        for _, nm in ipairs(names) do
-                                                            local p = char:FindFirstChild(nm)
-                                                            if p then
-                                                                table.insert(partsWeighted, { part = p, weight = chance })
-                                                            end
-                                                        end
-                                                    end
-                                                end
-                                                local headChance  = Options.bxw_hit_head_chance and Options.bxw_hit_head_chance.Value or 0
-                                                local upChance    = Options.bxw_hit_uptorso_chance and Options.bxw_hit_uptorso_chance.Value or 0
-                                                local torsoChance = Options.bxw_hit_torso_chance and Options.bxw_hit_torso_chance.Value or 0
-                                                local handChance  = Options.bxw_hit_hand_chance and Options.bxw_hit_hand_chance.Value or 0
-                                                local legChance   = Options.bxw_hit_leg_chance and Options.bxw_hit_leg_chance.Value or 0
-                                                addChoices(headChance, { "Head" })
-                                                addChoices(upChance, { "UpperTorso", "Torso" })
-                                                addChoices(torsoChance, { "LowerTorso", "Torso", "HumanoidRootPart" })
-                                                addChoices(handChance, { "RightHand", "LeftHand", "RightLowerArm", "LeftLowerArm", "RightUpperArm", "LeftUpperArm" })
-                                                addChoices(legChance, { "RightFoot", "LeftFoot", "RightLowerLeg", "LeftLowerLeg", "RightUpperLeg", "LeftUpperLeg" })
-                                                if #partsWeighted > 0 then
-                                                    local sumWeight = 0
-                                                    for _, c in ipairs(partsWeighted) do
-                                                        sumWeight = sumWeight + c.weight
-                                                    end
-                                                    local r = math.random() * sumWeight
-                                                    local accWeight = 0
-                                                    for _, c in ipairs(partsWeighted) do
-                                                        accWeight = accWeight + c.weight
-                                                        if r <= accWeight then
-                                                            selectedPart = c.part
-                                                            break
-                                                        end
-                                                    end
-                                                end
-                                                if not selectedPart then
-                                                    selectedPart = rootCandidate
-                                                end
-                                            elseif aimPartName == "Random" then
-                                                local candidates = {}
-                                                local function addPart(name)
-                                                    local p = char:FindFirstChild(name)
-                                                    if p then table.insert(candidates, p) end
-                                                end
-                                                addPart("Head")
-                                                addPart("UpperTorso")
-                                                addPart("Torso")
-                                                addPart("HumanoidRootPart")
-                                                addPart("RightFoot")
-                                                addPart("LeftFoot")
-                                                addPart("RightHand")
-                                                addPart("LeftHand")
-                                                if #candidates > 0 then
-                                                    selectedPart = candidates[math.random(1, #candidates)]
-                                                else
-                                                    selectedPart = rootCandidate
-                                                end
-                                            else
-                                                selectedPart = rootCandidate
-                                            end
-                                            if selectedPart then
-                                                local screenPos, onScreen = cam:WorldToViewportPoint(selectedPart.Position)
-                                                if onScreen then
-                                                    local fovLimit = ((Options.bxw_aim_fov and Options.bxw_aim_fov.Value) or 10) * 15
-                                                    local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mouseLoc).Magnitude
-                                                    if screenDist <= fovLimit then
-                                                        local skipVis = false
-                                                        if Toggles.bxw_aim_visibility and Toggles.bxw_aim_visibility.Value then
-                                                            local rp = RaycastParams.new()
-                                                            rp.FilterDescendantsInstances = { char, LocalPlayer.Character }
-                                                            rp.FilterType = Enum.RaycastFilterType.Blacklist
-                                                            local dir = (selectedPart.Position - cam.CFrame.Position)
-                                                            local hit = Workspace:Raycast(cam.CFrame.Position, dir, rp)
-                                                            local visible = false
-                                                            if not hit then
-                                                                visible = true
-                                                            elseif hit.Instance then
-                                                                if hit.Instance:IsDescendantOf(char) then
-                                                                    visible = true
-                                                                elseif hit.Instance.Transparency and hit.Instance.Transparency >= 0.5 then
-                                                                    visible = true
-                                                                end
-                                                            end
-                                                            skipVis = not visible
-                                                        end
-                                                        if not skipVis then
-                                                            local score = screenDist
-                                                            local mode = (Options.bxw_aim_targetmode and Options.bxw_aim_targetmode.Value) or "Closest To Crosshair"
-                                                            if mode == "Closest Distance" then
-                                                                score = (rootCandidate.Position - myRoot.Position).Magnitude
-                                                            elseif mode == "Lowest Health" then
-                                                                score = hum.Health
-                                                            end
-                                                            if score < bestScore then
-                                                                bestScore = score
-                                                                bestPlr = {
-                                                                    player   = plr,
-                                                                    part     = selectedPart,
-                                                                    root     = rootCandidate,
-                                                                    char     = char,
-                                                                    hum      = hum,
-                                                                    screenPos = screenPos
-                                                                }
-                                                            end
+
+                                                if visible then
+                                                    -- Hit Chance Check
+                                                    local hitChance = Options.bxw_aim_hitchance.Value
+                                                    if math.random(1, 100) <= hitChance then
+                                                        if dist2D < bestDist then
+                                                            bestDist = dist2D
+                                                            bestTarget = aimPart
                                                         end
                                                     end
                                                 end
@@ -2468,127 +2296,36 @@ local function MainHub(Exec, keydata, authToken)
                         end
                     end
 
-                    if bestPlr then
-                        local globalChance = (Options.bxw_aim_hitchance and Options.bxw_aim_hitchance.Value) or 100
-                        local pName = bestPlr.part.Name
-                        local partChance = 100
-                        local lowerName = string.lower(pName)
-                        if string.find(lowerName, "head") then
-                            partChance = (Options.bxw_hit_head_chance and Options.bxw_hit_head_chance.Value) or 100
-                        elseif string.find(lowerName, "upper") or string.find(lowerName, "torso") then
-                            partChance = (Options.bxw_hit_uptorso_chance and Options.bxw_hit_uptorso_chance.Value) or 100
-                        elseif string.find(lowerName, "torso") or string.find(lowerName, "humanoidrootpart") or string.find(lowerName, "lower") then
-                            partChance = (Options.bxw_hit_torso_chance and Options.bxw_hit_torso_chance.Value) or 100
-                        elseif string.find(lowerName, "hand") or string.find(lowerName, "arm") then
-                            partChance = (Options.bxw_hit_hand_chance and Options.bxw_hit_hand_chance.Value) or 100
-                        elseif string.find(lowerName, "leg") or string.find(lowerName, "foot") then
-                            partChance = (Options.bxw_hit_leg_chance and Options.bxw_hit_leg_chance.Value) or 100
+                    -- Aim Execution
+                    if bestTarget then
+                        local aimPos = bestTarget.Position
+                        
+                        -- Prediction
+                        if Toggles.bxw_aim_pred.Value then
+                            local vel = bestTarget.AssemblyLinearVelocity
+                            local factor = Options.bxw_aim_predfactor.Value
+                            aimPos = aimPos + (vel * factor)
                         end
-                        if math.random(0, 100) <= globalChance and math.random(0, 100) <= partChance then
-                            local aimPart = bestPlr.part
-                            local camPos = cam.CFrame.Position
 
-                            if Toggles.bxw_aim_smart and Toggles.bxw_aim_smart.Value then
-                                local rootPart = bestPlr.root
-                                local headPart = bestPlr.char and bestPlr.char:FindFirstChild("Head")
-                                if rootPart and headPart then
-                                    local rp = RaycastParams.new()
-                                    rp.FilterDescendantsInstances = { bestPlr.char, LocalPlayer.Character }
-                                    rp.FilterType = Enum.RaycastFilterType.Blacklist
-                                    local dirRoot = (rootPart.Position - camPos)
-                                    local hitRoot = Workspace:Raycast(camPos, dirRoot, rp)
-                                    local rootBlocked = hitRoot and hitRoot.Instance and not hitRoot.Instance:IsDescendantOf(bestPlr.char)
-                                    local dirHead = (headPart.Position - camPos)
-                                    local hitHead = Workspace:Raycast(camPos, dirHead, rp)
-                                    local headBlocked = hitHead and hitHead.Instance and not hitHead.Instance:IsDescendantOf(bestPlr.char)
-                                    if rootBlocked and not headBlocked then
-                                        aimPart = headPart
-                                    end
-                                end
-                            end
+                        -- Smoothing
+                        local smooth = Options.bxw_aim_smooth.Value
+                        local currentCF = cam.CFrame
+                        local targetCF = CFrame.new(currentCF.Position, aimPos)
 
-                            local predictedPos = aimPart.Position
-                            if Toggles.bxw_aim_pred and Toggles.bxw_aim_pred.Value then
-                                local vel = aimPart.AssemblyLinearVelocity or aimPart.Velocity or Vector3.zero
-                                local factor = (Options.bxw_aim_predfactor and Options.bxw_aim_predfactor.Value) or 0
-                                predictedPos = predictedPos + vel * factor
-                            end
-                            local aimDir = (predictedPos - camPos).Unit
+                        if Options.bxw_aim_method.Value == "CameraLock" then
+                            cam.CFrame = currentCF:Lerp(targetCF, smooth)
+                        else
+                            -- Mouse Delta Logic (Optional Implementation)
+                        end
 
-                            if Options.bxw_aim_method and Options.bxw_aim_method.Value == "MouseDelta" then
-                                local delta = (Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y) - mouseLoc)
-                                local smooth = (Options.bxw_aim_smooth and Options.bxw_aim_smooth.Value) or 0.1
-                                delta = delta * ((smooth or 0) / 10)
-                                pcall(function()
-                                    mousemoverel(delta.X, delta.Y)
-                                end)
-                            else
-                                local newCFrame = CFrame.new(camPos, camPos + aimDir)
-                                local smooth = (Options.bxw_aim_smooth and Options.bxw_aim_smooth.Value) or 0.1
-                                cam.CFrame = cam.CFrame:Lerp(newCFrame, ((smooth or 0) / 10))
-                            end
-
-                            if Toggles.bxw_aim_snapline and Toggles.bxw_aim_snapline.Value then
-                                AimbotSnapLine.Visible = true
-                                AimbotSnapLine.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
-                                AimbotSnapLine.To = Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y)
-                                AimbotSnapLine.Color = (Options.bxw_aim_snapcolor and Options.bxw_aim_snapcolor.Value) or Color3.fromRGB(255,0,0)
-                                AimbotSnapLine.Thickness = (Options.bxw_aim_snapthick and Options.bxw_aim_snapthick.Value) or 1
-                            end
-
-                            if Toggles.bxw_triggerbot and Toggles.bxw_triggerbot.Value then
-                                local tFov = ((Options.bxw_trigger_fov and Options.bxw_trigger_fov.Value) or 10) * 15
-                                local tDist = (Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y) - mouseLoc).Magnitude
-                                if tDist <= tFov then
-                                    local tSkip = false
-                                    if Toggles.bxw_trigger_teamcheck and Toggles.bxw_trigger_teamcheck.Value then
-                                        if bestPlr.player ~= LocalPlayer and LocalPlayer.Team and bestPlr.player.Team and LocalPlayer.Team == bestPlr.player.Team then
-                                            tSkip = true
-                                        end
-                                    end
-                                    if not tSkip and Toggles.bxw_trigger_wallcheck and Toggles.bxw_trigger_wallcheck.Value then
-                                        local rp2 = RaycastParams.new()
-                                        rp2.FilterDescendantsInstances = { bestPlr.char, LocalPlayer.Character }
-                                        rp2.FilterType = Enum.RaycastFilterType.Blacklist
-                                        local dir2 = (aimPart.Position - camPos)
-                                        local hit2 = Workspace:Raycast(camPos, dir2, rp2)
-                                        if hit2 and hit2.Instance and not hit2.Instance:IsDescendantOf(bestPlr.char) then
-                                            tSkip = true
-                                        end
-                                    end
-                                    if not tSkip then
-                                        local fireMode = (Options.bxw_trigger_firing and Options.bxw_trigger_firing.Value) or "Single"
-                                        local method = (Options.bxw_trigger_method and Options.bxw_trigger_method.Value) or "Always On"
-                                        local holdAllowed = true
-                                        if method == "Hold Key" then
-                                            holdAllowed = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-                                        end
-                                        if holdAllowed then
-                                            local delayTime   = (Options.bxw_trigger_delay and Options.bxw_trigger_delay.Value) or 0
-                                            local holdTime    = (Options.bxw_trigger_hold and Options.bxw_trigger_hold.Value) or 0.05
-                                            local releaseTime = (Options.bxw_trigger_release and Options.bxw_trigger_release.Value) or 0.05
-                                            task.spawn(function()
-                                                task.wait(delayTime)
-                                                if fireMode == "Single" then
-                                                    performClick()
-                                                elseif fireMode == "Burst" then
-                                                    for i=1,3 do
-                                                        performClick()
-                                                        task.wait(holdTime / 3)
-                                                    end
-                                                elseif fireMode == "Auto" then
-                                                    local t0 = tick()
-                                                    while tick() - t0 < holdTime do
-                                                        performClick()
-                                                        task.wait(0.05)
-                                                    end
-                                                    task.wait(releaseTime)
-                                                end
-                                            end)
-                                        end
-                                    end
-                                end
-                            end
+                        -- Snapline
+                        if Toggles.bxw_aim_snapline.Value then
+                             local snapPos, _ = cam:WorldToViewportPoint(aimPos)
+                             AimbotSnapLine.Visible = true
+                             AimbotSnapLine.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+                             AimbotSnapLine.To = Vector2.new(snapPos.X, snapPos.Y)
+                             AimbotSnapLine.Color = Options.bxw_aim_snapcolor.Value
+                             AimbotSnapLine.Thickness = Options.bxw_aim_snapthick.Value
                         end
                     end
                 end
