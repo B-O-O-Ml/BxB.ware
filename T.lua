@@ -31,7 +31,6 @@ local function getCharacter()
     local char = plr.Character or plr.CharacterAdded:Wait()
     return char
 end
-
 local function getHumanoid()
     local char = getCharacter()
     if not char then return end
@@ -229,7 +228,6 @@ local function MainHub(Exec, keydata, authToken)
     local statusText = tostring(keydata.status or "active")
     local noteText = tostring(keydata.note or "-")
 
-    -- Remote Data Fetch
     local remoteKeyData, remoteCreatedAtStr, remoteExpireStr = nil, nil, nil
     task.spawn(function()
         pcall(function()
@@ -322,7 +320,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 2: Player (FIXED MOVEMENT)
+    -- TAB 2: Player (FIXED RESET BUG)
     ------------------------------------------------
     local PlayerTab = Tabs.Player
     local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
@@ -334,23 +332,38 @@ local function MainHub(Exec, keydata, authToken)
     local WalkSpeedSlider = MoveBox:AddSlider("bxw_walkspeed", { Text = "WalkSpeed", Default = 16, Min = 0, Max = 300, Rounding = 0 })
     local WalkMethodDropdown = MoveBox:AddDropdown("bxw_walk_method", { Text = "Walk Method", Values = { "Direct", "Incremental" }, Default = "Direct" })
 
-    WalkSpeedToggle:OnChanged(function(state) walkSpeedEnabled = state end)
+    -- [FIX] Reset speed when toggled off
+    WalkSpeedToggle:OnChanged(function(state) 
+        walkSpeedEnabled = state
+        if not state then
+            local hum = getHumanoid()
+            if hum then hum.WalkSpeed = 16 end -- Default Roblox Speed
+        end
+    end)
     
     local JumpPowerToggle = MoveBox:AddToggle("bxw_jumppower_toggle", { Text = "Enable JumpPower", Default = false })
     local JumpPowerSlider = MoveBox:AddSlider("bxw_jumppower", { Text = "JumpPower", Default = 50, Min = 0, Max = 500, Rounding = 0 })
 
-    JumpPowerToggle:OnChanged(function(state) jumpPowerEnabled = state end)
+    -- [FIX] Reset jump when toggled off
+    JumpPowerToggle:OnChanged(function(state) 
+        jumpPowerEnabled = state
+        if not state then
+            local hum = getHumanoid()
+            if hum then 
+                hum.UseJumpPower = true 
+                hum.JumpPower = 50 -- Default Roblox Jump
+            end
+        end
+    end)
 
     MoveBox:AddButton("Reset All", function()
-        walkSpeedEnabled = false
-        jumpPowerEnabled = false
         WalkSpeedToggle:SetValue(false)
         JumpPowerToggle:SetValue(false)
         local hum = getHumanoid()
         if hum then hum.WalkSpeed = 16 hum.JumpPower = 50 end
     end)
 
-    -- [FIX] FORCE WALK & JUMP LOOP (Fixes "Doesn't work" issue)
+    -- Force Loop (Anti-Cheat Bypass)
     AddConnection(RunService.RenderStepped:Connect(function()
         local hum = getHumanoid()
         if hum then
@@ -384,60 +397,85 @@ local function MainHub(Exec, keydata, authToken)
         elseif infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
     end)
 
-    -- [FIX] REWRITTEN FLY SYSTEM (Fixes "Freeze but not fly" issue)
+    -- [FIX] FLY SYSTEM REWRITE (No Freezing)
     local flyEnabled = false
-    local flyBodyV, flyBodyG
+    local flyBV = nil
+    local flyBG = nil
+    
     local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = 60, Min = 1, Max = 300, Rounding = 0 })
     
+    -- Cleanup function for fly physics
+    local function cleanupFly()
+        if flyBV then flyBV:Destroy() flyBV = nil end
+        if flyBG then flyBG:Destroy() flyBG = nil end
+        local hum = getHumanoid()
+        if hum then hum.PlatformStand = false end
+    end
+
+    -- Setup function for fly physics
+    local function setupFly(root)
+        if not root then return end
+        cleanupFly() -- Ensure clean start
+        
+        flyBV = Instance.new("BodyVelocity")
+        flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        flyBV.Velocity = Vector3.zero
+        flyBV.Parent = root
+        
+        flyBG = Instance.new("BodyGyro")
+        flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+        flyBG.P = 9000
+        flyBG.Parent = root
+        
+        local hum = getHumanoid()
+        if hum then hum.PlatformStand = true end
+    end
+
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
-        local root = getRootPart()
-        local hum = getHumanoid()
-        
-        if not state then
-            if flyBodyV then flyBodyV:Destroy() flyBodyV = nil end
-            if flyBodyG then flyBodyG:Destroy() flyBodyG = nil end
-            if hum then hum.PlatformStand = false end
+        if state then
+            setupFly(getRootPart())
+        else
+            cleanupFly()
         end
     end)
 
-    AddConnection(RunService.RenderStepped:Connect(function()
+    -- Respawn Handler for Fly
+    AddConnection(LocalPlayer.CharacterAdded:Connect(function()
         if flyEnabled then
-            local root = getRootPart()
-            local hum = getHumanoid()
+            task.wait(0.5) -- Wait for character load
+            setupFly(getRootPart())
+        end
+    end))
+
+    -- Fly Loop (Control Only)
+    AddConnection(RunService.RenderStepped:Connect(function()
+        if flyEnabled and flyBV and flyBG then
             local cam = Workspace.CurrentCamera
+            local hum = getHumanoid()
             
-            if root and hum and cam then
-                -- Ensure BV/BG exist
-                if not flyBodyV or flyBodyV.Parent ~= root then
-                    if flyBodyV then flyBodyV:Destroy() end
-                    flyBodyV = Instance.new("BodyVelocity")
-                    flyBodyV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                    flyBodyV.Parent = root
-                end
-                
-                if not flyBodyG or flyBodyG.Parent ~= root then
-                    if flyBodyG then flyBodyG:Destroy() end
-                    flyBodyG = Instance.new("BodyGyro")
-                    flyBodyG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                    flyBodyG.P = 9000
-                    flyBodyG.Parent = root
-                end
-                
-                hum.PlatformStand = true
-                flyBodyG.CFrame = cam.CFrame
-                
-                local vel = Vector3.zero
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then vel = vel + cam.CFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then vel = vel - cam.CFrame.LookVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then vel = vel - cam.CFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then vel = vel + cam.CFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vel = vel + Vector3.new(0, 1, 0) end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then vel = vel - Vector3.new(0, 1, 0) end
-                
-                flyBodyV.Velocity = vel * FlySpeedSlider.Value
+            -- Keep PlatformStand true while flying
+            if hum then hum.PlatformStand = true end
+            
+            -- Direction Logic
+            local moveDir = Vector3.zero
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+            
+            -- Apply Velocity
+            if moveDir.Magnitude > 0 then
+                flyBV.Velocity = moveDir.Unit * FlySpeedSlider.Value
+            else
+                flyBV.Velocity = Vector3.zero
             end
+            
+            -- Aim Character
+            flyBG.CFrame = cam.CFrame
         end
     end))
 
@@ -785,7 +823,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 4: Combat (RESTORED MISSING FEATURES)
+    -- TAB 4: Combat
     ------------------------------------------------
     local CombatTab = Tabs.Combat
     local AimBox = CombatTab:AddLeftGroupbox("Aimbot Settings", "target")
