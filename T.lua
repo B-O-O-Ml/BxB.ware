@@ -151,14 +151,13 @@ end
 --====================================================
 
 local function MainHub(Exec, keydata, authToken)
-    -- Validate Inputs
     if type(Exec) ~= "table" or type(Exec.HttpGet) ~= "function" then warn("[MainHub] Exec invalid") return end
     if type(keydata) ~= "table" or type(keydata.key) ~= "string" then warn("[MainHub] keydata invalid") return end
     
     local expected = buildExpectedToken(keydata)
     if authToken ~= expected then warn("[MainHub] Invalid auth token") return end
 
-    -- Centralized Storage for Cleanup (Fixes Unload Bug)
+    -- Centralized Storage
     local espDrawings = {}
     local crosshairLines = nil
     local AimbotFOVCircle = nil
@@ -216,7 +215,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- TAB 1: Info (Preserved)
+    -- TAB 1: Info
     ------------------------------------------------
     local InfoTab = Tabs.Info
     local KeyBox = InfoTab:AddLeftGroupbox("Key Info", "key-round")
@@ -230,7 +229,7 @@ local function MainHub(Exec, keydata, authToken)
     local statusText = tostring(keydata.status or "active")
     local noteText = tostring(keydata.note or "-")
 
-    -- Remote Data Fetch (Safe)
+    -- Remote Data Fetch
     local remoteKeyData, remoteCreatedAtStr, remoteExpireStr = nil, nil, nil
     task.spawn(function()
         pcall(function()
@@ -323,7 +322,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 2: Player (Features Preserved)
+    -- TAB 2: Player
     ------------------------------------------------
     local PlayerTab = Tabs.Player
     local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
@@ -331,7 +330,8 @@ local function MainHub(Exec, keydata, authToken)
     local walkSpeedEnabled, defaultWalkSpeed = false, 16
     local WalkSpeedToggle = MoveBox:AddToggle("bxw_walkspeed_toggle", { Text = "Enable WalkSpeed", Default = false })
     local WalkSpeedSlider = MoveBox:AddSlider("bxw_walkspeed", { Text = "WalkSpeed", Default = 16, Min = 0, Max = 150, Rounding = 0 })
-    
+    local WalkMethodDropdown = MoveBox:AddDropdown("bxw_walk_method", { Text = "Walk Method", Values = { "Direct", "Incremental" }, Default = "Direct" })
+
     WalkSpeedToggle:OnChanged(function(state)
         walkSpeedEnabled = state
         local hum = getHumanoid()
@@ -356,6 +356,16 @@ local function MainHub(Exec, keydata, authToken)
         JumpPowerSlider:SetValue(defaultJumpPower) JumpPowerToggle:SetValue(false)
     end)
 
+    -- [FIX] Restore movement stats on Respawn
+    AddConnection(LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(0.5) -- Wait for humanoid
+        local hum = getHumanoid()
+        if hum then
+            if walkSpeedEnabled then hum.WalkSpeed = WalkSpeedSlider.Value end
+            if jumpPowerEnabled then hum.UseJumpPower = true hum.JumpPower = JumpPowerSlider.Value end
+        end
+    end))
+
     MoveBox:AddLabel("Movement Presets")
     local MovePresetDropdown = MoveBox:AddDropdown("bxw_move_preset", { Text = "Movement Preset", Values = { "Default", "Normal", "Fast", "Ultra" }, Default = "Default" })
     MovePresetDropdown:OnChanged(function(value)
@@ -376,34 +386,67 @@ local function MainHub(Exec, keydata, authToken)
         elseif infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
     end)
 
+    -- [FIX] Robust Fly System
     local flyConn, flyBV, flyBG
     local flyEnabled = false
     local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = 60, Min = 1, Max = 300, Rounding = 0 })
+    
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
-        local root, hum, cam = getRootPart(), getHumanoid(), Workspace.CurrentCamera
         if not state then
-            if flyConn then flyConn:Disconnect() flyConn = nil end
+            -- Cleanup
             if flyBV then flyBV:Destroy() flyBV = nil end
             if flyBG then flyBG:Destroy() flyBG = nil end
+            local hum = getHumanoid()
             if hum then hum.PlatformStand = false end
+            if flyConn then flyConn:Disconnect() flyConn = nil end
         else
-            if not root or not hum then FlyToggle:SetValue(false) return end
-            hum.PlatformStand = true
-            flyBV = Instance.new("BodyVelocity", root) flyBV.MaxForce = Vector3.new(1e5,1e5,1e5)
-            flyBG = Instance.new("BodyGyro", root) flyBG.MaxTorque = Vector3.new(9e9,9e9,9e9) flyBG.P = 9e4
+            -- Start Fly Loop (Create BV/BG dynamically if missing)
+            if flyConn then flyConn:Disconnect() end
             flyConn = AddConnection(RunService.RenderStepped:Connect(function()
                 if not flyEnabled then return end
-                local moveDir = Vector3.new(0,0,0)
+                
+                local root = getRootPart()
+                local hum = getHumanoid()
+                local cam = Workspace.CurrentCamera
+                
+                if not root or not hum or not cam then return end
+                
+                -- Dynamic Creation / Restoration (Fixes Respawn Bug)
+                if not flyBV or flyBV.Parent ~= root then
+                    if flyBV then flyBV:Destroy() end
+                    flyBV = Instance.new("BodyVelocity")
+                    flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9) -- Infinite Force
+                    flyBV.Parent = root
+                end
+                
+                if not flyBG or flyBG.Parent ~= root then
+                    if flyBG then flyBG:Destroy() end
+                    flyBG = Instance.new("BodyGyro")
+                    flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9) -- Infinite Torque
+                    flyBG.P = 9000
+                    flyBG.Parent = root
+                end
+                
+                hum.PlatformStand = true -- Disable physics
+                
+                -- Control Logic
+                local moveDir = Vector3.zero
                 if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
                 if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0,1,0) end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0,1,0) end
-                if moveDir.Magnitude > 0 then flyBV.Velocity = moveDir.Unit * FlySpeedSlider.Value else flyBV.Velocity = Vector3.zero end
-                flyBG.CFrame = CFrame.new(root.Position, root.Position + cam.CFrame.LookVector)
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                
+                if moveDir.Magnitude > 0 then
+                    flyBV.Velocity = moveDir.Unit * FlySpeedSlider.Value
+                else
+                    flyBV.Velocity = Vector3.zero
+                end
+                
+                flyBG.CFrame = cam.CFrame
             end))
         end
     end)
@@ -484,7 +527,7 @@ local function MainHub(Exec, keydata, authToken)
     end})
 
     ------------------------------------------------
-    -- TAB 3: ESP & Visuals (Fixed Off-Screen Bug)
+    -- TAB 3: ESP & Visuals
     ------------------------------------------------
     local ESPTab = Tabs.ESP
     local ESPFeatureBox = ESPTab:AddLeftGroupbox("ESP Features", "eye")
@@ -503,6 +546,7 @@ local function MainHub(Exec, keydata, authToken)
     local WallToggle = ESPFeatureBox:AddToggle("bxw_esp_wall", { Text = "Wall Check", Default = false })
     local SelfToggle = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
     local InfoToggle = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false })
+    local SmartEspToggle = ESPFeatureBox:AddToggle("bxw_esp_smart", { Text = "Smart ESP", Default = false, Tooltip = "Only show visible parts/colors" })
     local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
 
     local function getPlayerNames()
@@ -526,6 +570,7 @@ local function MainHub(Exec, keydata, authToken)
     local HeadDotSizeSlider = ESPSettingBox:AddSlider("bxw_esp_headdot_size", { Text = "Head Dot Size", Default = 3, Min = 1, Max = 10 })
     ESPSettingBox:AddLabel("Chams Color"):AddColorPicker("bxw_esp_chams_color", { Default = Color3.fromRGB(0,255,0) })
     local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2 })
+    local ChamsMaterialDropdown = ESPSettingBox:AddDropdown("bxw_esp_chams_material", { Text = "Chams Material", Values = { "ForceField", "Neon", "Plastic" }, Default = "ForceField" })
     local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
     local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 20, Min = 0, Max = 250 })
 
@@ -579,13 +624,11 @@ local function MainHub(Exec, keydata, authToken)
                         if not espDrawings[plr] then espDrawings[plr] = {} end
                         local data = espDrawings[plr]
                         
-                        -- WorldToViewport Check
+                        -- Screen Check
                         local rootPos, onScreen = cam:WorldToViewportPoint(root.Position)
                         local dist = (root.Position - cam.CFrame.Position).Magnitude
                         
-                        -- ** FIX: Off-Screen Handling **
                         if not onScreen then
-                            -- Hide all 2D drawings if root is off-screen
                             if data.Box then data.Box.Visible = false end
                             if data.Corners then for _,l in pairs(data.Corners) do l.Visible = false end end
                             if data.Name then data.Name.Visible = false end
@@ -594,10 +637,8 @@ local function MainHub(Exec, keydata, authToken)
                             if data.Tracer then data.Tracer.Visible = false end
                             if data.Health then data.Health.Outline.Visible = false data.Health.Bar.Visible = false end
                             if data.HeadDot then data.HeadDot.Visible = false end
-                            -- Note: Skeleton handled separately to allow partial visibility
                         end
 
-                        -- Wall Check Logic
                         local isVis = true
                         if WallToggle.Value then
                             local rp = RaycastParams.new() rp.FilterDescendantsInstances = {char, LocalPlayer.Character} rp.FilterType = Enum.RaycastFilterType.Blacklist
@@ -607,7 +648,6 @@ local function MainHub(Exec, keydata, authToken)
                         local mainColor = isVis and Color3.fromRGB(0,255,0) or Color3.fromRGB(255,0,0)
                         
                         if onScreen then
-                            -- Calculations
                             local minV, maxV = Vector3.new(math.huge,math.huge,math.huge), Vector3.new(-math.huge,-math.huge,-math.huge)
                             for _,p in ipairs(char:GetChildren()) do
                                 if p:IsA("BasePart") then
@@ -625,7 +665,6 @@ local function MainHub(Exec, keydata, authToken)
                             
                             local bCol = WallToggle.Value and mainColor or Options.bxw_esp_box_color.Value
 
-                            -- 1. Box
                             if BoxToggle.Value then
                                 if BoxStyleDropdown.Value == "Box" then
                                     if not data.Box then data.Box = Drawing.new("Square") data.Box.Thickness = 1 data.Box.Filled = false end
@@ -646,7 +685,6 @@ local function MainHub(Exec, keydata, authToken)
                                 if data.Corners then for _,l in pairs(data.Corners) do l.Visible = false end end
                             end
 
-                            -- 2. Name
                             if NameToggle.Value then
                                 if not data.Name then data.Name = Drawing.new("Text") data.Name.Center = true data.Name.Outline = true end
                                 data.Name.Visible = true
@@ -656,7 +694,6 @@ local function MainHub(Exec, keydata, authToken)
                                 data.Name.Position = Vector2.new(sc.X, y - 16)
                             else if data.Name then data.Name.Visible = false end end
 
-                            -- 3. Distance
                             if DistToggle.Value then
                                 if not data.Distance then data.Distance = Drawing.new("Text") data.Distance.Center = true data.Distance.Outline = true end
                                 data.Distance.Visible = true
@@ -668,7 +705,6 @@ local function MainHub(Exec, keydata, authToken)
                                 data.Distance.Position = Vector2.new(sc.X, y + h + 2)
                             else if data.Distance then data.Distance.Visible = false end end
 
-                            -- 4. Target Info
                             if InfoToggle.Value then
                                 if not data.Info then data.Info = Drawing.new("Text") data.Info.Center = true data.Info.Outline = true end
                                 data.Info.Visible = true
@@ -681,7 +717,6 @@ local function MainHub(Exec, keydata, authToken)
                                 data.Info.Position = Vector2.new(sc.X, y + h + 15)
                             else if data.Info then data.Info.Visible = false end end
 
-                            -- 5. Tracer
                             if TracerToggle.Value then
                                 if not data.Tracer then data.Tracer = Drawing.new("Line") data.Tracer.Thickness = 1 end
                                 data.Tracer.Visible = true
@@ -690,7 +725,6 @@ local function MainHub(Exec, keydata, authToken)
                                 data.Tracer.To = Vector2.new(sc.X, sc.Y)
                             else if data.Tracer then data.Tracer.Visible = false end end
 
-                            -- 6. Health
                             if HealthToggle.Value then
                                 if not data.Health then data.Health = {Outline=Drawing.new("Line"), Bar=Drawing.new("Line")} data.Health.Outline.Thickness=3 data.Health.Bar.Thickness=1 end
                                 local hpH = (h * (hum.Health / hum.MaxHealth))
@@ -699,23 +733,8 @@ local function MainHub(Exec, keydata, authToken)
                                 data.Health.Bar.Visible = true data.Health.Bar.Color = (Options.bxw_esp_health_color and Options.bxw_esp_health_color.Value) or mainColor
                                 data.Health.Bar.From = Vector2.new(x-6, y+h) data.Health.Bar.To = Vector2.new(x-6, y+h-hpH)
                             else if data.Health then data.Health.Outline.Visible = false data.Health.Bar.Visible = false end end
-
-                            -- 7. Head Dot
-                             if HeadDotToggle.Value then
-                                local head = char:FindFirstChild("Head")
-                                if head then
-                                    local hv, hon = cam:WorldToViewportPoint(head.Position)
-                                    if hon then
-                                        if not data.HeadDot then data.HeadDot = Drawing.new("Circle") data.HeadDot.Filled = true end
-                                        data.HeadDot.Visible = true data.HeadDot.Radius = 3
-                                        data.HeadDot.Color = WallToggle.Value and mainColor or Options.bxw_esp_headdot_color.Value
-                                        data.HeadDot.Position = Vector2.new(hv.X, hv.Y)
-                                    else if data.HeadDot then data.HeadDot.Visible = false end end
-                                end
-                            else if data.HeadDot then data.HeadDot.Visible = false end end
                         end
 
-                        -- 8. Skeleton (Robust Off-Screen Check)
                         if SkeletonToggle.Value then
                             if not data.Skeleton then data.Skeleton = {} end
                             local skCol = WallToggle.Value and mainColor or Options.bxw_esp_skeleton_color.Value
@@ -727,7 +746,6 @@ local function MainHub(Exec, keydata, authToken)
                                 if p1 and p2 then
                                     local v1, on1 = cam:WorldToViewportPoint(p1.Position)
                                     local v2, on2 = cam:WorldToViewportPoint(p2.Position)
-                                    -- **FIX**: Hide line if BOTH points are off screen, or just hide if one is off (cleaner)
                                     if on1 or on2 then 
                                         ln.Visible = true ln.Color = skCol
                                         ln.From = Vector2.new(v1.X, v1.Y) ln.To = Vector2.new(v2.X, v2.Y)
@@ -736,7 +754,19 @@ local function MainHub(Exec, keydata, authToken)
                             end
                         else if data.Skeleton then for _,l in pairs(data.Skeleton) do l.Visible = false end end end
 
-                        -- 9. Chams (Highlight)
+                        if HeadDotToggle.Value then
+                            local head = char:FindFirstChild("Head")
+                            if head then
+                                local hv, hon = cam:WorldToViewportPoint(head.Position)
+                                if hon then
+                                    if not data.HeadDot then data.HeadDot = Drawing.new("Circle") data.HeadDot.Filled = true end
+                                    data.HeadDot.Visible = true data.HeadDot.Radius = 3
+                                    data.HeadDot.Color = WallToggle.Value and mainColor or Options.bxw_esp_headdot_color.Value
+                                    data.HeadDot.Position = Vector2.new(hv.X, hv.Y)
+                                else if data.HeadDot then data.HeadDot.Visible = false end end
+                            end
+                        else if data.HeadDot then data.HeadDot.Visible = false end end
+
                         if ChamsToggle.Value then
                             if not data.Highlight then data.Highlight = Instance.new("Highlight", char) end
                             data.Highlight.Enabled = true
@@ -752,7 +782,6 @@ local function MainHub(Exec, keydata, authToken)
             end
         end
         
-        -- Crosshair Update
         if not crosshairLines then crosshairLines = {h=Drawing.new("Line"),v=Drawing.new("Line")} end
         if CrosshairToggle.Value then
             local cx, cy = cam.ViewportSize.X/2, cam.ViewportSize.Y/2
@@ -766,7 +795,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 4: Combat (Full Features)
+    -- TAB 4: Combat
     ------------------------------------------------
     local CombatTab = Tabs.Combat
     local AimBox = CombatTab:AddLeftGroupbox("Aimbot Settings", "target")
@@ -793,7 +822,6 @@ local function MainHub(Exec, keydata, authToken)
     local TriggerbotToggle = AimBox:AddToggle("bxw_triggerbot", { Text = "Triggerbot", Default = false })
     local TriggerDelay = ExtraBox:AddSlider("bxw_trigger_delay", { Text = "Delay (s)", Default = 0, Min = 0, Max = 1, Rounding = 2 })
     
-    -- Aimbot Loop
     AimbotFOVCircle = Drawing.new("Circle") AimbotFOVCircle.Thickness = 1 AimbotFOVCircle.Filled = false
     AddConnection(RunService.RenderStepped:Connect(function()
         AimbotFOVCircle.Visible = ShowFovToggle.Value
@@ -846,7 +874,10 @@ local function MainHub(Exec, keydata, authToken)
                 if TriggerbotToggle.Value then
                     local msDist = (Vector2.new(cam:WorldToViewportPoint(best.Position).X, cam:WorldToViewportPoint(best.Position).Y) - ms).Magnitude
                     if msDist < 20 then
-                        task.delay(TriggerDelay.Value, function() mouse1click() end)
+                        task.delay(TriggerDelay.Value, function()
+                            pcall(function() mouse1click() end)
+                            pcall(function() VirtualUser:ClickButton1(Vector2.new()) end)
+                        end)
                     end
                 end
             end
@@ -854,11 +885,10 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 5: Misc & System (REORGANIZED PER INSTRUCTION)
+    -- TAB 5: Misc & System
     ------------------------------------------------
     local MiscTab = Tabs.Misc
     
-    -- 1. Game Tool (Left)
     local GameToolBox = MiscTab:AddLeftGroupbox("Game Tool", "tool")
     local AntiRejoinToggle = GameToolBox:AddToggle("bxw_antirejoin", { Text = "Auto Rejoin on Kick", Default = false })
     local AntiAfkToggle = GameToolBox:AddToggle("bxw_anti_afk", { Text = "Anti-AFK", Default = true })
@@ -880,7 +910,6 @@ local function MainHub(Exec, keydata, authToken)
         elseif afkConn then afkConn:Disconnect() end
     end)
 
-    -- 2. Fun & Utility (Left)
     local FunBox = MiscTab:AddLeftGroupbox("Fun & Utility", "smile")
     local SpinToggle = FunBox:AddToggle("bxw_spinbot", { Text = "SpinBot", Default = false })
     local SpinSpeed = FunBox:AddSlider("bxw_spin_speed", { Text = "Spin Speed", Default = 5, Min = 1, Max = 20 })
@@ -901,6 +930,11 @@ local function MainHub(Exec, keydata, authToken)
             if m.Hit then getRootPart().CFrame = CFrame.new(m.Hit.Position + Vector3.new(0,3,0)) end
         end)
         Library:Notify("TP Tool added", 2)
+    end)
+    
+    FunBox:AddButton("F3X Tool", function()
+        loadstring(game:GetObjects("rbxassetid://6695644299")[1].Source)()
+        Library:Notify("F3X Loaded", 2)
     end)
 
     local spinC
@@ -937,14 +971,12 @@ local function MainHub(Exec, keydata, authToken)
         elseif jerkT then jerkT:Destroy() end
     end)
 
-    -- 3. Environment (Right)
     local EnvBox = safeAddRightGroupbox(MiscTab, "Environment", "sun")
     EnvBox:AddSlider("bxw_gravity", { Text = "Gravity", Default = Workspace.Gravity, Min = 0, Max = 300, Callback = function(v) Workspace.Gravity = v end })
     EnvBox:AddToggle("bxw_nofog", { Text = "No Fog", Default = false, Callback = function(v) if v then Lighting.FogEnd = 1e9 else Lighting.FogEnd = 1000 end end })
     EnvBox:AddSlider("bxw_brightness", { Text = "Brightness", Default = Lighting.Brightness, Min = 0, Max = 10, Callback = function(v) Lighting.Brightness = v end })
     EnvBox:AddLabel("Ambient"):AddColorPicker("bxw_ambient", { Default = Lighting.Ambient, Callback = function(v) Lighting.Ambient = v end })
 
-    -- 4. Server (Right - New)
     local ServerBox = safeAddRightGroupbox(MiscTab, "Server", "server")
     ServerBox:AddButton("Rejoin Server", function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end)
     
@@ -967,7 +999,6 @@ local function MainHub(Exec, keydata, authToken)
                     elseif mode == "High Users" then
                         table.sort(servers, function(a,b) return a.playing > b.playing end)
                     else
-                        -- Normal = Random
                         for i = #servers, 2, -1 do local j = math.random(i) servers[i], servers[j] = servers[j], servers[i] end
                     end
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[1].id, LocalPlayer)
