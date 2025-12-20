@@ -229,7 +229,6 @@ local function MainHub(Exec, keydata, authToken)
     local statusText = tostring(keydata.status or "active")
     local noteText = tostring(keydata.note or "-")
 
-    -- Remote Data Fetch
     local remoteKeyData, remoteCreatedAtStr, remoteExpireStr = nil, nil, nil
     task.spawn(function()
         pcall(function()
@@ -322,7 +321,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 2: Player (FIXED MOVEMENT & RESET)
+    -- TAB 2: Player
     ------------------------------------------------
     local PlayerTab = Tabs.Player
     local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
@@ -388,12 +387,12 @@ local function MainHub(Exec, keydata, authToken)
         elseif infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
     end)
 
-    -- [FIX] FLY SYSTEM - MOBILE COMPATIBLE (Uses MoveDirection)
+    -- [FIXED] FLY SYSTEM (CAMERA-RELATIVE / MOBILE FRIENDLY)
     local flyEnabled = false
     local flyBV = nil
     local flyBG = nil
     
-    local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Universal)"), Default = false })
+    local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Mobile/PC)"), Default = false })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = 60, Min = 1, Max = 300, Rounding = 0 })
     
     local function cleanupFly()
@@ -443,21 +442,43 @@ local function MainHub(Exec, keydata, authToken)
             if hum and root and cam then
                 hum.PlatformStand = true
                 
-                -- [MOBILE FIX] Use Humanoid.MoveDirection (Works with Mobile Joystick & WASD)
-                local moveDir = hum.MoveDirection
-                local targetVel = moveDir * FlySpeedSlider.Value
+                -- NEW LOGIC: Use Camera CFrame + MoveDirection
+                -- This allows looking up/down to fly up/down on Mobile Joystick
+                local moveDir = hum.MoveDirection -- World space unit vector from controls
                 
-                -- Vertical Movement
-                -- PC: Space/Ctrl
-                -- Mobile: Jump Button (toggles hum.Jump)
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) or UserInputService:IsKeyDown(Enum.KeyCode.ButtonA) then
-                    targetVel = targetVel + Vector3.new(0, FlySpeedSlider.Value, 0)
-                end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.ButtonB) then
-                    targetVel = targetVel - Vector3.new(0, FlySpeedSlider.Value, 0)
+                -- If no movement input, velocity is zero
+                if moveDir.Magnitude == 0 then
+                    flyBV.Velocity = Vector3.zero
+                else
+                    -- Project MoveDirection onto Camera's view
+                    -- But MoveDirection is already "World Space" result of controls.
+                    -- On Mobile, if we look up and push forward, MoveDirection is still flat (Y=0) usually.
+                    -- We must reconstruct desired velocity relative to camera look.
+                    
+                    -- Decompose MoveDirection into Forward/Right components relative to Camera's flat Yaw
+                    local camLook = cam.CFrame.LookVector
+                    local camRight = cam.CFrame.RightVector
+                    local flatLook = Vector3.new(camLook.X, 0, camLook.Z).Unit
+                    local flatRight = Vector3.new(camRight.X, 0, camRight.Z).Unit
+                    
+                    -- Dot products to find how much "Forward" or "Right" the input is
+                    local fwdInput = moveDir:Dot(flatLook)
+                    local sideInput = moveDir:Dot(flatRight)
+                    
+                    -- Reconstruct velocity using FULL Camera Vectors (including Y)
+                    local desiredVel = (camLook * fwdInput) + (camRight * sideInput)
+                    
+                    -- Add Vertical Input (Space/Ctrl) for PC
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                        desiredVel = desiredVel + Vector3.new(0, 1, 0)
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                        desiredVel = desiredVel - Vector3.new(0, 1, 0)
+                    end
+                    
+                    flyBV.Velocity = desiredVel.Unit * FlySpeedSlider.Value
                 end
                 
-                flyBV.Velocity = targetVel
                 flyBG.CFrame = cam.CFrame
             end
         end
@@ -496,16 +517,43 @@ local function MainHub(Exec, keydata, authToken)
     end)
 
     UtilBox:AddDivider()
+    
+    -- [FIXED] SPECTATE PLAYER SYSTEM
     local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate_target", { Text = "Spectate Target", Values = playerNames, Default = "", AllowNull = true })
     local SpectateToggle = UtilBox:AddToggle("bxw_spectate_toggle", { Text = "Spectate Player", Default = false })
+    local spectateConn
+    
     SpectateToggle:OnChanged(function(state)
-        local cam = Workspace.CurrentCamera
         if state then
-            local t = Players:FindFirstChild(SpectateDropdown.Value)
-            if t and t.Character and t.Character:FindFirstChild("Humanoid") then cam.CameraSubject = t.Character.Humanoid
-            else Library:Notify("Target invalid", 2) SpectateToggle:SetValue(false) end
+            local targetName = SpectateDropdown.Value
+            if not targetName or targetName == "" then 
+                Library:Notify("Select a player first", 2)
+                SpectateToggle:SetValue(false)
+                return 
+            end
+            
+            -- Loop to keep spectating even if they die/respawn
+            spectateConn = AddConnection(RunService.Stepped:Connect(function()
+                local target = Players:FindFirstChild(targetName)
+                local cam = Workspace.CurrentCamera
+                if target and target.Character then
+                    local hum = target.Character:FindFirstChild("Humanoid")
+                    if hum then
+                        cam.CameraSubject = hum
+                    end
+                else
+                    -- If target left, stop spectating
+                    if not target then
+                        SpectateToggle:SetValue(false)
+                    end
+                end
+            end))
         else
-            local h = getHumanoid() if h then cam.CameraSubject = h end
+            -- Reset Camera
+            if spectateConn then spectateConn:Disconnect() spectateConn = nil end
+            local cam = Workspace.CurrentCamera
+            local hum = getHumanoid()
+            if hum then cam.CameraSubject = hum end
         end
     end)
 
@@ -558,7 +606,9 @@ local function MainHub(Exec, keydata, authToken)
     local WallToggle = ESPFeatureBox:AddToggle("bxw_esp_wall", { Text = "Wall Check", Default = false })
     local SelfToggle = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
     local InfoToggle = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false })
-    local SmartEspToggle = ESPFeatureBox:AddToggle("bxw_esp_smart", { Text = "Smart ESP", Default = false, Tooltip = "Only show visible parts/colors" })
+    
+    -- Removed Smart ESP as requested
+    
     local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
 
     local function getPlayerNames()
@@ -806,7 +856,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 4: Combat (MOBILE/TOUCH FIX)
+    -- TAB 4: Combat
     ------------------------------------------------
     local CombatTab = Tabs.Combat
     local AimBox = CombatTab:AddLeftGroupbox("Aimbot Settings", "target")
@@ -858,7 +908,7 @@ local function MainHub(Exec, keydata, authToken)
     local rainbowHue = 0
 
     AddConnection(RunService.RenderStepped:Connect(function()
-        local ms = UserInputService:GetMouseLocation() -- Works on Mobile (Touch Location)
+        local ms = UserInputService:GetMouseLocation()
         
         if ShowFovToggle.Value and AimbotToggle.Value then
             AimbotFOVCircle.Visible = true
@@ -877,7 +927,6 @@ local function MainHub(Exec, keydata, authToken)
 
         if AimbotToggle.Value then
             local active = false
-            -- [MOBILE FIX] Activation Logic
             if AimActivationDropdown.Value == "Always On" then active = true
             elseif UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then active = true end
             
