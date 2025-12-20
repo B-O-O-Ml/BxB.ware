@@ -31,6 +31,7 @@ local function getCharacter()
     local char = plr.Character or plr.CharacterAdded:Wait()
     return char
 end
+
 local function getHumanoid()
     local char = getCharacter()
     if not char then return end
@@ -228,6 +229,7 @@ local function MainHub(Exec, keydata, authToken)
     local statusText = tostring(keydata.status or "active")
     local noteText = tostring(keydata.note or "-")
 
+    -- Remote Data Fetch
     local remoteKeyData, remoteCreatedAtStr, remoteExpireStr = nil, nil, nil
     task.spawn(function()
         pcall(function()
@@ -320,7 +322,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 2: Player (FIXED RESET BUG)
+    -- TAB 2: Player (FIXED MOVEMENT & RESET)
     ------------------------------------------------
     local PlayerTab = Tabs.Player
     local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
@@ -332,27 +334,22 @@ local function MainHub(Exec, keydata, authToken)
     local WalkSpeedSlider = MoveBox:AddSlider("bxw_walkspeed", { Text = "WalkSpeed", Default = 16, Min = 0, Max = 300, Rounding = 0 })
     local WalkMethodDropdown = MoveBox:AddDropdown("bxw_walk_method", { Text = "Walk Method", Values = { "Direct", "Incremental" }, Default = "Direct" })
 
-    -- [FIX] Reset speed when toggled off
     WalkSpeedToggle:OnChanged(function(state) 
         walkSpeedEnabled = state
         if not state then
             local hum = getHumanoid()
-            if hum then hum.WalkSpeed = 16 end -- Default Roblox Speed
+            if hum then hum.WalkSpeed = 16 end
         end
     end)
     
     local JumpPowerToggle = MoveBox:AddToggle("bxw_jumppower_toggle", { Text = "Enable JumpPower", Default = false })
     local JumpPowerSlider = MoveBox:AddSlider("bxw_jumppower", { Text = "JumpPower", Default = 50, Min = 0, Max = 500, Rounding = 0 })
 
-    -- [FIX] Reset jump when toggled off
     JumpPowerToggle:OnChanged(function(state) 
         jumpPowerEnabled = state
         if not state then
             local hum = getHumanoid()
-            if hum then 
-                hum.UseJumpPower = true 
-                hum.JumpPower = 50 -- Default Roblox Jump
-            end
+            if hum then hum.UseJumpPower = true hum.JumpPower = 50 end
         end
     end)
 
@@ -363,17 +360,11 @@ local function MainHub(Exec, keydata, authToken)
         if hum then hum.WalkSpeed = 16 hum.JumpPower = 50 end
     end)
 
-    -- Force Loop (Anti-Cheat Bypass)
     AddConnection(RunService.RenderStepped:Connect(function()
         local hum = getHumanoid()
         if hum then
-            if walkSpeedEnabled then
-                hum.WalkSpeed = WalkSpeedSlider.Value
-            end
-            if jumpPowerEnabled then
-                hum.UseJumpPower = true
-                hum.JumpPower = JumpPowerSlider.Value
-            end
+            if walkSpeedEnabled then hum.WalkSpeed = WalkSpeedSlider.Value end
+            if jumpPowerEnabled then hum.UseJumpPower = true hum.JumpPower = JumpPowerSlider.Value end
         end
     end))
 
@@ -397,15 +388,14 @@ local function MainHub(Exec, keydata, authToken)
         elseif infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
     end)
 
-    -- [FIX] FLY SYSTEM REWRITE (No Freezing)
+    -- [FIX] FLY SYSTEM - MOBILE COMPATIBLE (Uses MoveDirection)
     local flyEnabled = false
     local flyBV = nil
     local flyBG = nil
     
-    local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false })
+    local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Universal)"), Default = false })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = 60, Min = 1, Max = 300, Rounding = 0 })
     
-    -- Cleanup function for fly physics
     local function cleanupFly()
         if flyBV then flyBV:Destroy() flyBV = nil end
         if flyBG then flyBG:Destroy() flyBG = nil end
@@ -413,10 +403,9 @@ local function MainHub(Exec, keydata, authToken)
         if hum then hum.PlatformStand = false end
     end
 
-    -- Setup function for fly physics
     local function setupFly(root)
         if not root then return end
-        cleanupFly() -- Ensure clean start
+        cleanupFly()
         
         flyBV = Instance.new("BodyVelocity")
         flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
@@ -434,48 +423,43 @@ local function MainHub(Exec, keydata, authToken)
 
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
-        if state then
-            setupFly(getRootPart())
-        else
-            cleanupFly()
-        end
+        if state then setupFly(getRootPart())
+        else cleanupFly() end
     end)
 
-    -- Respawn Handler for Fly
     AddConnection(LocalPlayer.CharacterAdded:Connect(function()
         if flyEnabled then
-            task.wait(0.5) -- Wait for character load
+            task.wait(0.5)
             setupFly(getRootPart())
         end
     end))
 
-    -- Fly Loop (Control Only)
     AddConnection(RunService.RenderStepped:Connect(function()
         if flyEnabled and flyBV and flyBG then
             local cam = Workspace.CurrentCamera
             local hum = getHumanoid()
+            local root = getRootPart()
             
-            -- Keep PlatformStand true while flying
-            if hum then hum.PlatformStand = true end
-            
-            -- Direction Logic
-            local moveDir = Vector3.zero
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-            
-            -- Apply Velocity
-            if moveDir.Magnitude > 0 then
-                flyBV.Velocity = moveDir.Unit * FlySpeedSlider.Value
-            else
-                flyBV.Velocity = Vector3.zero
+            if hum and root and cam then
+                hum.PlatformStand = true
+                
+                -- [MOBILE FIX] Use Humanoid.MoveDirection (Works with Mobile Joystick & WASD)
+                local moveDir = hum.MoveDirection
+                local targetVel = moveDir * FlySpeedSlider.Value
+                
+                -- Vertical Movement
+                -- PC: Space/Ctrl
+                -- Mobile: Jump Button (toggles hum.Jump)
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) or UserInputService:IsKeyDown(Enum.KeyCode.ButtonA) then
+                    targetVel = targetVel + Vector3.new(0, FlySpeedSlider.Value, 0)
+                end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.ButtonB) then
+                    targetVel = targetVel - Vector3.new(0, FlySpeedSlider.Value, 0)
+                end
+                
+                flyBV.Velocity = targetVel
+                flyBG.CFrame = cam.CFrame
             end
-            
-            -- Aim Character
-            flyBG.CFrame = cam.CFrame
         end
     end))
 
@@ -652,7 +636,6 @@ local function MainHub(Exec, keydata, authToken)
                         if not espDrawings[plr] then espDrawings[plr] = {} end
                         local data = espDrawings[plr]
                         
-                        -- Screen Check
                         local rootPos, onScreen = cam:WorldToViewportPoint(root.Position)
                         local dist = (root.Position - cam.CFrame.Position).Magnitude
                         
@@ -823,18 +806,17 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 4: Combat
+    -- TAB 4: Combat (MOBILE/TOUCH FIX)
     ------------------------------------------------
     local CombatTab = Tabs.Combat
     local AimBox = CombatTab:AddLeftGroupbox("Aimbot Settings", "target")
     local ExtraBox = safeAddRightGroupbox(CombatTab, "Extra Settings", "adjust")
 
-    -- Left Box
     AimBox:AddLabel("Core Settings")
     local AimbotToggle = AimBox:AddToggle("bxw_aimbot_enable", { Text = "Enable Aimbot", Default = false })
     local SilentToggle = AimBox:AddToggle("bxw_silent_enable", { Text = "Silent Aim", Default = false })
     local AimPartDropdown = AimBox:AddDropdown("bxw_aim_part", { Text = "Aim Part", Values = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "Closest", "Random", "Custom" }, Default = "Head" })
-    local AimActivationDropdown = AimBox:AddDropdown("bxw_aim_activation", { Text = "Aim Activation", Values = { "Hold Right Click", "Always On" }, Default = "Hold Right Click" })
+    local AimActivationDropdown = AimBox:AddDropdown("bxw_aim_activation", { Text = "Aim Activation", Values = { "Hold Right Click", "Always On" }, Default = "Hold Right Click", Tooltip = "Mobile user: Select Always On" })
     local TargetModeDropdown = AimBox:AddDropdown("bxw_aim_targetmode", { Text = "Target Mode", Values = { "Closest To Crosshair", "Closest Distance", "Lowest Health" }, Default = "Closest To Crosshair" })
     local UseSmartAimLogic = AimBox:AddToggle("bxw_aim_smart_logic", { Text = "Smart Aim Logic", Default = true, Tooltip = "Auto calc best target" })
 
@@ -851,7 +833,6 @@ local function MainHub(Exec, keydata, authToken)
     local VisibilityToggle = AimBox:AddToggle("bxw_aim_visibility", { Text = "Visibility Check", Default = false })
     local AliveCheckToggle = AimBox:AddToggle("bxw_aim_alive", { Text = "Alive Check", Default = true })
 
-    -- Right Box
     ExtraBox:AddLabel("Triggerbot")
     local TriggerbotToggle = ExtraBox:AddToggle("bxw_triggerbot", { Text = "Triggerbot", Default = false })
     local TriggerMode = ExtraBox:AddDropdown("bxw_trigger_method", { Text = "Trigger Mode", Values = {"Always On", "Hold Key"}, Default = "Always On" })
@@ -872,15 +853,13 @@ local function MainHub(Exec, keydata, authToken)
     local TorsoChance = ExtraBox:AddSlider("bxw_hit_torso_chance", { Text = "Torso Chance", Default = 100, Min = 0, Max = 100 })
     local LimbChance = ExtraBox:AddSlider("bxw_hit_limb_chance", { Text = "Limbs Chance", Default = 100, Min = 0, Max = 100 })
 
-    -- Aimbot Loop
     AimbotFOVCircle = Drawing.new("Circle") AimbotFOVCircle.Thickness = 1 AimbotFOVCircle.Filled = false
     AimbotSnapLine = Drawing.new("Line") AimbotSnapLine.Thickness = 1 AimbotSnapLine.Visible = false
     local rainbowHue = 0
 
     AddConnection(RunService.RenderStepped:Connect(function()
-        local ms = UserInputService:GetMouseLocation()
+        local ms = UserInputService:GetMouseLocation() -- Works on Mobile (Touch Location)
         
-        -- FOV Circle
         if ShowFovToggle.Value and AimbotToggle.Value then
             AimbotFOVCircle.Visible = true
             AimbotFOVCircle.Radius = FOVSlider.Value * 15
@@ -896,9 +875,9 @@ local function MainHub(Exec, keydata, authToken)
         end
         AimbotSnapLine.Visible = false
 
-        -- Aimbot Logic
         if AimbotToggle.Value then
             local active = false
+            -- [MOBILE FIX] Activation Logic
             if AimActivationDropdown.Value == "Always On" then active = true
             elseif UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then active = true end
             
@@ -912,17 +891,12 @@ local function MainHub(Exec, keydata, authToken)
                         local root = p.Character:FindFirstChild("HumanoidRootPart")
                         if hum and root and hum.Health > 0 then
                             if not AimTeamCheck.Value or p.Team ~= LocalPlayer.Team then
-                                -- Target Selection
                                 local partName = AimPartDropdown.Value
                                 if partName == "Random" then 
                                     local parts = {"Head", "UpperTorso", "HumanoidRootPart"} 
                                     partName = parts[math.random(1, #parts)]
-                                elseif partName == "Closest" then
-                                    partName = "Head" -- Default
-                                    -- Simple logic: Head is mostly best
-                                elseif partName == "Custom" then
-                                    partName = "Head" 
-                                end
+                                elseif partName == "Closest" then partName = "Head" 
+                                elseif partName == "Custom" then partName = "Head" end
                                 
                                 local part = p.Character:FindFirstChild(partName) or root
                                 local pos, onScreen = cam:WorldToViewportPoint(part.Position)
@@ -940,7 +914,6 @@ local function MainHub(Exec, keydata, authToken)
                                         
                                         if isVis then
                                             local score = dist
-                                            -- Mode Logic
                                             if TargetModeDropdown.Value == "Closest Distance" then
                                                 score = (LocalPlayer.Character.HumanoidRootPart.Position - part.Position).Magnitude
                                             elseif TargetModeDropdown.Value == "Lowest Health" then
@@ -948,7 +921,6 @@ local function MainHub(Exec, keydata, authToken)
                                             elseif UseSmartAimLogic.Value then
                                                 score = dist + (hum.Health * 0.1)
                                             end
-                                            
                                             if score < bestScore then bestScore = score best = part end
                                         end
                                     end
@@ -959,25 +931,19 @@ local function MainHub(Exec, keydata, authToken)
                 end
                 
                 if best then
-                    -- Hit Chance Check
                     local chance = 100
                     if best.Name == "Head" then chance = HeadChance.Value
                     elseif best.Name:find("Torso") then chance = TorsoChance.Value
                     else chance = LimbChance.Value end
                     
                     if math.random(1, 100) <= chance then
-                        -- Prediction
                         local targetPos = best.Position
-                        if PredToggle.Value then
-                            targetPos = targetPos + (best.Velocity * PredFactor.Value)
-                        end
+                        if PredToggle.Value then targetPos = targetPos + (best.Velocity * PredFactor.Value) end
                         
-                        -- Aiming
                         local currentCF = cam.CFrame
                         local targetCF = CFrame.new(currentCF.Position, targetPos)
                         cam.CFrame = currentCF:Lerp(targetCF, SmoothSlider.Value)
                         
-                        -- SnapLine
                         if SnapLineToggle.Value then
                             local sp = cam:WorldToViewportPoint(targetPos)
                             AimbotSnapLine.Visible = true
@@ -986,17 +952,16 @@ local function MainHub(Exec, keydata, authToken)
                             AimbotSnapLine.Color = Options.bxw_aim_snapcolor.Value
                         end
                         
-                        -- Triggerbot
                         if TriggerbotToggle.Value then
                             local sp = cam:WorldToViewportPoint(targetPos)
                             if (Vector2.new(sp.X, sp.Y) - ms).Magnitude < 20 then
                                 local tActive = true
                                 if TriggerMode.Value == "Hold Key" and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then tActive = false end
-                                
                                 if tActive then
                                     task.spawn(function()
                                         task.wait(TriggerDelay.Value)
-                                        mouse1click()
+                                        pcall(function() mouse1click() end)
+                                        pcall(function() VirtualUser:ClickButton1(Vector2.new()) end)
                                         task.wait(TriggerHold.Value)
                                     end)
                                 end
@@ -1055,7 +1020,6 @@ local function MainHub(Exec, keydata, authToken)
         end)
         Library:Notify("TP Tool added", 2)
     end)
-    
     FunBox:AddButton("F3X Tool", function()
         loadstring(game:GetObjects("rbxassetid://6695644299")[1].Source)()
         Library:Notify("F3X Loaded", 2)
@@ -1118,17 +1082,11 @@ local function MainHub(Exec, keydata, authToken)
                 end
                 
                 if #servers > 0 then
-                    if mode == "Low Users" then
-                        table.sort(servers, function(a,b) return a.playing < b.playing end)
-                    elseif mode == "High Users" then
-                        table.sort(servers, function(a,b) return a.playing > b.playing end)
-                    else
-                        for i = #servers, 2, -1 do local j = math.random(i) servers[i], servers[j] = servers[j], servers[i] end
-                    end
+                    if mode == "Low Users" then table.sort(servers, function(a,b) return a.playing < b.playing end)
+                    elseif mode == "High Users" then table.sort(servers, function(a,b) return a.playing > b.playing end)
+                    else for i = #servers, 2, -1 do local j = math.random(i) servers[i], servers[j] = servers[j], servers[i] end end
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[1].id, LocalPlayer)
-                else
-                    Library:Notify("No server found", 3)
-                end
+                else Library:Notify("No server found", 3) end
             end
         end)
     end)
