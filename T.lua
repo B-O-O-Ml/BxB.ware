@@ -163,12 +163,12 @@ local function MainHub(Exec, keydata, authToken)
     local crosshairLines = nil
     local AimbotFOVCircle = nil
     local AimbotSnapLine = nil
-    
-    -- Radar Storage
-    local RadarElements = {
-        Outlines = {},
-        Dots = {}
-    }
+    local RadarElements = {Outlines={}, Dots={}}
+
+    -- Setup Radar Drawings
+    local RadarCircle = Drawing.new("Circle") RadarCircle.Visible = false
+    local RadarBorder = Drawing.new("Circle") RadarBorder.Visible = false
+    local RadarCenter = Drawing.new("Circle") RadarCenter.Visible = false
 
     keydata.role = NormalizeRole(keydata.role)
 
@@ -236,6 +236,7 @@ local function MainHub(Exec, keydata, authToken)
     local statusText = tostring(keydata.status or "active")
     local noteText = tostring(keydata.note or "-")
 
+    -- Remote Data Fetch
     local remoteKeyData, remoteCreatedAtStr, remoteExpireStr = nil, nil, nil
     task.spawn(function()
         pcall(function()
@@ -492,14 +493,26 @@ local function MainHub(Exec, keydata, authToken)
     end)
 
     local UtilBox = safeAddRightGroupbox(PlayerTab, "Teleport / Utility", "map")
-    local playerNames = {}
-    local function refreshPlayerList()
-        table.clear(playerNames)
-        for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LocalPlayer then table.insert(playerNames, plr.Name) end end
+    
+    -- [UPDATED] Auto-Refresh Player Lists
+    local TeleportDropdown = UtilBox:AddDropdown("bxw_tpplayer", { Text = "Teleport to Player", Values = {}, Default = "", AllowNull = true })
+    local SpectateDropdown = nil -- Defined later
+    local WhitelistDropdown = nil -- Defined later
+
+    local function UpdatePlayerLists()
+        local list = {}
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then table.insert(list, p.Name) end
+        end
+        table.sort(list)
+        if TeleportDropdown then TeleportDropdown:SetValues(list) end
+        if SpectateDropdown then SpectateDropdown:SetValues(list) end
+        if WhitelistDropdown then WhitelistDropdown:SetValues(list) end
     end
-    refreshPlayerList()
-    local TeleportDropdown = UtilBox:AddDropdown("bxw_tpplayer", { Text = "Teleport to Player", Values = playerNames, Default = "", AllowNull = true })
-    UtilBox:AddButton("Refresh Players", function() refreshPlayerList() TeleportDropdown:SetValues(playerNames) end)
+    
+    AddConnection(Players.PlayerAdded:Connect(UpdatePlayerLists))
+    AddConnection(Players.PlayerRemoving:Connect(UpdatePlayerLists))
+    
     UtilBox:AddButton("Teleport", function()
         local t = Players:FindFirstChild(TeleportDropdown.Value)
         local r = getRootPart()
@@ -510,7 +523,7 @@ local function MainHub(Exec, keydata, authToken)
 
     UtilBox:AddDivider()
     
-    local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate_target", { Text = "Spectate Target", Values = playerNames, Default = "", AllowNull = true })
+    SpectateDropdown = UtilBox:AddDropdown("bxw_spectate_target", { Text = "Spectate Target", Values = {}, Default = "", AllowNull = true })
     local SpectateToggle = UtilBox:AddToggle("bxw_spectate_toggle", { Text = "Spectate Player", Default = false })
     local spectateConn
     
@@ -542,15 +555,22 @@ local function MainHub(Exec, keydata, authToken)
 
     UtilBox:AddDivider()
     local savedWaypoints, savedNames = {}, {}
+    -- [UPDATED] Waypoint Naming
+    local WaypointNameInput = UtilBox:AddInput("bxw_waypoint_name", { Text = "Waypoint Name", Default = "Point1" })
     local WaypointDropdown = UtilBox:AddDropdown("bxw_waypoint_list", { Text = "Waypoint List", Values = savedNames, Default = "", AllowNull = true })
+    
     UtilBox:AddButton("Set Waypoint", function()
         local r = getRootPart()
         if r then
-            local n = "WP" .. (#savedNames+1)
-            savedWaypoints[n] = r.CFrame table.insert(savedNames, n) WaypointDropdown:SetValues(savedNames)
+            local n = WaypointNameInput.Value
+            if n == "" then n = "WP" .. (#savedNames+1) end
+            savedWaypoints[n] = r.CFrame 
+            if not table.find(savedNames, n) then table.insert(savedNames, n) end
+            WaypointDropdown:SetValues(savedNames)
             Library:Notify("Saved " .. n, 2)
         end
     end)
+    
     UtilBox:AddButton("Teleport to Waypoint", function()
         local s = WaypointDropdown.Value
         local r = getRootPart()
@@ -560,23 +580,35 @@ local function MainHub(Exec, keydata, authToken)
     local CamBox = safeAddRightGroupbox(PlayerTab, "Camera & World", "sun")
     CamBox:AddSlider("bxw_cam_fov", { Text = "Camera FOV", Default = 70, Min = 40, Max = 120, Callback = function(v) Workspace.CurrentCamera.FieldOfView = v end })
     CamBox:AddSlider("bxw_cam_maxzoom", { Text = "Max Zoom", Default = 400, Min = 10, Max = 1000, Callback = function(v) LocalPlayer.CameraMaxZoomDistance = v end })
+    
+    -- [FIXED] Skybox Theme Logic
     CamBox:AddDropdown("bxw_cam_skybox", { Text = "Skybox Theme", Values = { "Default", "Space", "Sunset", "Midnight" }, Default = "Default", Callback = function(v)
         local l = Lighting
+        -- Clean old sky
+        for _, obj in ipairs(l:GetChildren()) do
+            if obj:IsA("Sky") then obj:Destroy() end
+        end
+        
         local ids = { Space="rbxassetid://11755937810", Sunset="rbxassetid://9393701400", Midnight="rbxassetid://11755930464" }
-        local old = l:FindFirstChildOfClass("Sky") if old then old:Destroy() end
         if ids[v] then
-            local s = Instance.new("Sky") s.SkyboxBk, s.SkyboxDn, s.SkyboxFt, s.SkyboxLf, s.SkyboxRt, s.SkyboxUp = ids[v], ids[v], ids[v], ids[v], ids[v], ids[v] s.Parent = l
+            local s = Instance.new("Sky")
+            s.Name = "BxBSky"
+            s.SkyboxBk, s.SkyboxDn, s.SkyboxFt = ids[v], ids[v], ids[v]
+            s.SkyboxLf, s.SkyboxRt, s.SkyboxUp = ids[v], ids[v], ids[v]
+            s.Parent = l
         end
     end})
 
+    -- Update lists initially
+    UpdatePlayerLists()
+
     ------------------------------------------------
-    -- TAB 3: ESP & Visuals (PHASE 2 UPGRADE)
+    -- TAB 3: ESP & Visuals
     ------------------------------------------------
     local ESPTab = Tabs.ESP
     local ESPFeatureBox = ESPTab:AddLeftGroupbox("ESP Features", "eye")
     local ESPSettingBox = safeAddRightGroupbox(ESPTab, "ESP Settings", "palette")
     
-    -- [PHASE 2] RADAR & ARROWS SETTINGS
     local VisualsBox = safeAddRightGroupbox(ESPTab, "2D Radar & Arrows", "compass")
     
     local RadarToggle = VisualsBox:AddToggle("bxw_radar_enable", { Text = "Enable 2D Radar", Default = false })
@@ -604,14 +636,10 @@ local function MainHub(Exec, keydata, authToken)
     local WallToggle = ESPFeatureBox:AddToggle("bxw_esp_wall", { Text = "Wall Check", Default = false })
     local SelfToggle = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
     local InfoToggle = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false })
+    
     local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
 
-    local function getPlayerNames()
-        local n = {} for _,p in ipairs(Players:GetPlayers()) do if p~=LocalPlayer then table.insert(n, p.Name) end end table.sort(n) return n
-    end
-    local WhitelistDropdown = ESPSettingBox:AddDropdown("bxw_esp_whitelist", { Text = "Whitelist Player", Values = getPlayerNames(), Default = "", Multi = true, AllowNull = true })
-    AddConnection(Players.PlayerAdded:Connect(function() WhitelistDropdown:SetValues(getPlayerNames()) end))
-    AddConnection(Players.PlayerRemoving:Connect(function() WhitelistDropdown:SetValues(getPlayerNames()) end))
+    WhitelistDropdown = ESPSettingBox:AddDropdown("bxw_esp_whitelist", { Text = "Whitelist Player", Values = {}, Default = "", Multi = true, AllowNull = true })
 
     ESPSettingBox:AddLabel("Box Color"):AddColorPicker("bxw_esp_box_color", { Default = Color3.fromRGB(255,255,255) })
     ESPSettingBox:AddLabel("Tracer Color"):AddColorPicker("bxw_esp_tracer_color", { Default = Color3.fromRGB(255,255,255) })
@@ -696,7 +724,7 @@ local function MainHub(Exec, keydata, authToken)
                         if not espDrawings[plr] then espDrawings[plr] = {} end
                         local data = espDrawings[plr]
                         
-                        -- [PHASE 2] RADAR LOGIC
+                        -- RADAR LOGIC
                         if RadarToggle.Value then
                             if not data.RadarDot then data.RadarDot = Drawing.new("Circle") data.RadarDot.Filled = true data.RadarDot.Radius = 4 end
                             local myRoot = getRootPart()
@@ -706,15 +734,12 @@ local function MainHub(Exec, keydata, authToken)
                                 local distVec = rPos - mPos
                                 local dist = distVec.Magnitude
                                 local scale = RadarScale.Value
-                                local maxDist = (RadarSize.Value * scale)
                                 
-                                -- Rotate relative to camera
                                 local look = cam.CFrame.LookVector
                                 local angle = math.atan2(look.Z, look.X) - math.atan2(distVec.Z, distVec.X)
                                 local x = (math.sin(angle) * dist) / scale
                                 local y = (math.cos(angle) * dist) / scale
                                 
-                                -- Clamp to circle
                                 local rad = math.sqrt(x^2 + y^2)
                                 if rad > RadarSize.Value then
                                     x = (x / rad) * RadarSize.Value
@@ -729,7 +754,7 @@ local function MainHub(Exec, keydata, authToken)
                             if data.RadarDot then data.RadarDot.Visible = false end
                         end
 
-                        -- [PHASE 2] OFF-SCREEN ARROWS
+                        -- OFF-SCREEN ARROWS
                         local rootPos, onScreen = cam:WorldToViewportPoint(root.Position)
                         local dist = (root.Position - cam.CFrame.Position).Magnitude
                         
@@ -738,21 +763,14 @@ local function MainHub(Exec, keydata, authToken)
                                 if not data.Arrow then data.Arrow = Drawing.new("Triangle") data.Arrow.Filled = true end
                                 
                                 local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
-                                -- Check if behind using ObjectSpace
                                 local rel = cam.CFrame:PointToObjectSpace(root.Position)
                                 local angle = math.atan2(rel.Y, rel.X)
-                                
-                                -- Logic correction for rear targets
-                                if rel.Z > 0 then 
-                                    -- behind
-                                    angle = math.atan2(-rel.Y, -rel.X) -- Flip
-                                end
+                                if rel.Z > 0 then angle = math.atan2(-rel.Y, -rel.X) end
                                 
                                 local radius = ArrowRadius.Value
                                 local arrowPos = center + Vector2.new(math.cos(angle) * radius, math.sin(angle) * radius)
-                                
-                                -- Draw Triangle
                                 local size = ArrowSize.Value
+                                
                                 local p1 = arrowPos + Vector2.new(math.cos(angle) * size, math.sin(angle) * size)
                                 local p2 = arrowPos + Vector2.new(math.cos(angle + 2.5) * (size/2), math.sin(angle + 2.5) * (size/2))
                                 local p3 = arrowPos + Vector2.new(math.cos(angle - 2.5) * (size/2), math.sin(angle - 2.5) * (size/2))
@@ -944,12 +962,13 @@ local function MainHub(Exec, keydata, authToken)
     
     local HitboxSettings = CombatTab:AddRightGroupbox("Hitbox Expander", "expand")
     local HitboxToggle = HitboxSettings:AddToggle("bxw_hitbox_enable", { Text = "Enable Hitbox", Default = false })
-    local HitboxSize = HitboxSettings:AddSlider("bxw_hitbox_size", { Text = "Size", Default = 2, Min = 2, Max = 20, Rounding = 1 })
+    local HitboxSize = HitboxSettings:AddSlider("bxw_hitbox_size", { Text = "Size", Default = 2, Min = 2, Max = 30, Rounding = 1 })
     local HitboxTrans = HitboxSettings:AddSlider("bxw_hitbox_trans", { Text = "Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 1 })
     local HitboxPart = HitboxSettings:AddDropdown("bxw_hitbox_part", { Text = "Target Part", Values = {"Head", "HumanoidRootPart"}, Default = "Head" })
     local HitboxTeamCheck = HitboxSettings:AddToggle("bxw_hitbox_team", { Text = "Team Check", Default = true })
 
-    AddConnection(RunService.RenderStepped:Connect(function()
+    -- [FIXED] HITBOX EXPANDER (Use Heartbeat for Physics)
+    AddConnection(RunService.Heartbeat:Connect(function()
         if HitboxToggle.Value then
             for _, plr in ipairs(Players:GetPlayers()) do
                 if plr ~= LocalPlayer and plr.Character then
@@ -965,12 +984,14 @@ local function MainHub(Exec, keydata, authToken)
                                 part.Size = Vector3.new(HitboxSize.Value, HitboxSize.Value, HitboxSize.Value)
                                 part.Transparency = HitboxTrans.Value
                                 part.CanCollide = false
+                                part.Massless = true
                             end
                         end
                     end
                 end
             end
         else
+            -- Reset Logic
             if math.floor(tick()) % 2 == 0 then
                 for _, plr in ipairs(Players:GetPlayers()) do
                     if plr ~= LocalPlayer and plr.Character then
@@ -1151,34 +1172,56 @@ local function MainHub(Exec, keydata, authToken)
     ------------------------------------------------
     local MiscTab = Tabs.Misc
     
-    -- [PHASE 3] ADMIN DETECTOR & CLICKER
+    -- [UPDATED] ADMIN DETECTOR (AUTO MODE)
     local GameToolBox = MiscTab:AddLeftGroupbox("Game Tool", "tool")
     local AntiRejoinToggle = GameToolBox:AddToggle("bxw_antirejoin", { Text = "Auto Rejoin on Kick", Default = false })
     local AntiAfkToggle = GameToolBox:AddToggle("bxw_anti_afk", { Text = "Anti-AFK", Default = true })
     
     GameToolBox:AddDivider()
     GameToolBox:AddLabel("Admin Detector")
-    local AdminGroupId = GameToolBox:AddInput("bxw_admin_group", { Text = "Group ID", Numeric = true, Default = "", Placeholder = "123456" })
-    local AdminMinRank = GameToolBox:AddInput("bxw_admin_rank", { Text = "Min Rank", Numeric = true, Default = "1", Placeholder = "255" })
     local AdminKickToggle = GameToolBox:AddToggle("bxw_admin_kick", { Text = "Auto Kick if Admin", Default = false })
     local AdminDetectToggle = GameToolBox:AddToggle("bxw_admin_detect", { Text = "Enable Detection", Default = false })
+    local AdminGroupId = GameToolBox:AddInput("bxw_admin_group", { Text = "Custom Group ID", Numeric = true, Default = "", Placeholder = "Optional" })
 
+    -- Auto Detect Logic
     task.spawn(function()
         while true do
-            task.wait(5)
+            task.wait(3)
             if AdminDetectToggle.Value then
-                local gid = tonumber(AdminGroupId.Value)
-                local minR = tonumber(AdminMinRank.Value) or 255
-                if gid then
-                    for _, p in ipairs(Players:GetPlayers()) do
-                        if p ~= LocalPlayer then
-                            task.spawn(function()
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer then
+                        local detected = false
+                        local reason = ""
+
+                        -- 1. Check Creator (User Game)
+                        if game.CreatorType == Enum.CreatorType.User and p.UserId == game.CreatorId then
+                            detected = true reason = "Owner (User)"
+                        end
+
+                        -- 2. Check Group Owner/High Rank (Group Game)
+                        if not detected and game.CreatorType == Enum.CreatorType.Group then
+                            local s, rank = pcall(function() return p:GetRankInGroup(game.CreatorId) end)
+                            if s and rank and rank >= 254 then -- Usually Owner/Dev
+                                detected = true reason = "Owner/Dev (Group)"
+                            end
+                        end
+
+                        -- 3. Check Manual Group ID
+                        if not detected and AdminGroupId.Value ~= "" then
+                            local gid = tonumber(AdminGroupId.Value)
+                            if gid then
                                 local s, rank = pcall(function() return p:GetRankInGroup(gid) end)
-                                if s and rank and rank >= minR then
-                                    Library:Notify("ADMIN DETECTED: " .. p.Name, 5)
-                                    if AdminKickToggle.Value then LocalPlayer:Kick("Admin Detected") end
+                                if s and rank and rank >= 2 then -- Rank > 1
+                                    detected = true reason = "Custom Group Admin"
                                 end
-                            end)
+                            end
+                        end
+
+                        if detected then
+                            Library:Notify("⚠️ ADMIN DETECTED: " .. p.Name .. " (" .. reason .. ")", 5)
+                            if AdminKickToggle.Value then
+                                LocalPlayer:Kick("Admin Detected: " .. p.Name)
+                            end
                         end
                     end
                 end
@@ -1186,7 +1229,6 @@ local function MainHub(Exec, keydata, authToken)
         end
     end)
 
-    -- [PHASE 3] AUTO CLICKER
     local FunBox = MiscTab:AddLeftGroupbox("Fun & Utility", "smile")
     local ClickerToggle = FunBox:AddToggle("bxw_autoclicker", { Text = "Auto Clicker", Default = false })
     local ClickerDelay = FunBox:AddSlider("bxw_clicker_delay", { Text = "Click Delay", Default = 0.1, Min = 0.01, Max = 1 })
