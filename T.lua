@@ -1,9 +1,8 @@
 --[[
-    Diablo Universal Hub (Full Remastered v2)
-    - Fixed Aim Part Custom
-    - Smart Aim Logic Disabled interaction
-    - FOV Styles (Circle/Square)
-    - Smooth Time Left Timer
+    Diablo Universal Hub (Full Remastered v3)
+    - Fixed Aim Part (Custom) to use Chance Sliders
+    - Removed Text Input for Custom Part
+    - Optimized Target Selection Logic
     Supports: Wave, Potassium, Volt, Delta, Fluxus, Hydrogen, etc.
 ]]
 
@@ -241,7 +240,7 @@ local function MainHub(Exec, keydata, authToken)
     local Toggles = Library.Toggles
 
     local Window = Library:CreateWindow({
-        Title  = "BxB | Diablo Universal v2",
+        Title  = "BxB | Diablo Universal v3",
         Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module</font></b>',
         Icon = "84528813312016",
         Center   = true,
@@ -1064,8 +1063,7 @@ local function MainHub(Exec, keydata, authToken)
     local SilentToggle = AimBox:AddToggle("bxw_silent_enable", { Text = "Silent Aim (Visual)", Default = false }) 
     
     local AimPartDropdown = AimBox:AddDropdown("bxw_aim_part", { Text = "Aim Part", Values = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "Closest", "Random", "Custom" }, Default = "Head" })
-    -- [NEW] Custom Aim Part Input
-    local AimCustomPartInput = AimBox:AddInput("bxw_aim_custom_part", { Text = "Custom Part Name", Default = "Head", Placeholder = "e.g. Head" })
+    -- Custom Input Removed, now uses weighted logic
     
     local AimActivationDropdown = AimBox:AddDropdown("bxw_aim_activation", { Text = "Aim Activation", Values = { "Hold Right Click", "Always On" }, Default = "Hold Right Click" })
     local TargetModeDropdown = AimBox:AddDropdown("bxw_aim_targetmode", { Text = "Target Mode", Values = { "Closest To Crosshair", "Closest Distance", "Lowest Health" }, Default = "Closest To Crosshair" })
@@ -1074,16 +1072,13 @@ local function MainHub(Exec, keydata, authToken)
     local UseSmartAimLogic = AimBox:AddToggle("bxw_aim_smart_logic", { Text = "Smart Aim Logic", Default = true })
     
     UseSmartAimLogic:OnChanged(function()
-        -- Disable TargetModeDropdown if Smart Logic is ON
-        if TargetModeDropdown.SetDisabled then -- Check if library supports it (Obsidian/Linoria usually do via internal props or methods)
+        if TargetModeDropdown.SetDisabled then 
              TargetModeDropdown:SetDisabled(UseSmartAimLogic.Value)
         else
-             -- Fallback: Modify the object property directly if method doesn't exist
              TargetModeDropdown.Disabled = UseSmartAimLogic.Value
-             Library:UpdateUI() -- Attempt to refresh if function exists
+             Library:UpdateUI() 
         end
     end)
-    -- Initialize state
     task.delay(0.5, function() 
         if TargetModeDropdown.SetDisabled then TargetModeDropdown:SetDisabled(UseSmartAimLogic.Value) 
         else TargetModeDropdown.Disabled = UseSmartAimLogic.Value end 
@@ -1179,7 +1174,37 @@ local function MainHub(Exec, keydata, authToken)
                                     local parts = {"Head", "UpperTorso", "HumanoidRootPart"} 
                                     partName = parts[math.random(1, #parts)]
                                 elseif partName == "Closest" then partName = "Head" 
-                                elseif partName == "Custom" then partName = AimCustomPartInput.Value -- [FIXED] Use Custom Input
+                                elseif partName == "Custom" then
+                                    -- [WEIGHTED RANDOM LOGIC]
+                                    local wHead = HeadChance.Value
+                                    local wTorso = TorsoChance.Value
+                                    local wLimb = LimbChance.Value
+                                    local total = wHead + wTorso + wLimb
+                                    
+                                    if total > 0 then
+                                        local r = math.random(1, total)
+                                        if r <= wHead then
+                                            partName = "Head"
+                                        elseif r <= wHead + wTorso then
+                                            partName = "HumanoidRootPart" -- Torso Center
+                                        else
+                                            -- Pick random existing limb
+                                            local limbs = {}
+                                            local possible = {"Left Arm", "Right Arm", "Left Leg", "Right Leg", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"}
+                                            for _, name in ipairs(possible) do
+                                                if p.Character:FindFirstChild(name) then
+                                                    table.insert(limbs, name)
+                                                end
+                                            end
+                                            if #limbs > 0 then
+                                                partName = limbs[math.random(1, #limbs)]
+                                            else
+                                                partName = "HumanoidRootPart"
+                                            end
+                                        end
+                                    else
+                                        partName = "Head" -- Fallback
+                                    end
                                 end
                                 
                                 local part = p.Character:FindFirstChild(partName) or root
