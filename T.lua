@@ -1,6 +1,9 @@
 --[[
-    Diablo Universal Hub (Full Remastered)
-    Restored All Features + Universal Fixes
+    Diablo Universal Hub (Full Remastered v2)
+    - Fixed Aim Part Custom
+    - Smart Aim Logic Disabled interaction
+    - FOV Styles (Circle/Square)
+    - Smooth Time Left Timer
     Supports: Wave, Potassium, Volt, Delta, Fluxus, Hydrogen, etc.
 ]]
 
@@ -194,7 +197,7 @@ local function safeRichLabel(groupbox, text)
 end
 
 --====================================================
--- 4. MainHub Logic (Full Restoration)
+-- 4. MainHub Logic (Full Restoration + Improvements)
 --====================================================
 
 local function MainHub(Exec, keydata, authToken)
@@ -212,8 +215,11 @@ local function MainHub(Exec, keydata, authToken)
     -- Global Storage
     local espDrawings = {}
     local crosshairLines = nil
+    -- Aimbot Drawing Objects
     local AimbotFOVCircle = nil
+    local AimbotFOVSquare = nil
     local AimbotSnapLine = nil
+    
     local CurrentTarget = nil
 
     keydata.role = NormalizeRole(keydata.role)
@@ -235,7 +241,7 @@ local function MainHub(Exec, keydata, authToken)
     local Toggles = Library.Toggles
 
     local Window = Library:CreateWindow({
-        Title  = "BxB | Diablo Universal",
+        Title  = "BxB | Diablo Universal v2",
         Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module</font></b>',
         Icon = "84528813312016",
         Center   = true,
@@ -275,7 +281,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- TAB 1: Info (Restored)
+    -- TAB 1: Info (Restored & Smoothed)
     ------------------------------------------------
     local InfoTab = Tabs.Info
     local KeyBox = InfoTab:AddLeftGroupbox("Key Info", "key-round")
@@ -289,7 +295,7 @@ local function MainHub(Exec, keydata, authToken)
     local statusText = tostring(keydata.status or "active")
     local noteText = tostring(keydata.note or "-")
 
-    -- Remote Data Fetch (Restored)
+    -- Remote Data Fetch
     local remoteKeyData, remoteCreatedAtStr, remoteExpireStr = nil, nil, nil
     task.spawn(function()
         pcall(function()
@@ -333,8 +339,11 @@ local function MainHub(Exec, keydata, authToken)
     local ExpireLabel = safeRichLabel(KeyBox, string.format("<b>Expire:</b> %s", expireDisplay))
     local TimeLeftLabel = safeRichLabel(KeyBox, string.format("<b>Time left:</b> %s", timeLeftDisplay))
 
+    -- [IMPROVED] Smooth Time Update (Every 1 second)
+    local nextUpdate = 0
     AddConnection(RunService.Heartbeat:Connect(function(dt)
-        if math.floor(tick()) % 5 == 0 then
+        if tick() >= nextUpdate then
+            nextUpdate = tick() + 1
             local nowExpire = tonumber(keydata.expire) or expireTs
             local expireStr = remoteExpireStr or formatUnixTime(nowExpire)
             local leftStr = remoteExpireStr and remoteExpireStr or formatTimeLeft(nowExpire)
@@ -385,7 +394,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 2: Player (Full Restoration)
+    -- TAB 2: Player
     ------------------------------------------------
     local PlayerTab = Tabs.Player
     local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
@@ -454,7 +463,7 @@ local function MainHub(Exec, keydata, authToken)
         elseif infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
     end)
 
-    -- Spider Mode (Restored)
+    -- Spider Mode
     local SpiderToggle = MoveBox:AddToggle("bxw_spider", { Text = "Spider Mode (Wall Climb)", Default = false })
     AddConnection(RunService.Heartbeat:Connect(function()
         if SpiderToggle.Value then
@@ -477,7 +486,7 @@ local function MainHub(Exec, keydata, authToken)
         end
     end))
 
-    -- Fly System (Restored)
+    -- Fly System
     local flyEnabled = false
     local flyBV, flyBG
     local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Universal)"), Default = false })
@@ -1003,7 +1012,7 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     ------------------------------------------------
-    -- TAB 4: Combat (Full Restoration)
+    -- TAB 4: Combat (Updated Logic & Features)
     ------------------------------------------------
     local CombatTab = Tabs.Combat
     local AimBox = CombatTab:AddLeftGroupbox("Aimbot Settings", "target")
@@ -1052,14 +1061,39 @@ local function MainHub(Exec, keydata, authToken)
     end))
 
     local AimbotToggle = AimBox:AddToggle("bxw_aimbot_enable", { Text = "Enable Aimbot", Default = false })
-    local SilentToggle = AimBox:AddToggle("bxw_silent_enable", { Text = "Silent Aim (Visual)", Default = false }) -- Note: True silent aim is exploit specific
+    local SilentToggle = AimBox:AddToggle("bxw_silent_enable", { Text = "Silent Aim (Visual)", Default = false }) 
+    
     local AimPartDropdown = AimBox:AddDropdown("bxw_aim_part", { Text = "Aim Part", Values = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "Closest", "Random", "Custom" }, Default = "Head" })
+    -- [NEW] Custom Aim Part Input
+    local AimCustomPartInput = AimBox:AddInput("bxw_aim_custom_part", { Text = "Custom Part Name", Default = "Head", Placeholder = "e.g. Head" })
+    
     local AimActivationDropdown = AimBox:AddDropdown("bxw_aim_activation", { Text = "Aim Activation", Values = { "Hold Right Click", "Always On" }, Default = "Hold Right Click" })
     local TargetModeDropdown = AimBox:AddDropdown("bxw_aim_targetmode", { Text = "Target Mode", Values = { "Closest To Crosshair", "Closest Distance", "Lowest Health" }, Default = "Closest To Crosshair" })
+    
+    -- [IMPROVED] Smart Aim Logic with Callback
     local UseSmartAimLogic = AimBox:AddToggle("bxw_aim_smart_logic", { Text = "Smart Aim Logic", Default = true })
+    
+    UseSmartAimLogic:OnChanged(function()
+        -- Disable TargetModeDropdown if Smart Logic is ON
+        if TargetModeDropdown.SetDisabled then -- Check if library supports it (Obsidian/Linoria usually do via internal props or methods)
+             TargetModeDropdown:SetDisabled(UseSmartAimLogic.Value)
+        else
+             -- Fallback: Modify the object property directly if method doesn't exist
+             TargetModeDropdown.Disabled = UseSmartAimLogic.Value
+             Library:UpdateUI() -- Attempt to refresh if function exists
+        end
+    end)
+    -- Initialize state
+    task.delay(0.5, function() 
+        if TargetModeDropdown.SetDisabled then TargetModeDropdown:SetDisabled(UseSmartAimLogic.Value) 
+        else TargetModeDropdown.Disabled = UseSmartAimLogic.Value end 
+    end)
 
     local FOVSlider = AimBox:AddSlider("bxw_aim_fov", { Text = "Aim FOV", Default = 10, Min = 1, Max = 50 })
     local ShowFovToggle = AimBox:AddToggle("bxw_aim_showfov", { Text = "Show FOV Circle", Default = false }):AddColorPicker("bxw_aim_fovcolor", { Default = Color3.fromRGB(255, 255, 255) })
+    -- [NEW] FOV Style
+    local FOVStyleDropdown = AimBox:AddDropdown("bxw_fov_style", { Text = "FOV Style", Values = { "Circle", "Square" }, Default = "Circle" })
+    
     local RainbowToggle = AimBox:AddToggle("bxw_aim_rainbow", { Text = "Rainbow FOV", Default = false })
     local RainbowSpeedSlider = AimBox:AddSlider("bxw_aim_rainbowspeed", { Text = "Rainbow Speed", Default = 5, Min = 1, Max = 10 })
 
@@ -1081,27 +1115,41 @@ local function MainHub(Exec, keydata, authToken)
     local TorsoChance = ExtraBox:AddSlider("bxw_hit_torso_chance", { Text = "Torso Chance", Default = 100, Min = 0, Max = 100 })
     local LimbChance = ExtraBox:AddSlider("bxw_hit_limb_chance", { Text = "Limbs Chance", Default = 100, Min = 0, Max = 100 })
 
+    -- Init Drawings
     AimbotFOVCircle = SafeDrawingNew("Circle") AimbotFOVCircle.Thickness = 1 AimbotFOVCircle.Filled = false
+    AimbotFOVSquare = SafeDrawingNew("Square") AimbotFOVSquare.Thickness = 1 AimbotFOVSquare.Filled = false
     AimbotSnapLine = SafeDrawingNew("Line") AimbotSnapLine.Thickness = 1 AimbotSnapLine.Visible = false
     local rainbowHue = 0
 
-    -- Aimbot Logic (Restored & Optimized)
+    -- Aimbot Logic (Updated)
     RunService:BindToRenderStep("BxBAimbot", Enum.RenderPriority.Camera.Value + 1, function()
         local ms = UserInputService:GetMouseLocation()
         
-        -- FOV Circle
+        -- FOV Visualization
         if ShowFovToggle.Value and AimbotToggle.Value and DrawingApiAvailable then
-            AimbotFOVCircle.Visible = true
-            AimbotFOVCircle.Radius = FOVSlider.Value * 15
-            AimbotFOVCircle.Position = ms
+            local radius = FOVSlider.Value * 15
+            local color = Options.bxw_aim_fovcolor.Value
             if RainbowToggle.Value then
                 rainbowHue = (rainbowHue + (RainbowSpeedSlider.Value/360)) % 1
-                AimbotFOVCircle.Color = Color3.fromHSV(rainbowHue, 1, 1)
-            else
-                AimbotFOVCircle.Color = Options.bxw_aim_fovcolor.Value
+                color = Color3.fromHSV(rainbowHue, 1, 1)
+            end
+
+            if FOVStyleDropdown.Value == "Circle" then
+                AimbotFOVCircle.Visible = true
+                AimbotFOVSquare.Visible = false
+                AimbotFOVCircle.Radius = radius
+                AimbotFOVCircle.Position = ms
+                AimbotFOVCircle.Color = color
+            else -- Square
+                AimbotFOVCircle.Visible = false
+                AimbotFOVSquare.Visible = true
+                AimbotFOVSquare.Size = Vector2.new(radius * 2, radius * 2)
+                AimbotFOVSquare.Position = ms - Vector2.new(radius, radius)
+                AimbotFOVSquare.Color = color
             end
         else
             AimbotFOVCircle.Visible = false
+            AimbotFOVSquare.Visible = false
         end
         AimbotSnapLine.Visible = false
 
@@ -1131,14 +1179,17 @@ local function MainHub(Exec, keydata, authToken)
                                     local parts = {"Head", "UpperTorso", "HumanoidRootPart"} 
                                     partName = parts[math.random(1, #parts)]
                                 elseif partName == "Closest" then partName = "Head" 
-                                elseif partName == "Custom" then partName = "Head" end
+                                elseif partName == "Custom" then partName = AimCustomPartInput.Value -- [FIXED] Use Custom Input
+                                end
                                 
                                 local part = p.Character:FindFirstChild(partName) or root
                                 if part then
                                     local pos, onScreen = cam:WorldToViewportPoint(part.Position)
                                     if onScreen then
                                         local dist = (Vector2.new(pos.X, pos.Y) - ms).Magnitude
-                                        if dist <= (DrawingApiAvailable and AimbotFOVCircle.Radius or 300) then
+                                        local fovRadius = (DrawingApiAvailable and (FOVStyleDropdown.Value == "Circle" and AimbotFOVCircle.Radius or AimbotFOVSquare.Size.X/2) or 300)
+                                        
+                                        if dist <= fovRadius then
                                             local isVis = true
                                             if VisibilityToggle.Value then
                                                 local params = RaycastParams.new()
@@ -1174,7 +1225,9 @@ local function MainHub(Exec, keydata, authToken)
                 
                 local pos, onScreen = cam:WorldToViewportPoint(targetPos)
                 local dist = (Vector2.new(pos.X, pos.Y) - ms).Magnitude
-                if not onScreen or dist > (DrawingApiAvailable and AimbotFOVCircle.Radius or 300) then
+                local fovRadius = (DrawingApiAvailable and (FOVStyleDropdown.Value == "Circle" and AimbotFOVCircle.Radius or AimbotFOVSquare.Size.X/2) or 300)
+
+                if not onScreen or dist > fovRadius then
                     CurrentTarget = nil 
                 else
                     local lookAt = CFrame.lookAt(cam.CFrame.Position, targetPos)
@@ -1385,6 +1438,7 @@ local function MainHub(Exec, keydata, authToken)
             end
         end
         if AimbotFOVCircle then AimbotFOVCircle:Remove() end
+        if AimbotFOVSquare then AimbotFOVSquare:Remove() end
         if AimbotSnapLine then AimbotSnapLine:Remove() end
         if crosshairLines then crosshairLines.h:Remove() crosshairLines.v:Remove() end
         if RadarCircle then RadarCircle:Remove() RadarBorder:Remove() RadarCenter:Remove() end
