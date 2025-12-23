@@ -230,9 +230,17 @@ local function MainHub(Exec, keydata, authToken)
     local Options = Library.Options
     local Toggles = Library.Toggles
 
+    -- [FEATURE] Action Notify Helper
+    local function NotifyAction(feature, state)
+        if Toggles.ForceNotify and Toggles.ForceNotify.Value then
+            local s = state and "Enabled" or "Disabled"
+            Library:Notify(string.format("%s: %s", feature, s), 1.5)
+        end
+    end
+
     -- 1) สร้าง Window (ตาม noedit.lua)
     local Window = Library:CreateWindow({
-        Title  = "",
+        Title  = "BxB.ware",
         Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module/Client</font></b>',
 
         Icon = "84528813312016",
@@ -468,7 +476,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     --------------------------------------------------------
-    -- 2. PLAYER TAB (UI Interlocked)
+    -- 2. PLAYER TAB (UI Interlocked & Notifications)
     --------------------------------------------------------
    local PlayerTab = Tabs.Player
 
@@ -494,6 +502,7 @@ local function MainHub(Exec, keydata, authToken)
         if WalkSpeedSlider.SetDisabled then WalkSpeedSlider:SetDisabled(not state) end
         local hum = getHumanoid()
         if hum then hum.WalkSpeed = state and WalkSpeedSlider.Value or defaultWalkSpeed end
+        NotifyAction("WalkSpeed", state)
     end)
     
     MoveBox:AddButton("Reset WalkSpeed", function()
@@ -524,6 +533,7 @@ local function MainHub(Exec, keydata, authToken)
         if JumpPowerSlider.SetDisabled then JumpPowerSlider:SetDisabled(not state) end
         local hum = getHumanoid()
         if hum then pcall(function() hum.UseJumpPower = true end) hum.JumpPower = state and JumpPowerSlider.Value or defaultJumpPower end
+        NotifyAction("JumpPower", state)
     end)
     MoveBox:AddButton("Reset JumpPower", function()
         local hum = getHumanoid()
@@ -561,6 +571,7 @@ local function MainHub(Exec, keydata, authToken)
         else
             if infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
         end
+        NotifyAction("Infinite Jump", state)
     end)
 
     -- Smooth Fly
@@ -587,6 +598,7 @@ local function MainHub(Exec, keydata, authToken)
             if flyBV then flyBV:Destroy() flyBV = nil end
             if flyBG then flyBG:Destroy() flyBG = nil end
             if hum then hum.PlatformStand = false end
+            NotifyAction("Fly", false)
             return
         end
         if not (root and hum and cam) then
@@ -622,6 +634,7 @@ local function MainHub(Exec, keydata, authToken)
             if moveDir.Magnitude > 0 then moveDir = moveDir.Unit flyBV.Velocity = moveDir * flySpeed else flyBV.Velocity = Vector3.zero end
             flyBG.CFrame = CFrame.new(root.Position, root.Position + cam.CFrame.LookVector)
         end))
+        NotifyAction("Fly", true)
     end)
 
     -- Noclip
@@ -633,6 +646,7 @@ local function MainHub(Exec, keydata, authToken)
             if noclipConn then noclipConn:Disconnect() noclipConn = nil end
             local char = getCharacter()
             if char then for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = true end end end
+            NotifyAction("Noclip", false)
             return
         end
         if noclipConn then noclipConn:Disconnect() end
@@ -641,6 +655,7 @@ local function MainHub(Exec, keydata, authToken)
             if not char then return end
             for _, part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = false end end
         end))
+        NotifyAction("Noclip", true)
     end)
 
     ------------------------------------------------
@@ -687,6 +702,7 @@ local function MainHub(Exec, keydata, authToken)
             local hum = getHumanoid()
             if hum then cam.CameraSubject = hum end
         end
+        NotifyAction("Spectate", state)
     end)
 
     UtilBox:AddDivider()
@@ -736,7 +752,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 ESP & Visuals Tab (Improved Info, Health & Logic)
+    -- 4.3 ESP & Visuals Tab (Improved Info, Health & Logic + Disabled Logic)
     ------------------------------------------------
     do
         local ESPTab = Tabs.ESP
@@ -744,9 +760,15 @@ local function MainHub(Exec, keydata, authToken)
         local ESPSettingBox = safeAddRightGroupbox(ESPTab, "ESP Settings", "palette")
 
         local ESPEnabledToggle = ESPFeatureBox:AddToggle("bxw_esp_enable", { Text = "Enable ESP", Default = false })
-        local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", { Text = "Box Style", Values = { "Box", "Corner" }, Default = "Box", Multi = false })
+        ESPEnabledToggle:OnChanged(function(state) NotifyAction("Global ESP", state) end)
 
+        local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", { Text = "Box Style", Values = { "Box", "Corner" }, Default = "Box", Multi = false })
         local BoxToggle      = ESPFeatureBox:AddToggle("bxw_esp_box",      { Text = "Box",        Default = true })
+        
+        -- [FEATURE] Lock Box Style
+        BoxStyleDropdown:SetDisabled(true)
+        BoxToggle:OnChanged(function(state) BoxStyleDropdown:SetDisabled(not state) end)
+
         local ChamsToggle    = ESPFeatureBox:AddToggle("bxw_esp_chams",    { Text = "Chams",      Default = false })
         local SkeletonToggle = ESPFeatureBox:AddToggle("bxw_esp_skeleton", { Text = "Skeleton",   Default = false })
         local HealthToggle   = ESPFeatureBox:AddToggle("bxw_esp_health",   { Text = "Health Bar", Default = false })
@@ -782,11 +804,22 @@ local function MainHub(Exec, keydata, authToken)
         TracerColorLabel:AddColorPicker("bxw_esp_tracer_color", { Default = Color3.fromRGB(255, 255, 255) })
         local NameColorLabel = ESPSettingBox:AddLabel("Name Color")
         NameColorLabel:AddColorPicker("bxw_esp_name_color", { Default = Color3.fromRGB(255, 255, 255) })
+        
         local NameSizeSlider = ESPSettingBox:AddSlider("bxw_esp_name_size", { Text = "Name Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
+        -- [FEATURE] Lock Name Size
+        NameSizeSlider:SetDisabled(true)
+        NameToggle:OnChanged(function(state) NameSizeSlider:SetDisabled(not state) end)
+
         local DistColorLabel = ESPSettingBox:AddLabel("Distance Color")
         DistColorLabel:AddColorPicker("bxw_esp_dist_color", { Default = Color3.fromRGB(255, 255, 255) })
+        
         local DistSizeSlider = ESPSettingBox:AddSlider("bxw_esp_dist_size", { Text = "Distance Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
         local DistUnitDropdown = ESPSettingBox:AddDropdown("bxw_esp_dist_unit", { Text = "Distance Unit", Values = { "Studs", "Meters" }, Default = "Studs", Multi = false })
+        -- [FEATURE] Lock Distance Settings
+        DistSizeSlider:SetDisabled(true)
+        DistUnitDropdown:SetDisabled(true)
+        DistToggle:OnChanged(function(state) DistSizeSlider:SetDisabled(not state) DistUnitDropdown:SetDisabled(not state) end)
+
         local SkeletonColorLabel = ESPSettingBox:AddLabel("Skeleton Color")
         SkeletonColorLabel:AddColorPicker("bxw_esp_skeleton_color", { Default = Color3.fromRGB(0, 255, 255) })
         local HealthColorLabel = ESPSettingBox:AddLabel("Health Bar Color")
@@ -795,11 +828,22 @@ local function MainHub(Exec, keydata, authToken)
         InfoColorLabel:AddColorPicker("bxw_esp_info_color", { Default = Color3.fromRGB(255, 255, 255) })
         local HeadDotColorLabel = ESPSettingBox:AddLabel("Head Dot Color")
         HeadDotColorLabel:AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0) })
+        
         local HeadDotSizeSlider = ESPSettingBox:AddSlider("bxw_esp_headdot_size", { Text = "Head Dot Size", Default = 3, Min = 1, Max = 10, Rounding = 0 })
+        -- [FEATURE] Lock Head Dot Size
+        HeadDotSizeSlider:SetDisabled(true)
+        HeadDotToggle:OnChanged(function(state) HeadDotSizeSlider:SetDisabled(not state) end)
+
         local ChamsColorLabel = ESPSettingBox:AddLabel("Chams Color")
         ChamsColorLabel:AddColorPicker("bxw_esp_chams_color", { Default = Color3.fromRGB(0, 255, 0) })
+        
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
+        -- [FEATURE] Lock Chams Settings
+        ChamsTransSlider:SetDisabled(true)
+        ChamsVisibleToggle:SetDisabled(true)
+        ChamsToggle:OnChanged(function(state) ChamsTransSlider:SetDisabled(not state) ChamsVisibleToggle:SetDisabled(not state) end)
+
         local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 50, Min = 0, Max = 250, Rounding = 0, Compact = false })
 
         local CrosshairToggle = ESPSettingBox:AddToggle("bxw_crosshair_enable", { Text = "Crosshair", Default = false })
@@ -807,6 +851,10 @@ local function MainHub(Exec, keydata, authToken)
         CrossColorLabel:AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255) })
         local CrossSizeSlider = ESPSettingBox:AddSlider("bxw_crosshair_size", { Text = "Crosshair Size", Default = 5, Min = 1, Max = 20, Rounding = 0, Compact = false })
         local CrossThickSlider = ESPSettingBox:AddSlider("bxw_crosshair_thick", { Text = "Crosshair Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0 })
+        -- [FEATURE] Lock Crosshair Settings
+        CrossSizeSlider:SetDisabled(true)
+        CrossThickSlider:SetDisabled(true)
+        CrosshairToggle:OnChanged(function(state) CrossSizeSlider:SetDisabled(not state) CrossThickSlider:SetDisabled(not state) NotifyAction("Crosshair", state) end)
 
         -- [FIX] Logic to deep clean drawings (Unload Bug)
         local lastESPUpdate = 0
@@ -1267,6 +1315,7 @@ local function MainHub(Exec, keydata, authToken)
         UpdateAimUI(false)
         AimbotToggle:OnChanged(function(state)
             UpdateAimUI(state)
+            NotifyAction("Aimbot", state)
         end)
 
 
@@ -1285,6 +1334,7 @@ local function MainHub(Exec, keydata, authToken)
         TriggerbotToggle:OnChanged(function(state)
             TriggerFiringDropdown:SetDisabled(not state)
             TriggerFovSlider:SetDisabled(not state)
+            NotifyAction("Triggerbot", state)
         end)
 
         ExtraBox:AddDivider()
@@ -1523,7 +1573,7 @@ local function MainHub(Exec, keydata, authToken)
         end)
 
         local ShadowToggle = GfxBox:AddToggle("bxw_shadows", { Text = "Shadows", Default = Lighting.GlobalShadows })
-        ShadowToggle:OnChanged(function(state) Lighting.GlobalShadows = state end)
+        ShadowToggle:OnChanged(function(state) Lighting.GlobalShadows = state NotifyAction("Shadows", state) end)
 
         local TimeSlider = GfxBox:AddSlider("bxw_time", { Text = "Time of Day", Default = 12, Min = 0, Max = 24, Rounding = 1, Callback = function(v) Lighting.ClockTime = v end })
 
@@ -1552,6 +1602,7 @@ local function MainHub(Exec, keydata, authToken)
             else
                 if antiAfkConn then antiAfkConn:Disconnect() antiAfkConn = nil end
             end
+            NotifyAction("Anti-AFK", state)
         end)
 
         local defaultGravity = Workspace.Gravity
@@ -1562,6 +1613,7 @@ local function MainHub(Exec, keydata, authToken)
         NoFogToggle:OnChanged(function(state)
             if state then fogDefaults.FogStart = game.Lighting.FogStart fogDefaults.FogEnd = game.Lighting.FogEnd game.Lighting.FogStart = 0 game.Lighting.FogEnd = 1e10
             else game.Lighting.FogStart = fogDefaults.FogStart or 0 game.Lighting.FogEnd = fogDefaults.FogEnd or 1e10 end
+            NotifyAction("No Fog", state)
         end)
         local defaultBrightness = game.Lighting.Brightness
         local BrightnessSlider = MiscRight:AddSlider("bxw_brightness", { Text = "Brightness", Default = defaultBrightness, Min = 0, Max = 10, Rounding = 1, Compact = false, Callback = function(value) game.Lighting.Brightness = value end })
@@ -1595,6 +1647,7 @@ local function MainHub(Exec, keydata, authToken)
             else
                 if spinConn then spinConn:Disconnect() spinConn = nil end
             end
+            NotifyAction("SpinBot", state)
         end)
 
         local antiFlingConn
@@ -1612,6 +1665,7 @@ local function MainHub(Exec, keydata, authToken)
             else
                 if antiFlingConn then antiFlingConn:Disconnect() antiFlingConn = nil end
             end
+            NotifyAction("Anti-Fling", state)
         end)
 
         local jerkTool
@@ -1631,6 +1685,7 @@ local function MainHub(Exec, keydata, authToken)
             else
                 if jerkTool then jerkTool:Destroy() jerkTool = nil end
             end
+            NotifyAction("Jerk Tool", state)
         end)
 
         MiscLeft:AddButton("BTools", function()
@@ -1652,11 +1707,15 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.6 Settings Tab
+    -- 4.6 Settings Tab (Added Force Notify)
     ------------------------------------------------
     do
         local SettingsTab = Tabs.Settings
         local MenuGroup = SettingsTab:AddLeftGroupbox("Menu", "wrench")
+        
+        -- [FEATURE] Force Notify Toggle
+        MenuGroup:AddToggle("ForceNotify", { Text = "Force Notification", Default = true, Tooltip = "Notify when features are toggled" })
+
         MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(value) Library.KeybindFrame.Visible = value end })
         MenuGroup:AddToggle("ShowCustomCursor", { Text = "Custom Cursor", Default = true, Callback = function(Value) Library.ShowCustomCursor = Value end })
         MenuGroup:AddDropdown("NotificationSide", { Values = { "Left", "Right" }, Default = "Right", Text = "Notification Side", Callback = function(Value) Library:SetNotifySide(Value) end })
@@ -1672,6 +1731,22 @@ local function MainHub(Exec, keydata, authToken)
         SaveManager:BuildConfigSection(SettingsTab) ThemeManager:ApplyToTab(SettingsTab)
         SaveManager:LoadAutoloadConfig()
     end
+
+    ------------------------------------------------
+    -- [FEATURE] Watermark
+    ------------------------------------------------
+    pcall(function()
+        Library:SetWatermarkVisibility(true)
+        -- Update Watermark loop
+        AddConnection(RunService.RenderStepped:Connect(function()
+            local ping = 0
+            pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+            local fps = math.floor(1 / math.max(RunService.RenderStepped:Wait(), 0.001))
+            local timeStr = os.date("%H:%M:%S")
+            Library:SetWatermark(string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s", fps, ping, timeStr))
+        end))
+    end)
+
 
     ------------------------------------------------
     -- 4.7 Clean Up (FINAL FIX: Ensure everything is removed)
