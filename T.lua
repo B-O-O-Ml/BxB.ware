@@ -1390,7 +1390,7 @@ local function MainHub(Exec, keydata, authToken)
                                         if AimTeamCheck.Value and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then skip = true end
                                         if not skip then
                                             local partName = AimPartDropdown.Value
-                                            local selPart = (partName == "Random") and char:FindFirstChild({"Head","Torso"}[math.random(1,2)]) or char:FindFirstChild(partName) or rootCand
+                                            local selPart = (partName == "Random") and char:FindFirstChild({"Head","Torso"}math.random(1,2)) or char:FindFirstChild(partName) or rootCand
                                             if partName == "Closest" then selPart = rootCand end
                                             
                                             local sp, onScr = cam:WorldToViewportPoint(selPart.Position)
