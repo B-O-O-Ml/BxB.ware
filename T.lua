@@ -302,7 +302,7 @@ local function MainHub(Exec, keydata, authToken)
         Server = Window:AddTab({
             Name        = "Server",
             Icon        = "server",
-            Description = "Server Hop / Rejoin / JobID",
+            Description = "Hop / Rejoin / Anti-AFK",
         }),
 
         Misc = Window:AddTab({
@@ -549,6 +549,24 @@ local function MainHub(Exec, keydata, authToken)
         JumpPowerToggle:SetValue(false)
     end)
 
+    -- [FEATURE] Hip Height
+    local HipHeightToggle = MoveBox:AddToggle("bxw_hipheight_toggle", { Text = "Enable Hip Height", Default = false })
+    local HipHeightSlider = MoveBox:AddSlider("bxw_hipheight", { Text = "Hip Height", Default = 0, Min = 0, Max = 50, Rounding = 1, Compact = false,
+        Callback = function(value)
+            if not HipHeightToggle.Value then return end
+            local hum = getHumanoid()
+            if hum then hum.HipHeight = value end
+        end
+    })
+    HipHeightSlider:SetDisabled(true)
+    HipHeightToggle:OnChanged(function(state)
+        HipHeightSlider:SetDisabled(not state)
+        local hum = getHumanoid()
+        if hum then hum.HipHeight = state and HipHeightSlider.Value or 0 end
+        NotifyAction("Hip Height", state)
+    end)
+
+
     MoveBox:AddLabel("Movement Presets")
     local MovePresetDropdown = MoveBox:AddDropdown("bxw_move_preset", { Text = "Movement Preset", Values = { "Default", "Normal", "Fast", "Ultra" }, Default = "Default", Multi = false })
     MovePresetDropdown:OnChanged(function(value)
@@ -710,6 +728,11 @@ local function MainHub(Exec, keydata, authToken)
             if hum then cam.CameraSubject = hum end
         end
         NotifyAction("Spectate", state)
+    end)
+
+    UtilBox:AddButton("Sit", function()
+        local hum = getHumanoid()
+        if hum then hum.Sit = true end
     end)
 
     UtilBox:AddDivider()
@@ -1532,7 +1555,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- [NEW FEATURE] Server Tab (Moved from Misc + New Features)
+    -- [NEW FEATURE] Server Tab (Moved Anti-AFK & New Logic)
     ------------------------------------------------
     do
         local ServerTab = Tabs.Server
@@ -1540,14 +1563,37 @@ local function MainHub(Exec, keydata, authToken)
         local ServerRight = safeAddRightGroupbox(ServerTab, "Connection & Config", "wifi")
 
         -- Server Hop
-        ServerLeft:AddButton("Server Hop (Rejoin)", function()
+        ServerLeft:AddButton("Server Hop", function()
             pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
             NotifyAction("Server Hop", true)
+        end)
+
+        -- [FEATURE] Low Server Hop
+        ServerLeft:AddButton("Low Server Hop", function()
+             pcall(function()
+                local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+                local list = HttpService:JSONDecode(game:HttpGet(url))
+                if list and list.data then
+                    for _, s in ipairs(list.data) do
+                        if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                            TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
+                            NotifyAction("Low Server Hop", true)
+                            return
+                        end
+                    end
+                end
+                Library:Notify("No low server found", 2)
+             end)
         end)
 
         ServerLeft:AddButton("Rejoin Server", function()
              pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end)
              NotifyAction("Rejoin", true)
+        end)
+        
+        -- [FEATURE] Instant Leave
+        ServerLeft:AddButton("Instant Leave", function()
+            game:Shutdown()
         end)
 
         ServerLeft:AddDivider()
@@ -1577,11 +1623,20 @@ local function MainHub(Exec, keydata, authToken)
             end
         end)
 
-        -- [FEATURE] Disable button if empty (Simulated by checking in callback, but visuals: )
-        -- Obsidian doesn't support dynamic disabling of buttons easily based on input change without rerendering, 
-        -- so we use the notification check above.
+        -- Anti-AFK (Moved from Misc)
+        local antiAfkConn
+        local AntiAfkToggle = ServerRight:AddToggle("bxw_anti_afk", { Text = "Anti-AFK", Default = true })
+        AntiAfkToggle:OnChanged(function(state)
+            if state then
+                if antiAfkConn then antiAfkConn:Disconnect() end
+                antiAfkConn = AddConnection(LocalPlayer.Idled:Connect(function() pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end))
+            else
+                if antiAfkConn then antiAfkConn:Disconnect() antiAfkConn = nil end
+            end
+            NotifyAction("Anti-AFK", state)
+        end)
 
-        -- Connection Config
+        -- Anti Rejoin
         local AntiRejoinToggle = ServerRight:AddToggle("bxw_antirejoin", { Text = "Auto Rejoin on Kick", Default = false })
         local lastKick = 0
         AddConnection(GuiService.ErrorMessageChanged:Connect(function()
@@ -1669,19 +1724,46 @@ local function MainHub(Exec, keydata, authToken)
         ShadowToggle:OnChanged(function(state) Lighting.GlobalShadows = state NotifyAction("Shadows", state) end)
 
         local TimeSlider = GfxBox:AddSlider("bxw_time", { Text = "Time of Day", Default = 12, Min = 0, Max = 24, Rounding = 1, Callback = function(v) Lighting.ClockTime = v end })
-
-
-        local antiAfkConn
-        local AntiAfkToggle = MiscLeft:AddToggle("bxw_anti_afk", { Text = "Anti-AFK", Default = true })
-        AntiAfkToggle:OnChanged(function(state)
+        
+        -- [FEATURE] Fullbright
+        local FullbrightToggle = GfxBox:AddToggle("bxw_fullbright", { Text = "Fullbright", Default = false })
+        local fbLoop
+        FullbrightToggle:OnChanged(function(state)
             if state then
-                if antiAfkConn then antiAfkConn:Disconnect() end
-                antiAfkConn = AddConnection(LocalPlayer.Idled:Connect(function() pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end) end))
+                if fbLoop then fbLoop:Disconnect() end
+                fbLoop = AddConnection(RunService.LightingChanged:Connect(function()
+                    Lighting.Brightness = 2
+                    Lighting.ClockTime = 14
+                    Lighting.FogEnd = 1e10
+                    Lighting.GlobalShadows = false
+                    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                end))
             else
-                if antiAfkConn then antiAfkConn:Disconnect() antiAfkConn = nil end
+                if fbLoop then fbLoop:Disconnect() fbLoop = nil end
             end
-            NotifyAction("Anti-AFK", state)
+            NotifyAction("Fullbright", state)
         end)
+        
+        -- [FEATURE] X-Ray (Wall Transparency)
+        local xrayLoop
+        local XrayToggle = GfxBox:AddToggle("bxw_xray", { Text = "X-Ray (Wall Trans)", Default = false })
+        XrayToggle:OnChanged(function(state)
+             if state then
+                for _, v in pairs(workspace:GetDescendants()) do
+                    if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
+                        v.LocalTransparencyModifier = 0.5
+                    end
+                end
+             else
+                 for _, v in pairs(workspace:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.LocalTransparencyModifier = 0
+                    end
+                end
+             end
+             NotifyAction("X-Ray", state)
+        end)
+
 
         local defaultGravity = Workspace.Gravity
         local GravitySlider = MiscRight:AddSlider("bxw_gravity", { Text = "Gravity", Default = defaultGravity, Min = 0, Max = 300, Rounding = 0, Compact = false, Callback = function(value) Workspace.Gravity = value end })
