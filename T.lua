@@ -10,6 +10,7 @@ local VirtualUser        = game:GetService("VirtualUser")
 local GuiService         = game:GetService("GuiService")
 local TeleportService    = game:GetService("TeleportService")
 local Lighting           = game:GetService("Lighting")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -98,14 +99,6 @@ local function NormalizeRole(role)
         return role
     end
     return "free"
-end
-
-local function RoleAtLeast(haveRole, needRole)
-    local have  = NormalizeRole(haveRole)
-    local need  = NormalizeRole(needRole)
-    local hPrio = RolePriority[have] or 0
-    local nPrio = RolePriority[need] or 999
-    return hPrio >= nPrio
 end
 
 local function GetRoleLabel(role)
@@ -206,12 +199,12 @@ local function MainHub(Exec, keydata, authToken)
         return
     end
 
-    -- Crosshair & Aimbot Drawings storage (Defined here for cleanup access)
+    -- Crosshair & Aimbot Drawings storage
     local crosshairLines = nil
     local AimbotFOVCircle = nil
     local AimbotSnapLine = nil
 
-    -- [CRITICAL FIX] ESP Drawings Storage moved to MainHub scope so OnUnload can access it
+    -- ESP Drawings Storage
     local espDrawings = {}
 
     -- normalize role
@@ -238,7 +231,7 @@ local function MainHub(Exec, keydata, authToken)
         end
     end
 
-    -- 1) สร้าง Window (ตาม noedit.lua)
+    -- 1) สร้าง Window
     local Window = Library:CreateWindow({
         Title  = "BxB.ware",
         Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module/Client</font></b>',
@@ -271,7 +264,7 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- 2) Tabs (ตาม noedit.lua)
+    -- 2) Tabs
     local Tabs = {
         Info = Window:AddTab({
             Name        = "Info",
@@ -322,7 +315,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 TAB 1: Info [Key / Game] (Original Logic Preserved)
+    -- 4.3 TAB 1: Info [Key / Game]
     ------------------------------------------------
     local InfoTab = Tabs.Info
 
@@ -476,7 +469,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     --------------------------------------------------------
-    -- 2. PLAYER TAB (UI Interlocked & Notifications)
+    -- 2. PLAYER TAB (Full Logic with Disabled)
     --------------------------------------------------------
    local PlayerTab = Tabs.Player
 
@@ -494,7 +487,7 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [FEATURE] Lock slider if toggle is off
+    -- Lock slider if toggle is off
     WalkSpeedSlider:SetDisabled(true)
 
     WalkSpeedToggle:OnChanged(function(state)
@@ -525,7 +518,7 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [FEATURE] Lock slider if toggle is off
+    -- Lock slider if toggle is off
     JumpPowerSlider:SetDisabled(true)
 
     JumpPowerToggle:OnChanged(function(state)
@@ -578,11 +571,9 @@ local function MainHub(Exec, keydata, authToken)
     local flyConn, flyBV, flyBG
     local flyEnabled = false
     local flySpeed = 60
-    -- [RISKY] Added warning text
     local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = flySpeed, Min = 1, Max = 300, Rounding = 0, Compact = false, Callback = function(value) flySpeed = value end })
     
-    -- [FEATURE] Lock slider
     FlySpeedSlider:SetDisabled(true)
 
     FlyToggle:OnChanged(function(state)
@@ -639,7 +630,6 @@ local function MainHub(Exec, keydata, authToken)
 
     -- Noclip
     local noclipConn
-    -- [RISKY] Added warning text
     local NoclipToggle = MoveBox:AddToggle("bxw_noclip", { Text = MarkRisky("Noclip"), Default = false })
     NoclipToggle:OnChanged(function(state)
         if not state then
@@ -752,7 +742,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 ESP & Visuals Tab (Improved Info, Health & Logic + Disabled Logic)
+    -- 4.3 ESP & Visuals Tab (Full Uncompressed Logic + Disabled)
     ------------------------------------------------
     do
         local ESPTab = Tabs.ESP
@@ -763,9 +753,9 @@ local function MainHub(Exec, keydata, authToken)
         ESPEnabledToggle:OnChanged(function(state) NotifyAction("Global ESP", state) end)
 
         local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", { Text = "Box Style", Values = { "Box", "Corner" }, Default = "Box", Multi = false })
+
         local BoxToggle      = ESPFeatureBox:AddToggle("bxw_esp_box",      { Text = "Box",        Default = true })
-        
-        -- [FEATURE] Lock Box Style
+        -- Lock Box Style
         BoxStyleDropdown:SetDisabled(true)
         BoxToggle:OnChanged(function(state) BoxStyleDropdown:SetDisabled(not state) end)
 
@@ -806,7 +796,7 @@ local function MainHub(Exec, keydata, authToken)
         NameColorLabel:AddColorPicker("bxw_esp_name_color", { Default = Color3.fromRGB(255, 255, 255) })
         
         local NameSizeSlider = ESPSettingBox:AddSlider("bxw_esp_name_size", { Text = "Name Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
-        -- [FEATURE] Lock Name Size
+        -- Lock Name Size
         NameSizeSlider:SetDisabled(true)
         NameToggle:OnChanged(function(state) NameSizeSlider:SetDisabled(not state) end)
 
@@ -815,7 +805,7 @@ local function MainHub(Exec, keydata, authToken)
         
         local DistSizeSlider = ESPSettingBox:AddSlider("bxw_esp_dist_size", { Text = "Distance Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
         local DistUnitDropdown = ESPSettingBox:AddDropdown("bxw_esp_dist_unit", { Text = "Distance Unit", Values = { "Studs", "Meters" }, Default = "Studs", Multi = false })
-        -- [FEATURE] Lock Distance Settings
+        -- Lock Distance Settings
         DistSizeSlider:SetDisabled(true)
         DistUnitDropdown:SetDisabled(true)
         DistToggle:OnChanged(function(state) DistSizeSlider:SetDisabled(not state) DistUnitDropdown:SetDisabled(not state) end)
@@ -830,7 +820,7 @@ local function MainHub(Exec, keydata, authToken)
         HeadDotColorLabel:AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0) })
         
         local HeadDotSizeSlider = ESPSettingBox:AddSlider("bxw_esp_headdot_size", { Text = "Head Dot Size", Default = 3, Min = 1, Max = 10, Rounding = 0 })
-        -- [FEATURE] Lock Head Dot Size
+        -- Lock Head Dot Size
         HeadDotSizeSlider:SetDisabled(true)
         HeadDotToggle:OnChanged(function(state) HeadDotSizeSlider:SetDisabled(not state) end)
 
@@ -839,7 +829,7 @@ local function MainHub(Exec, keydata, authToken)
         
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
-        -- [FEATURE] Lock Chams Settings
+        -- Lock Chams Settings
         ChamsTransSlider:SetDisabled(true)
         ChamsVisibleToggle:SetDisabled(true)
         ChamsToggle:OnChanged(function(state) ChamsTransSlider:SetDisabled(not state) ChamsVisibleToggle:SetDisabled(not state) end)
@@ -851,12 +841,12 @@ local function MainHub(Exec, keydata, authToken)
         CrossColorLabel:AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255) })
         local CrossSizeSlider = ESPSettingBox:AddSlider("bxw_crosshair_size", { Text = "Crosshair Size", Default = 5, Min = 1, Max = 20, Rounding = 0, Compact = false })
         local CrossThickSlider = ESPSettingBox:AddSlider("bxw_crosshair_thick", { Text = "Crosshair Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0 })
-        -- [FEATURE] Lock Crosshair Settings
+        -- Lock Crosshair Settings
         CrossSizeSlider:SetDisabled(true)
         CrossThickSlider:SetDisabled(true)
         CrosshairToggle:OnChanged(function(state) CrossSizeSlider:SetDisabled(not state) CrossThickSlider:SetDisabled(not state) NotifyAction("Crosshair", state) end)
 
-        -- [FIX] Logic to deep clean drawings (Unload Bug)
+        -- Helper to remove ESP
         local lastESPUpdate = 0
         local function removePlayerESP(plr)
             local data = espDrawings[plr]
@@ -964,7 +954,7 @@ local function MainHub(Exec, keydata, authToken)
                             local data = espDrawings[plr]
                             if not data then data = {} espDrawings[plr] = data end
 
-                            -- [FIX] Wall Check Logic First (Determine Shared Color)
+                            -- Wall Check Logic First (Determine Shared Color)
                             local isVisible = true
                             if WallToggle.Value then
                                 local rayDir = (root.Position - camPos)
@@ -1074,7 +1064,7 @@ local function MainHub(Exec, keydata, authToken)
                                 if HealthToggle.Value then
                                     if not data.Health then data.Health = { Outline = Drawing.new("Line"), Bar = Drawing.new("Line") } data.Health.Outline.Thickness = 3 data.Health.Bar.Thickness = 1 end
                                     local hbX = minX - 6
-                                    -- [FIX] Secure Health Calc
+                                    -- Secure Health Calc
                                     local hp = math.clamp(hum.Health, 0, hum.MaxHealth)
                                     local maxHp = math.max(hum.MaxHealth, 1)
                                     local barY2 = minY + (maxY - minY) * (1 - (hp / maxHp))
@@ -1112,7 +1102,7 @@ local function MainHub(Exec, keydata, authToken)
                                     if data.Distance then data.Distance.Visible = false end
                                 end
 
-                                -- [FIX] Target Info Upgrade (Real data & Weapon check)
+                                -- Target Info Upgrade (Real data & Weapon check)
                                 if InfoToggle and InfoToggle.Value then
                                     if not data.Info then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Info = txt end
                                     local distStudInfo = (root.Position - camPos).Magnitude
@@ -1259,7 +1249,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.4 Combat & Aimbot Tab (Interlocked UI)
+    -- 4.4 Combat & Aimbot Tab (Interlocked UI & Full Logic)
     ------------------------------------------------
     do
         local CombatTab = Tabs.Combat
@@ -1273,7 +1263,7 @@ local function MainHub(Exec, keydata, authToken)
         AimBox:AddLabel("Aim & Target Settings")
         local AimPartDropdown = AimBox:AddDropdown("bxw_aim_part", { Text = "Aim Part", Values = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "Closest", "Random", "Custom" }, Default = "Head", Multi = false })
         
-        -- [FIX] Smart Aim Logic Toggle
+        -- Smart Aim Logic Toggle
         local UseSmartAimLogic = AimBox:AddToggle("bxw_aim_smart_logic", { Text = "Smart Aim Logic", Default = true, Tooltip = "Auto-calculate best target based on Distance, HP and Mouse Proximity" })
 
         AimBox:AddLabel("FOV Settings")
@@ -1303,7 +1293,7 @@ local function MainHub(Exec, keydata, authToken)
         local PredToggle = AimBox:AddToggle("bxw_aim_pred", { Text = "Prediction Aim", Default = false })
         local PredSlider = AimBox:AddSlider("bxw_aim_predfactor", { Text = "Prediction Factor", Default = 0.1, Min = 0, Max = 1, Rounding = 2 })
 
-        -- [FEATURE] Interlock Aimbot UI
+        -- Interlock Aimbot UI
         local function UpdateAimUI(state)
             FOVSlider:SetDisabled(not state)
             SmoothSlider:SetDisabled(not state)
@@ -1328,7 +1318,7 @@ local function MainHub(Exec, keydata, authToken)
         local TriggerHoldSlider = ExtraBox:AddSlider("bxw_trigger_hold", { Text = "Trigger HoldTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
         local TriggerReleaseSlider = ExtraBox:AddSlider("bxw_trigger_release", { Text = "Trigger ReleaseTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
         
-        -- [FEATURE] Lock Trigger settings
+        -- Lock Trigger settings
         TriggerFiringDropdown:SetDisabled(true)
         TriggerFovSlider:SetDisabled(true)
         TriggerbotToggle:OnChanged(function(state)
@@ -1436,7 +1426,7 @@ local function MainHub(Exec, keydata, authToken)
                                                         if not skipVis then
                                                             local score = screenDist
                                                             
-                                                            -- [FIX] Smart Aim Logic Calculation
+                                                            -- Smart Aim Logic Calculation
                                                             if UseSmartAimLogic.Value then
                                                                 local distSelf = (rootCandidate.Position - myRoot.Position).Magnitude
                                                                 -- Formula: MouseDist (Priority) + PlayerDist (Secondary) + LowHP (Tertiary)
@@ -1525,67 +1515,146 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.5 Misc & System Tab (Added Graphics Section)
+    -- 4.5 Misc & System Tab (FIXED GRAPHICS & NEW FEATURES)
     ------------------------------------------------
     do
         local MiscTab = Tabs.Misc
         local MiscLeft  = MiscTab:AddLeftGroupbox("Game Tools", "tool")
         local MiscRight = safeAddRightGroupbox(MiscTab, "Environment", "sun")
 
-        -- [FEATURE] Graphics & Visuals Section
+        -- [NEW FEATURE] Auto Interact (Proximity Prompt Aura)
+        local autoInteractConn
+        local AutoInteractToggle = MiscLeft:AddToggle("bxw_auto_interact", { Text = "Auto Interact (E)", Default = false, Tooltip = "Automatically fires proximity prompts" })
+        AutoInteractToggle:OnChanged(function(state)
+            if state then
+                autoInteractConn = AddConnection(RunService.Stepped:Connect(function()
+                    if getRootPart() then
+                        for _, prompt in ipairs(Workspace:GetDescendants()) do
+                            if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+                                local promptRoot = prompt.Parent and (prompt.Parent:IsA("BasePart") and prompt.Parent or prompt.Parent:FindFirstChild("HumanoidRootPart"))
+                                if promptRoot and (promptRoot.Position - getRootPart().Position).Magnitude <= prompt.MaxActivationDistance then
+                                    fireproximityprompt(prompt)
+                                end
+                            end
+                        end
+                    end
+                end))
+            else
+                if autoInteractConn then autoInteractConn:Disconnect() autoInteractConn = nil end
+            end
+            NotifyAction("Auto Interact", state)
+        end)
+
+        -- [FIX] Graphics & Visuals Section
         local GfxBox = MiscTab:AddRightGroupbox("Graphics & Visuals", "monitor")
         
-        GfxBox:AddButton("Potato Mode (FPS Boost)", function()
-            -- Low Graphics
-            pcall(function()
+        GfxBox:AddButton("Smart Potato Mode (FPS)", function()
+            Library:Notify("Boosting FPS... Please wait", 3)
+            task.spawn(function()
+                -- 1. Lighting Optimization
                 Lighting.GlobalShadows = false
                 Lighting.FogEnd = 9e9
-                Lighting.Brightness = 0
+                Lighting.Brightness = 2
+                if setscriptable then setscriptable(Lighting, "Technology", true) end
+                pcall(function() Lighting.Technology = Enum.Technology.Compatibility end)
+                
+                -- 2. Terrain Optimization
+                local terrain = Workspace:FindFirstChildOfClass("Terrain")
+                if terrain then
+                    terrain.WaterWaveSize = 0
+                    terrain.WaterReflectance = 0
+                    terrain.WaterTransparency = 0
+                    terrain.Decoration = false
+                end
+
+                -- 3. Texture/Decal Removal (Fast Scan)
                 for _, v in pairs(Workspace:GetDescendants()) do
-                    if v:IsA("BasePart") and not v:IsA("MeshPart") then
+                    if v:IsA("Texture") or v:IsA("Decal") then
+                        v:Destroy()
+                    elseif v:IsA("BasePart") then
                         v.Material = Enum.Material.SmoothPlastic
+                        v.Reflectance = 0
                         v.CastShadow = false
                     end
                 end
+                Library:Notify("Smart Potato Mode Applied!", 2)
             end)
-            Library:Notify("Potato Mode Enabled", 2)
         end)
 
-        GfxBox:AddButton("Beautiful Mode (Cinematic)", function()
-            -- Restore/Enhance
-            pcall(function()
+        GfxBox:AddButton("Cinematic Mode (Beautiful)", function()
+            task.spawn(function()
                 Lighting.GlobalShadows = true
-                Lighting.Brightness = 2
-                Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                Lighting.OutdoorAmbient = Color3.fromRGB(120, 120, 120)
+                Lighting.Ambient = Color3.fromRGB(120, 120, 120)
                 
-                -- Add simple enhancers if missing
-                if not Lighting:FindFirstChild("ColorCorrection") then
-                    local cc = Instance.new("ColorCorrectionEffect", Lighting)
-                    cc.Saturation = 0.2
-                    cc.Contrast = 0.1
-                end
-                if not Lighting:FindFirstChild("Bloom") then
-                    local bl = Instance.new("BloomEffect", Lighting)
-                    bl.Intensity = 0.1
-                end
+                -- Check existing to avoid stacking blinding lights
+                local cc = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+                if not cc then cc = Instance.new("ColorCorrectionEffect", Lighting) end
+                cc.Saturation = 0.2
+                cc.Contrast = 0.1
+                
+                local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
+                if not bloom then bloom = Instance.new("BloomEffect", Lighting) end
+                bloom.Intensity = 0.4
+                bloom.Size = 24
+                
+                local sun = Lighting:FindFirstChildOfClass("SunRaysEffect")
+                if not sun then sun = Instance.new("SunRaysEffect", Lighting) end
+                
+                Library:Notify("Cinematic Mode Applied!", 2)
             end)
-             Library:Notify("Beautiful Mode Enabled", 2)
         end)
+
+        -- [NEW FEATURE] Night Vision
+        local NightVisionToggle = GfxBox:AddToggle("bxw_nightvision", { Text = "Night Vision", Default = false })
+        local oldAmbient, oldOutdoor
+        NightVisionToggle:OnChanged(function(state)
+            if state then
+                oldAmbient = Lighting.Ambient
+                oldOutdoor = Lighting.OutdoorAmbient
+                Lighting.Ambient = Color3.fromRGB(0, 255, 0)
+                Lighting.OutdoorAmbient = Color3.fromRGB(0, 255, 0)
+                Lighting.Brightness = 1
+                Lighting.ClockTime = 12
+            else
+                if oldAmbient then Lighting.Ambient = oldAmbient end
+                if oldOutdoor then Lighting.OutdoorAmbient = oldOutdoor end
+            end
+            NotifyAction("Night Vision", state)
+        end)
+
+        -- [NEW FEATURE] Fullbright Loop
+        local fbConn
+        local FullbrightToggle = GfxBox:AddToggle("bxw_fullbright", { Text = "Fullbright (Loop)", Default = false, Tooltip = "Loops brightness to max" })
+        FullbrightToggle:OnChanged(function(state)
+            if state then
+                fbConn = AddConnection(RunService.RenderStepped:Connect(function()
+                    Lighting.Brightness = 2
+                    Lighting.ClockTime = 12
+                    Lighting.FogEnd = 100000
+                    Lighting.GlobalShadows = false
+                    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                end))
+            else
+                if fbConn then fbConn:Disconnect() fbConn = nil end
+            end
+            NotifyAction("Fullbright", state)
+        end)
+
+        local TimeSlider = GfxBox:AddSlider("bxw_time", { Text = "Time of Day", Default = 12, Min = 0, Max = 24, Rounding = 1, Callback = function(v) Lighting.ClockTime = v end })
+        TimeSlider:SetDisabled(true)
+        -- Unlock time slider if fullbright is OFF
+        FullbrightToggle:OnChanged(function(state) TimeSlider:SetDisabled(state) if state then NotifyAction("Fullbright", true) else NotifyAction("Fullbright", false) end end)
 
         local ShadowToggle = GfxBox:AddToggle("bxw_shadows", { Text = "Shadows", Default = Lighting.GlobalShadows })
         ShadowToggle:OnChanged(function(state) Lighting.GlobalShadows = state NotifyAction("Shadows", state) end)
 
-        local TimeSlider = GfxBox:AddSlider("bxw_time", { Text = "Time of Day", Default = 12, Min = 0, Max = 24, Rounding = 1, Callback = function(v) Lighting.ClockTime = v end })
-
-
-        -- [FIX] Anti Rejoin
         local AntiRejoinToggle = MiscLeft:AddToggle("bxw_antirejoin", { Text = "Auto Rejoin on Kick", Default = false })
         local lastKick = 0
         AddConnection(GuiService.ErrorMessageChanged:Connect(function()
             if AntiRejoinToggle.Value then
-                local t = tick()
-                if t - lastKick > 5 then
-                    lastKick = t
+                if tick() - lastKick > 5 then
+                    lastKick = tick()
                     warn("Kick detected. Rejoining...")
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
                 end
@@ -1608,11 +1677,10 @@ local function MainHub(Exec, keydata, authToken)
         local defaultGravity = Workspace.Gravity
         local GravitySlider = MiscRight:AddSlider("bxw_gravity", { Text = "Gravity", Default = defaultGravity, Min = 0, Max = 300, Rounding = 0, Compact = false, Callback = function(value) Workspace.Gravity = value end })
         MiscRight:AddButton("Reset Gravity", function() Workspace.Gravity = defaultGravity GravitySlider:SetValue(defaultGravity) end)
-        local fogDefaults = { FogStart = game.Lighting.FogStart, FogEnd = game.Lighting.FogEnd }
+        
         local NoFogToggle = MiscRight:AddToggle("bxw_nofog", { Text = "No Fog", Default = false })
         NoFogToggle:OnChanged(function(state)
-            if state then fogDefaults.FogStart = game.Lighting.FogStart fogDefaults.FogEnd = game.Lighting.FogEnd game.Lighting.FogStart = 0 game.Lighting.FogEnd = 1e10
-            else game.Lighting.FogStart = fogDefaults.FogStart or 0 game.Lighting.FogEnd = fogDefaults.FogEnd or 1e10 end
+            if state then Lighting.FogEnd = 1e10 else Lighting.FogEnd = 1000 end
             NotifyAction("No Fog", state)
         end)
         local defaultBrightness = game.Lighting.Brightness
@@ -1630,7 +1698,7 @@ local function MainHub(Exec, keydata, authToken)
         local SpinSpeedSlider = MiscLeft:AddSlider("bxw_spin_speed", { Text = "Spin Speed", Default = 5, Min = 0.1, Max = 10, Rounding = 1, Compact = false })
         local ReverseSpinToggle = MiscLeft:AddToggle("bxw_spin_reverse", { Text = "Reverse Spin", Default = false })
         
-        -- [FEATURE] Lock Spin settings
+        -- Lock Spin settings
         SpinSpeedSlider:SetDisabled(true)
         SpinToggle:OnChanged(function(state)
             SpinSpeedSlider:SetDisabled(not state)
@@ -1707,13 +1775,13 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.6 Settings Tab (Added Force Notify)
+    -- 4.6 Settings Tab
     ------------------------------------------------
     do
         local SettingsTab = Tabs.Settings
         local MenuGroup = SettingsTab:AddLeftGroupbox("Menu", "wrench")
         
-        -- [FEATURE] Force Notify Toggle
+        -- Force Notify Toggle
         MenuGroup:AddToggle("ForceNotify", { Text = "Force Notification", Default = true, Tooltip = "Notify when features are toggled" })
 
         MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(value) Library.KeybindFrame.Visible = value end })
@@ -1749,7 +1817,7 @@ local function MainHub(Exec, keydata, authToken)
 
 
     ------------------------------------------------
-    -- 4.7 Clean Up (FINAL FIX: Ensure everything is removed)
+    -- 4.7 Clean Up
     ------------------------------------------------
     if Library and type(Library.OnUnload) == "function" then
         Library:OnUnload(function()
