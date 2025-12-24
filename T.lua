@@ -239,7 +239,7 @@ local function MainHub(Exec, keydata, authToken)
         end
     end
 
-    -- 1) สร้าง Window (ตาม noedit.lua)
+    -- 1) สร้าง Window
     local Window = Library:CreateWindow({
         Title  = "BxB.ware",
         Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module/Client</font></b>',
@@ -272,7 +272,7 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- 2) Tabs (ตาม noedit.lua)
+    -- 2) Tabs
     local Tabs = {
         Info = Window:AddTab({
             Name        = "Info",
@@ -330,7 +330,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 TAB 1: Info [Key / Game] (Original Logic Preserved)
+    -- 4.3 TAB 1: Info [Optimized Async Loading]
     ------------------------------------------------
     local InfoTab = Tabs.Info
 
@@ -347,83 +347,73 @@ local function MainHub(Exec, keydata, authToken)
         maskedKey = rawKey
     end
 
-    local roleHtml   = GetRoleLabel(keydata.role)
-    local statusText = tostring(keydata.status or "active")
-    local noteText   = tostring(keydata.note or "-")
+    -- Create Labels immediately (prevent UI lag waiting for HTTP)
+    local KeyLabel = safeRichLabel(KeyBox, string.format("<b>Key:</b> %s", maskedKey))
+    local RoleLabel = safeRichLabel(KeyBox, string.format("<b>Role:</b> %s", GetRoleLabel(keydata.role)))
+    local StatusLabel = safeRichLabel(KeyBox, string.format("<b>Status:</b> %s", tostring(keydata.status or "active")))
+    local HWIDLabel = safeRichLabel(KeyBox, string.format("<b>HWID Hash:</b> %s", tostring(keydata.hwid_hash or "-")))
+    local TierLabel = safeRichLabel(KeyBox, string.format("<b>Tier:</b> %s", string.upper(keydata.role or "free")))
+    local NoteLabel = safeRichLabel(KeyBox, string.format("<b>Note:</b> %s", tostring(keydata.note or "-")))
+    local CreatedLabel = safeRichLabel(KeyBox, "<b>Created at:</b> Loading...")
+    local ExpireLabel = safeRichLabel(KeyBox, "<b>Expire:</b> Loading...")
+    local TimeLeftLabel = safeRichLabel(KeyBox, "<b>Time left:</b> Loading...")
 
-    local remoteKeyData = nil
-    local remoteCreatedAtStr = nil
-    local remoteExpireStr = nil
-    pcall(function()
-        local url = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/data.json"
-        local dataStr = game:HttpGet(url)
-        if type(dataStr) == "string" and #dataStr > 0 then
-            local ok, decoded = pcall(function()
-                return HttpService:JSONDecode(dataStr)
-            end)
-            if ok and decoded and decoded.keys then
-                for _, entry in ipairs(decoded.keys) do
-                    if tostring(entry.key) == rawKey or tostring(entry.key) == tostring(keydata.key) then
-                        remoteKeyData = entry
-                        break
+    -- [OPTIMIZATION] Fetch Key Data Asynchronously
+    task.spawn(function()
+        local remoteKeyData = nil
+        pcall(function()
+            local url = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/data.json"
+            local dataStr = game:HttpGet(url)
+            if type(dataStr) == "string" and #dataStr > 0 then
+                local ok, decoded = pcall(function()
+                    return HttpService:JSONDecode(dataStr)
+                end)
+                if ok and decoded and decoded.keys then
+                    for _, entry in ipairs(decoded.keys) do
+                        if tostring(entry.key) == rawKey or tostring(entry.key) == tostring(keydata.key) then
+                            remoteKeyData = entry
+                            break
+                        end
                     end
                 end
             end
+        end)
+
+        -- Update UI on main thread if needed (Roblox handles this usually, but good practice)
+        if remoteKeyData then
+            if remoteKeyData.role then RoleLabel.TextLabel.Text = string.format("<b>Role:</b> %s", GetRoleLabel(remoteKeyData.role)) end
+            if remoteKeyData.status then StatusLabel.TextLabel.Text = string.format("<b>Status:</b> %s", tostring(remoteKeyData.status)) end
+            if remoteKeyData.note and remoteKeyData.note ~= "" then NoteLabel.TextLabel.Text = string.format("<b>Note:</b> %s", tostring(remoteKeyData.note)) end
+            if remoteKeyData.hwid_hash then HWIDLabel.TextLabel.Text = string.format("<b>HWID Hash:</b> %s", tostring(remoteKeyData.hwid_hash)) end
+        end
+
+        local createdAtText
+        if remoteKeyData and remoteKeyData.timestamp then createdAtText = tostring(remoteKeyData.timestamp)
+        elseif keydata.timestamp and keydata.timestamp > 0 then createdAtText = formatUnixTime(keydata.timestamp)
+        elseif keydata.created_at then createdAtText = tostring(keydata.created_at)
+        else createdAtText = "Unknown" end
+
+        local expireTs = tonumber(keydata.expire) or 0
+        local expireDisplay = (remoteKeyData and remoteKeyData.expire) and tostring(remoteKeyData.expire) or formatUnixTime(expireTs)
+        local timeLeftDisplay = (remoteKeyData and remoteKeyData.expire) and tostring(remoteKeyData.expire) or formatTimeLeft(expireTs)
+
+        CreatedLabel.TextLabel.Text = string.format("<b>Created at:</b> %s", createdAtText)
+        ExpireLabel.TextLabel.Text = string.format("<b>Expire:</b> %s", expireDisplay)
+        TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", timeLeftDisplay)
+
+        -- Keep checking time left if not lifetime
+        while true do
+            task.wait(1)
+            if remoteKeyData and remoteKeyData.expire then break end -- Static text
+            local nowExpire = tonumber(keydata.expire) or expireTs
+            local leftStr = formatTimeLeft(nowExpire)
+            if TimeLeftLabel and TimeLeftLabel.TextLabel then TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", leftStr) end
         end
     end)
 
-    if remoteKeyData then
-        if remoteKeyData.role then roleHtml = GetRoleLabel(remoteKeyData.role) end
-        if remoteKeyData.status then statusText = tostring(remoteKeyData.status) end
-        if remoteKeyData.note and remoteKeyData.note ~= "" then noteText = tostring(remoteKeyData.note) end
-        if remoteKeyData.hwid_hash then keydata.hwid_hash = remoteKeyData.hwid_hash end
-        if remoteKeyData.timestamp then remoteCreatedAtStr = tostring(remoteKeyData.timestamp) end
-        if remoteKeyData.expire and remoteKeyData.expire ~= nil then remoteExpireStr = tostring(remoteKeyData.expire) end
-    end
-
-    local createdAtText
-    if remoteCreatedAtStr then createdAtText = remoteCreatedAtStr
-    elseif keydata.timestamp and keydata.timestamp > 0 then createdAtText = formatUnixTime(keydata.timestamp)
-    elseif keydata.created_at then createdAtText = tostring(keydata.created_at)
-    else createdAtText = "Unknown" end
-    local expireTs = tonumber(keydata.expire) or 0
-
-    safeRichLabel(KeyBox, string.format("<b>Key:</b> %s", maskedKey))
-    safeRichLabel(KeyBox, string.format("<b>Role:</b> %s", roleHtml))
-    safeRichLabel(KeyBox, string.format("<b>Status:</b> %s", statusText))
-    safeRichLabel(KeyBox, string.format("<b>HWID Hash:</b> %s", tostring(keydata.hwid_hash or "-")))
-    local tierText = string.upper(keydata.role or "free")
-    safeRichLabel(KeyBox, string.format("<b>Tier:</b> %s", tierText))
-    safeRichLabel(KeyBox, string.format("<b>Note:</b> %s", noteText))
-    safeRichLabel(KeyBox, string.format("<b>Created at:</b> %s", createdAtText))
-
-    local expireDisplay = remoteExpireStr or formatUnixTime(expireTs)
-    local timeLeftDisplay = remoteExpireStr and remoteExpireStr or formatTimeLeft(expireTs)
-    local ExpireLabel   = safeRichLabel(KeyBox, string.format("<b>Expire:</b> %s", expireDisplay))
-    local TimeLeftLabel = safeRichLabel(KeyBox, string.format("<b>Time left:</b> %s", timeLeftDisplay))
-
-    do
-        local acc = 0
-        AddConnection(RunService.Heartbeat:Connect(function(dt)
-            acc = acc + dt
-            if acc < 0.25 then return end
-            acc = 0
-            local nowExpire = tonumber(keydata.expire) or expireTs
-            local expireStr = remoteExpireStr or formatUnixTime(nowExpire)
-            local leftStr   = remoteExpireStr and remoteExpireStr or formatTimeLeft(nowExpire)
-            if ExpireLabel and ExpireLabel.TextLabel then ExpireLabel.TextLabel.Text = string.format("<b>Expire:</b> %s", expireStr) end
-            if TimeLeftLabel and TimeLeftLabel.TextLabel then TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", leftStr) end
-        end))
-    end
-
     KeyBox:AddDivider()
     KeyBox:AddButton("Copy Key Info", function()
-        local plainRole   = tostring((remoteKeyData and remoteKeyData.role) or keydata.role or "unknown")
-        local plainStatus = tostring((remoteKeyData and remoteKeyData.status) or keydata.status or "unknown")
-        local infoText = string.format(
-            "Key: %s\nRole: %s\nStatus: %s\nCreated at: %s\nExpire: %s\nHWID Hash: %s\nNote: %s",
-            rawKey, plainRole, plainStatus, createdAtText, expireDisplay, tostring(keydata.hwid_hash or "-"), noteText
-        )
+        local infoText = string.format("Key: %s\nRole: %s", rawKey, tostring(keydata.role))
         pcall(function()
             if setclipboard then setclipboard(infoText) Library:Notify("Key info copied to clipboard", 2)
             else Library:Notify("Clipboard copy not supported on this executor", 2) end
@@ -483,7 +473,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     --------------------------------------------------------
-    -- 2. PLAYER TAB (UI Interlocked & Notifications)
+    -- 2. PLAYER TAB (Full Features + Disabled Logic)
     --------------------------------------------------------
    local PlayerTab = Tabs.Player
 
@@ -565,7 +555,6 @@ local function MainHub(Exec, keydata, authToken)
         if hum then hum.HipHeight = state and HipHeightSlider.Value or 0 end
         NotifyAction("Hip Height", state)
     end)
-
 
     MoveBox:AddLabel("Movement Presets")
     local MovePresetDropdown = MoveBox:AddDropdown("bxw_move_preset", { Text = "Movement Preset", Values = { "Default", "Normal", "Fast", "Ultra" }, Default = "Default", Multi = false })
@@ -730,6 +719,7 @@ local function MainHub(Exec, keydata, authToken)
         NotifyAction("Spectate", state)
     end)
 
+    -- [FEATURE] Sit Button
     UtilBox:AddButton("Sit", function()
         local hum = getHumanoid()
         if hum then hum.Sit = true end
@@ -782,7 +772,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 ESP & Visuals Tab (Improved Info, Health & Logic + Disabled Logic)
+    -- 4.3 ESP & Visuals Tab (Optimized Loop + Full Features)
     ------------------------------------------------
     do
         local ESPTab = Tabs.ESP
@@ -915,6 +905,8 @@ local function MainHub(Exec, keydata, authToken)
             ["RightUpperLeg"] = "LowerTorso", ["RightLowerLeg"] = "RightUpperLeg", ["RightFoot"] = "RightLowerLeg",
         }
 
+        local espPreviouslyEnabled = false
+
         local function updateESP()
             if ESPRefreshSlider then
                 local nowTick = tick()
@@ -922,21 +914,27 @@ local function MainHub(Exec, keydata, authToken)
                 if nowTick - lastESPUpdate < (ms / 1000) then return end
                 lastESPUpdate = nowTick
             end
+
+            -- [LAG FIX] If disabled, disable all once and return
             if not ESPEnabledToggle.Value then
-                for _, v in pairs(espDrawings) do
-                    if v.Box then v.Box.Visible = false end
-                    if v.Corners then for _, ln in pairs(v.Corners) do ln.Visible = false end end
-                    if v.Health then if v.Health.Outline then v.Health.Outline.Visible = false end if v.Health.Bar then v.Health.Bar.Visible = false end end
-                    if v.Name then v.Name.Visible = false end
-                    if v.Distance then v.Distance.Visible = false end
-                    if v.Tracer then v.Tracer.Visible = false end
-                    if v.HeadDot then v.HeadDot.Visible = false end
-                    if v.Highlight then v.Highlight.Enabled = false end
-                    if v.Info then v.Info.Visible = false end
-                    if v.Skeleton then for _, ln in pairs(v.Skeleton) do ln.Visible = false end end
+                if espPreviouslyEnabled then
+                    for _, v in pairs(espDrawings) do
+                        if v.Box then v.Box.Visible = false end
+                        if v.Corners then for _, ln in pairs(v.Corners) do ln.Visible = false end end
+                        if v.Health then if v.Health.Outline then v.Health.Outline.Visible = false end if v.Health.Bar then v.Health.Bar.Visible = false end end
+                        if v.Name then v.Name.Visible = false end
+                        if v.Distance then v.Distance.Visible = false end
+                        if v.Tracer then v.Tracer.Visible = false end
+                        if v.HeadDot then v.HeadDot.Visible = false end
+                        if v.Highlight then v.Highlight.Enabled = false end
+                        if v.Info then v.Info.Visible = false end
+                        if v.Skeleton then for _, ln in pairs(v.Skeleton) do ln.Visible = false end end
+                    end
+                    espPreviouslyEnabled = false
                 end
                 return
             end
+            espPreviouslyEnabled = true
 
             local cam = Workspace.CurrentCamera
             if not cam then return end
@@ -1555,7 +1553,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- [NEW FEATURE] Server Tab (Moved Anti-AFK & New Logic)
+    -- [NEW FEATURE] Server Tab
     ------------------------------------------------
     do
         local ServerTab = Tabs.Server
@@ -1570,6 +1568,7 @@ local function MainHub(Exec, keydata, authToken)
 
         -- [FEATURE] Low Server Hop
         ServerLeft:AddButton("Low Server Hop", function()
+             Library:Notify("Searching low server...", 3)
              pcall(function()
                 local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
                 local list = HttpService:JSONDecode(game:HttpGet(url))
@@ -1738,6 +1737,9 @@ local function MainHub(Exec, keydata, authToken)
                     Lighting.GlobalShadows = false
                     Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
                 end))
+                -- Force update once
+                Lighting.Brightness = 2
+                Lighting.ClockTime = 14
             else
                 if fbLoop then fbLoop:Disconnect() fbLoop = nil end
             end
@@ -1745,7 +1747,6 @@ local function MainHub(Exec, keydata, authToken)
         end)
         
         -- [FEATURE] X-Ray (Wall Transparency)
-        local xrayLoop
         local XrayToggle = GfxBox:AddToggle("bxw_xray", { Text = "X-Ray (Wall Trans)", Default = false })
         XrayToggle:OnChanged(function(state)
              if state then
