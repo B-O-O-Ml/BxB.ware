@@ -212,7 +212,7 @@ local function MainHub(Exec, keydata, authToken)
     local AimbotFOVCircle = nil
     local AimbotSnapLine = nil
 
-    -- [CRITICAL FIX] ESP Drawings Storage moved to MainHub scope so OnUnload can access it
+    -- ESP Drawings Storage moved to MainHub scope so OnUnload can access it
     local espDrawings = {}
 
     -- normalize role
@@ -473,7 +473,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     --------------------------------------------------------
-    -- 2. PLAYER TAB (Full Features + Disabled Logic)
+    -- 2. PLAYER TAB (Full Features - NO LOCKS)
     --------------------------------------------------------
    local PlayerTab = Tabs.Player
 
@@ -491,12 +491,12 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [FEATURE] Lock slider if toggle is off
-    WalkSpeedSlider:SetDisabled(true)
+    -- [REMOVED LOCK]
+    -- WalkSpeedSlider:SetDisabled(true)
 
     WalkSpeedToggle:OnChanged(function(state)
         walkSpeedEnabled = state
-        if WalkSpeedSlider.SetDisabled then WalkSpeedSlider:SetDisabled(not state) end
+        -- [REMOVED LOCK]
         local hum = getHumanoid()
         if hum then hum.WalkSpeed = state and WalkSpeedSlider.Value or defaultWalkSpeed end
         NotifyAction("WalkSpeed", state)
@@ -522,12 +522,12 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [FEATURE] Lock slider if toggle is off
-    JumpPowerSlider:SetDisabled(true)
+    -- [REMOVED LOCK]
+    -- JumpPowerSlider:SetDisabled(true)
 
     JumpPowerToggle:OnChanged(function(state)
         jumpPowerEnabled = state
-        if JumpPowerSlider.SetDisabled then JumpPowerSlider:SetDisabled(not state) end
+        -- [REMOVED LOCK]
         local hum = getHumanoid()
         if hum then pcall(function() hum.UseJumpPower = true end) hum.JumpPower = state and JumpPowerSlider.Value or defaultJumpPower end
         NotifyAction("JumpPower", state)
@@ -548,9 +548,10 @@ local function MainHub(Exec, keydata, authToken)
             if hum then hum.HipHeight = value end
         end
     })
-    HipHeightSlider:SetDisabled(true)
+    -- [REMOVED LOCK]
+    -- HipHeightSlider:SetDisabled(true)
     HipHeightToggle:OnChanged(function(state)
-        HipHeightSlider:SetDisabled(not state)
+        -- [REMOVED LOCK]
         local hum = getHumanoid()
         if hum then hum.HipHeight = state and HipHeightSlider.Value or 0 end
         NotifyAction("Hip Height", state)
@@ -596,12 +597,12 @@ local function MainHub(Exec, keydata, authToken)
     local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = flySpeed, Min = 1, Max = 300, Rounding = 0, Compact = false, Callback = function(value) flySpeed = value end })
     
-    -- [FEATURE] Lock slider
-    FlySpeedSlider:SetDisabled(true)
+    -- [REMOVED LOCK]
+    -- FlySpeedSlider:SetDisabled(true)
 
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
-        FlySpeedSlider:SetDisabled(not state)
+        -- [REMOVED LOCK]
 
         local char = getCharacter()
         local root = getRootPart()
@@ -784,9 +785,7 @@ local function MainHub(Exec, keydata, authToken)
         local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", { Text = "Box Style", Values = { "Box", "Corner" }, Default = "Box", Multi = false })
         local BoxToggle      = ESPFeatureBox:AddToggle("bxw_esp_box",      { Text = "Box",        Default = true })
         
-        -- [FEATURE] Lock Box Style
-        -- BoxStyleDropdown:SetDisabled(true)
-        -- BoxToggle:OnChanged(function(state) BoxStyleDropdown:SetDisabled(not state) end)
+        -- [REMOVED LOCK]
 
         local ChamsToggle    = ESPFeatureBox:AddToggle("bxw_esp_chams",    { Text = "Chams",      Default = false })
         local SkeletonToggle = ESPFeatureBox:AddToggle("bxw_esp_skeleton", { Text = "Skeleton",   Default = false })
@@ -802,26 +801,10 @@ local function MainHub(Exec, keydata, authToken)
         
         local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
 
-        -- [FIX] Logic to Disabled UI when ESP is OFF (Locking System)
-        local function UpdateESPLock(state)
-            BoxStyleDropdown:SetDisabled(not state)
-            BoxToggle:SetDisabled(not state)
-            ChamsToggle:SetDisabled(not state)
-            SkeletonToggle:SetDisabled(not state)
-            HealthToggle:SetDisabled(not state)
-            NameToggle:SetDisabled(not state)
-            DistToggle:SetDisabled(not state)
-            TracerToggle:SetDisabled(not state)
-            TeamToggle:SetDisabled(not state)
-            WallToggle:SetDisabled(not state)
-            SelfToggle:SetDisabled(not state)
-            InfoToggle:SetDisabled(not state)
-            HeadDotToggle:SetDisabled(not state)
-        end
-        UpdateESPLock(false) -- Default Locked
-
+        -- [REMOVED LOCK FUNCTION & CALLS]
+        
         ESPEnabledToggle:OnChanged(function(state) 
-            UpdateESPLock(state)
+            -- [REMOVED LOCK CALL]
             NotifyAction("Global ESP", state) 
         end)
 
@@ -872,7 +855,7 @@ local function MainHub(Exec, keydata, authToken)
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
 
-        local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 50, Min = 0, Max = 250, Rounding = 0, Compact = false })
+        local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 20, Min = 0, Max = 250, Rounding = 0, Compact = false })
 
         local CrosshairToggle = ESPSettingBox:AddToggle("bxw_crosshair_enable", { Text = "Crosshair", Default = false })
         local CrossColorLabel = ESPSettingBox:AddLabel("Crosshair Color")
@@ -880,9 +863,13 @@ local function MainHub(Exec, keydata, authToken)
         local CrossSizeSlider = ESPSettingBox:AddSlider("bxw_crosshair_size", { Text = "Crosshair Size", Default = 5, Min = 1, Max = 20, Rounding = 0, Compact = false })
         local CrossThickSlider = ESPSettingBox:AddSlider("bxw_crosshair_thick", { Text = "Crosshair Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0 })
         
-        CrossSizeSlider:SetDisabled(true)
-        CrossThickSlider:SetDisabled(true)
-        CrosshairToggle:OnChanged(function(state) CrossSizeSlider:SetDisabled(not state) CrossThickSlider:SetDisabled(not state) NotifyAction("Crosshair", state) end)
+        -- [REMOVED LOCK]
+        -- CrossSizeSlider:SetDisabled(true)
+        -- CrossThickSlider:SetDisabled(true)
+        CrosshairToggle:OnChanged(function(state) 
+            -- [REMOVED LOCK]
+            NotifyAction("Crosshair", state) 
+        end)
 
         -- [FIX] Logic to deep clean drawings (Unload Bug & Ghost Drawings)
         local lastESPUpdate = 0
@@ -1306,18 +1293,10 @@ local function MainHub(Exec, keydata, authToken)
         local PredToggle = AimBox:AddToggle("bxw_aim_pred", { Text = "Prediction Aim", Default = false })
         local PredSlider = AimBox:AddSlider("bxw_aim_predfactor", { Text = "Prediction Factor", Default = 0.1, Min = 0, Max = 1, Rounding = 2 })
 
-        -- [FEATURE] Interlock Aimbot UI
-        local function UpdateAimUI(state)
-            FOVSlider:SetDisabled(not state)
-            SmoothSlider:SetDisabled(not state)
-            HitChanceSlider:SetDisabled(not state)
-            AimPartDropdown:SetDisabled(not state)
-            AimMethodDropdown:SetDisabled(not state)
-        end
-        -- Default Locked
-        UpdateAimUI(false)
+        -- [REMOVED LOCK]
+        
         AimbotToggle:OnChanged(function(state)
-            UpdateAimUI(state)
+            -- [REMOVED LOCK]
             NotifyAction("Aimbot", state)
         end)
 
@@ -1331,12 +1310,10 @@ local function MainHub(Exec, keydata, authToken)
         local TriggerHoldSlider = ExtraBox:AddSlider("bxw_trigger_hold", { Text = "Trigger HoldTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
         local TriggerReleaseSlider = ExtraBox:AddSlider("bxw_trigger_release", { Text = "Trigger ReleaseTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
         
-        -- [FEATURE] Lock Trigger settings
-        TriggerFiringDropdown:SetDisabled(true)
-        TriggerFovSlider:SetDisabled(true)
+        -- [REMOVED LOCK]
+        
         TriggerbotToggle:OnChanged(function(state)
-            TriggerFiringDropdown:SetDisabled(not state)
-            TriggerFovSlider:SetDisabled(not state)
+            -- [REMOVED LOCK]
             NotifyAction("Triggerbot", state)
         end)
 
@@ -1766,10 +1743,10 @@ local function MainHub(Exec, keydata, authToken)
         local SpinSpeedSlider = MiscLeft:AddSlider("bxw_spin_speed", { Text = "Spin Speed", Default = 5, Min = 0.1, Max = 10, Rounding = 1, Compact = false })
         local ReverseSpinToggle = MiscLeft:AddToggle("bxw_spin_reverse", { Text = "Reverse Spin", Default = false })
         
-        -- [FEATURE] Lock Spin settings
-        SpinSpeedSlider:SetDisabled(true)
+        -- [REMOVED LOCK]
+        
         SpinToggle:OnChanged(function(state)
-            SpinSpeedSlider:SetDisabled(not state)
+            -- [REMOVED LOCK]
             if state then
                 if spinConn then spinConn:Disconnect() end
                 spinConn = AddConnection(RunService.RenderStepped:Connect(function(dt)
@@ -1873,17 +1850,21 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- [FEATURE] Watermark
+    -- [FEATURE] Watermark (OPTIMIZED - 1s Interval)
     ------------------------------------------------
     pcall(function()
         Library:SetWatermarkVisibility(true)
-        -- Update Watermark loop
+        -- Update Watermark loop - OPTIMIZED to update only once per second
+        local lastUpdate = 0
         AddConnection(RunService.RenderStepped:Connect(function()
-            local ping = 0
-            pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
-            local fps = math.floor(1 / math.max(RunService.RenderStepped:Wait(), 0.001))
-            local timeStr = os.date("%H:%M:%S")
-            Library:SetWatermark(string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s", fps, ping, timeStr))
+            if tick() - lastUpdate >= 1 then
+                lastUpdate = tick()
+                local ping = 0
+                pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+                local fps = math.floor(1 / math.max(RunService.RenderStepped:Wait(), 0.001))
+                local timeStr = os.date("%H:%M:%S")
+                Library:SetWatermark(string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s", fps, ping, timeStr))
+            end
         end))
     end)
 
