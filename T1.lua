@@ -1,9 +1,8 @@
 --[[
-    Diablo Universal Hub (Full Remastered v3)
-    - Fixed Aim Part (Custom) to use Chance Sliders
-    - Removed Text Input for Custom Part
-    - Optimized Target Selection Logic
-    Supports: Wave, Potassium, Volt, Delta, Fluxus, Hydrogen, etc.
+    Diablo Universal Hub (Remastered v4 - Merged Edition)
+    - Base Logic: MainHub.lua (Universal v3)
+    - Imported Features: Learn.lua (Combat, Visuals, Misc, Watermark)
+    - Optimized: Connection handling, Drawing API safety, Memory management
 ]]
 
 --====================================================
@@ -20,6 +19,7 @@ local TeleportService    = game:GetService("TeleportService")
 local HttpService        = game:GetService("HttpService")
 local Lighting           = game:GetService("Lighting")
 local CoreGui            = game:GetService("CoreGui")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local Workspace          = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
@@ -213,7 +213,9 @@ local function MainHub(Exec, keydata, authToken)
 
     -- Global Storage
     local espDrawings = {}
+    local itemDrawings = {} -- Added for Item ESP
     local crosshairLines = nil
+    
     -- Aimbot Drawing Objects
     local AimbotFOVCircle = nil
     local AimbotFOVSquare = nil
@@ -239,9 +241,16 @@ local function MainHub(Exec, keydata, authToken)
     local Options = Library.Options
     local Toggles = Library.Toggles
 
+    local function NotifyAction(feature, state)
+        if Toggles.ForceNotify and Toggles.ForceNotify.Value then
+            local s = state and "Enabled" or "Disabled"
+            Library:Notify(string.format("%s: %s", feature, s), 1.5)
+        end
+    end
+
     local Window = Library:CreateWindow({
-        Title  = "BxB | Diablo Universal v3",
-        Footer = '<b><font color="#B563FF">BxB.ware | Universal | Game Module</font></b>',
+        Title  = "BxB | Diablo Universal v4",
+        Footer = '<b><font color="#B563FF">BxB.ware | Universal | Merged Edition</font></b>',
         Icon = "84528813312016",
         Center   = true,
         Size     = UDim2.fromOffset(720, 600),
@@ -411,6 +420,31 @@ local function MainHub(Exec, keydata, authToken)
             local hum = getHumanoid()
             if hum then hum.WalkSpeed = 16 end
         end
+        NotifyAction("WalkSpeed", state)
+    end)
+    
+    -- [MOVED from Learn] Auto Sprint
+    local AutoSprintToggle = MoveBox:AddToggle("bxw_autosprint", { Text = "Auto Sprint (Shift)", Default = false })
+    local sprintConn
+    AutoSprintToggle:OnChanged(function(state)
+        if state then
+            sprintConn = AddConnection(UserInputService.InputBegan:Connect(function(input, gpe)
+                if gpe then return end
+                if input.KeyCode == Enum.KeyCode.LeftShift then
+                    local hum = getHumanoid() 
+                    if hum then hum.WalkSpeed = WalkSpeedSlider.Value + 10 end
+                end
+            end))
+            AddConnection(UserInputService.InputEnded:Connect(function(input)
+                if input.KeyCode == Enum.KeyCode.LeftShift then
+                    local hum = getHumanoid() 
+                    if hum then hum.WalkSpeed = walkSpeedEnabled and WalkSpeedSlider.Value or 16 end
+                end
+            end))
+        elseif sprintConn then 
+            sprintConn:Disconnect() sprintConn = nil 
+        end
+        NotifyAction("Auto Sprint", state)
     end)
     
     local JumpPowerToggle = MoveBox:AddToggle("bxw_jumppower_toggle", { Text = "Enable JumpPower", Default = false })
@@ -425,13 +459,24 @@ local function MainHub(Exec, keydata, authToken)
                 hum.JumpPower = 50
             end
         end
+        NotifyAction("JumpPower", state)
+    end)
+
+    -- [MOVED from Learn] Hip Height
+    local HipHeightToggle = MoveBox:AddToggle("bxw_hipheight_toggle", { Text = "Enable Hip Height", Default = false })
+    local HipHeightSlider = MoveBox:AddSlider("bxw_hipheight", { Text = "Hip Height", Default = 0, Min = 0, Max = 50, Rounding = 1 })
+    HipHeightToggle:OnChanged(function(state)
+        local hum = getHumanoid()
+        if hum then hum.HipHeight = state and HipHeightSlider.Value or 0 end
+        NotifyAction("Hip Height", state)
     end)
 
     MoveBox:AddButton("Reset All", function()
         WalkSpeedToggle:SetValue(false)
         JumpPowerToggle:SetValue(false)
+        HipHeightToggle:SetValue(false)
         local hum = getHumanoid()
-        if hum then hum.WalkSpeed = 16 hum.JumpPower = 50 end
+        if hum then hum.WalkSpeed = 16 hum.JumpPower = 50 hum.HipHeight = 0 end
     end)
 
     AddConnection(RunService.RenderStepped:Connect(function()
@@ -439,6 +484,7 @@ local function MainHub(Exec, keydata, authToken)
         if hum then
             if walkSpeedEnabled then hum.WalkSpeed = WalkSpeedSlider.Value end
             if jumpPowerEnabled then hum.UseJumpPower = true hum.JumpPower = JumpPowerSlider.Value end
+            if HipHeightToggle.Value then hum.HipHeight = HipHeightSlider.Value end
         end
     end))
 
@@ -452,6 +498,22 @@ local function MainHub(Exec, keydata, authToken)
     end)
 
     MoveBox:AddDivider()
+    
+    -- [MOVED from Learn] No Fall Damage
+    local NoFallToggle = MoveBox:AddToggle("bxw_nofall", { Text = "No Fall Damage", Default = false })
+    local noFallConn
+    NoFallToggle:OnChanged(function(state)
+        if state then
+            noFallConn = AddConnection(RunService.Stepped:Connect(function()
+                local hum = getHumanoid() 
+                if hum then hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics) end
+            end))
+        elseif noFallConn then 
+            noFallConn:Disconnect() noFallConn = nil 
+        end
+        NotifyAction("No Fall Damage", state)
+    end)
+
     local infJumpConn
     local InfJumpToggle = MoveBox:AddToggle("bxw_infjump", { Text = "Infinite Jump", Default = false })
     InfJumpToggle:OnChanged(function(state)
@@ -460,6 +522,7 @@ local function MainHub(Exec, keydata, authToken)
                 local hum = getHumanoid() if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
             end))
         elseif infJumpConn then infJumpConn:Disconnect() infJumpConn = nil end
+        NotifyAction("Infinite Jump", state)
     end)
 
     -- Spider Mode
@@ -509,6 +572,7 @@ local function MainHub(Exec, keydata, authToken)
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
         if state then setupFly(getRootPart()) else cleanupFly() end
+        NotifyAction("Fly", state)
     end)
 
     AddConnection(LocalPlayer.CharacterAdded:Connect(function()
@@ -555,6 +619,7 @@ local function MainHub(Exec, keydata, authToken)
                 if char then for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end
             end))
         end
+        NotifyAction("Noclip", state)
     end)
 
     local UtilBox = safeAddRightGroupbox(PlayerTab, "Teleport / Utility", "map")
@@ -582,6 +647,27 @@ local function MainHub(Exec, keydata, authToken)
         if t and t.Character and t.Character:FindFirstChild("HumanoidRootPart") and r then
             r.CFrame = t.Character.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
         else Library:Notify("Invalid Target", 2) end
+    end)
+
+    -- [MOVED from Learn] Click TP
+    local ClickTPToggle = UtilBox:AddToggle("bxw_clicktp", { Text = "Ctrl + Click TP", Default = false })
+    local clickTPConn
+    ClickTPToggle:OnChanged(function(state)
+        if state then
+            clickTPConn = AddConnection(UserInputService.InputBegan:Connect(function(input, gpe)
+                if gpe then return end
+                if input.UserInputType == Enum.UserInputType.MouseButton1 and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                    local mouse = LocalPlayer:GetMouse()
+                    local root = getRootPart()
+                    if mouse.Target and root then 
+                        root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0)) 
+                    end
+                end
+            end))
+        else 
+            if clickTPConn then clickTPConn:Disconnect() clickTPConn = nil 
+        end end
+        NotifyAction("Click TP", state)
     end)
 
     UtilBox:AddDivider()
@@ -613,6 +699,7 @@ local function MainHub(Exec, keydata, authToken)
             local hum = getHumanoid()
             if hum then cam.CameraSubject = hum end
         end
+        NotifyAction("Spectate", state)
     end)
 
     UtilBox:AddDivider()
@@ -668,6 +755,7 @@ local function MainHub(Exec, keydata, authToken)
             if freecamPart then freecamPart:Destroy() freecamPart = nil end
             if hum then hum.PlatformStand = false cam.CameraSubject = hum end
         end
+        NotifyAction("Freecam", state)
     end)
 
     CamBox:AddDivider()
@@ -749,6 +837,10 @@ local function MainHub(Exec, keydata, authToken)
     local InfoToggle = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false }):AddColorPicker("bxw_esp_info_color", { Default = Color3.fromRGB(255, 255, 255) })
     local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false }):AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0) })
 
+    -- [MOVED from Learn] Advanced ESP Features
+    local ItemEspToggle = ESPFeatureBox:AddToggle("bxw_esp_item", { Text = "Item/Tool ESP", Default = false })
+    local LookTracerToggle = ESPFeatureBox:AddToggle("bxw_esp_looktracer", { Text = "View Tracers", Default = false })
+
     WhitelistDropdown = ESPSettingBox:AddDropdown("bxw_esp_whitelist", { Text = "Whitelist Player", Values = {}, Default = "", Multi = true, AllowNull = true })
 
     ESPSettingBox:AddLabel("Text Sizes")
@@ -758,7 +850,7 @@ local function MainHub(Exec, keydata, authToken)
     
     ESPSettingBox:AddLabel("Chams Settings")
     local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2 })
-    local ChamsMaterialDropdown = ESPSettingBox:AddDropdown("bxw_esp_chams_material", { Text = "Chams Material", Values = { "ForceField", "Neon", "Plastic" }, Default = "ForceField" })
+    local ChamsMaterialDropdown = ESPSettingBox:AddDropdown("bxw_esp_chams_material", { Text = "Chams Material", Values = { "ForceField", "Neon", "Plastic", "AlwaysOnTop" }, Default = "ForceField" })
     local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
     local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 20, Min = 0, Max = 250 })
 
@@ -802,6 +894,29 @@ local function MainHub(Exec, keydata, authToken)
         else
             RadarCircle.Visible = false RadarBorder.Visible = false RadarCenter.Visible = false
         end
+        
+        -- [MOVED from Learn] Item ESP Logic
+        if ItemEspToggle.Value and DrawingApiAvailable then
+            for _, item in pairs(workspace:GetDescendants()) do
+                if item:IsA("Tool") or (item:IsA("Model") and item:FindFirstChild("Handle")) then
+                    local handle = item:FindFirstChild("Handle") or item:FindFirstChildOfClass("BasePart")
+                    if handle then
+                         if not itemDrawings[item] then
+                             local t = SafeDrawingNew("Text") t.Center = true t.Outline = true t.Size = 12 t.Color = Color3.fromRGB(200, 200, 200) itemDrawings[item] = { Text = t, Part = handle }
+                         end
+                         local d = itemDrawings[item]
+                         local pos, vis = cam:WorldToViewportPoint(d.Part.Position)
+                         if vis then
+                             d.Text.Visible = true d.Text.Position = Vector2.new(pos.X, pos.Y) d.Text.Text = item.Name
+                         else d.Text.Visible = false end
+                    end
+                end
+            end
+        else
+            for _, d in pairs(itemDrawings) do d.Text.Visible = false end
+        end
+        for k, d in pairs(itemDrawings) do if not k.Parent then d.Text:Remove() itemDrawings[k] = nil end end
+
 
         for _, plr in ipairs(Players:GetPlayers()) do
             if not enabled and not RadarToggle.Value then
@@ -873,6 +988,7 @@ local function MainHub(Exec, keydata, authToken)
                             if data.Tracer then data.Tracer.Visible = false end
                             if data.Health then data.Health.Outline.Visible = false data.Health.Bar.Visible = false end
                             if data.HeadDot then data.HeadDot.Visible = false end
+                            if data.LookTracer then data.LookTracer.Visible = false end
                         else
                             if data.Arrow then data.Arrow.Visible = false end
                         end
@@ -941,7 +1057,9 @@ local function MainHub(Exec, keydata, authToken)
                                 local unit = DistUnitDropdown.Value == "Meters" and "m" or "st"
                                 local dVal = DistUnitDropdown.Value == "Meters" and dist * 0.28 or dist
                                 local tName = (plr.Team and plr.Team.Name) or "None"
-                                data.Info.Text = string.format("[HP:%d] [Dist:%.0f%s] [Team:%s]", hum.Health, dVal, unit, tName)
+                                local tool = char:FindFirstChildOfClass("Tool")
+                                local toolN = tool and tool.Name or "None"
+                                data.Info.Text = string.format("[HP:%d] [%s] [Team:%s]", hum.Health, toolN, tName)
                                 data.Info.Size = NameSizeSlider.Value
                                 data.Info.Color = WallToggle.Value and mainColor or Options.bxw_esp_info_color.Value
                                 data.Info.Position = Vector2.new(sc.X, y + h + 15)
@@ -959,6 +1077,22 @@ local function MainHub(Exec, keydata, authToken)
                                 data.Health.Bar.Visible = true data.Health.Bar.Color = (Options.bxw_esp_health_color and Options.bxw_esp_health_color.Value) or mainColor data.Health.Bar.From = Vector2.new(x-6, y+h) data.Health.Bar.To = Vector2.new(x-6, y+h-hpH)
                             else if data.Health then data.Health.Outline.Visible = false data.Health.Bar.Visible = false end end
                         end
+                        
+                        -- [MOVED from Learn] Look Tracer
+                        if LookTracerToggle.Value and onScreen and DrawingApiAvailable then
+                            local head = char:FindFirstChild("Head")
+                            if head then
+                                if not data.LookTracer then data.LookTracer = SafeDrawingNew("Line") data.LookTracer.Thickness = 1 end
+                                local endPos = head.Position + (head.CFrame.LookVector * 10)
+                                local s1, v1 = cam:WorldToViewportPoint(head.Position)
+                                local s2, v2 = cam:WorldToViewportPoint(endPos)
+                                if v1 or v2 then
+                                    data.LookTracer.Visible = true data.LookTracer.Color = Color3.fromRGB(255, 255, 0)
+                                    data.LookTracer.From = Vector2.new(s1.X, s1.Y) data.LookTracer.To = Vector2.new(s2.X, s2.Y)
+                                else data.LookTracer.Visible = false end
+                            end
+                        else if data.LookTracer then data.LookTracer.Visible = false end end
+
 
                         if SkeletonToggle.Value and enabled and onScreen and DrawingApiAvailable then
                             if not data.Skeleton then data.Skeleton = {} end
@@ -989,7 +1123,18 @@ local function MainHub(Exec, keydata, authToken)
 
                         if ChamsToggle.Value and enabled then
                             if not data.Highlight then data.Highlight = Instance.new("Highlight", char) end
-                            data.Highlight.Enabled = true data.Highlight.FillColor = WallToggle.Value and mainColor or Options.bxw_esp_chams_color.Value data.Highlight.OutlineColor = data.Highlight.FillColor data.Highlight.FillTransparency = ChamsTransSlider.Value data.Highlight.DepthMode = ChamsVisibleToggle.Value and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                            data.Highlight.Enabled = true 
+                            data.Highlight.FillColor = WallToggle.Value and mainColor or Options.bxw_esp_chams_color.Value 
+                            data.Highlight.OutlineColor = data.Highlight.FillColor 
+                            data.Highlight.FillTransparency = ChamsTransSlider.Value 
+                            
+                            -- [MOVED from Learn] Chams Material
+                            local matStr = ChamsMaterialDropdown.Value or "ForceField"
+                            if matStr == "AlwaysOnTop" then
+                                data.Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            else
+                                data.Highlight.DepthMode = ChamsVisibleToggle.Value and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                            end
                         else if data.Highlight then data.Highlight.Enabled = false end end
                     end
                 else
@@ -1067,6 +1212,8 @@ local function MainHub(Exec, keydata, authToken)
     
     local AimActivationDropdown = AimBox:AddDropdown("bxw_aim_activation", { Text = "Aim Activation", Values = { "Hold Right Click", "Always On" }, Default = "Hold Right Click" })
     local TargetModeDropdown = AimBox:AddDropdown("bxw_aim_targetmode", { Text = "Target Mode", Values = { "Closest To Crosshair", "Closest Distance", "Lowest Health" }, Default = "Closest To Crosshair" })
+    -- [MOVED from Learn] Aim Method
+    local AimMethodDropdown = AimBox:AddDropdown("bxw_aim_method", { Text = "Aim Method", Values = { "CameraLock", "MouseDelta" }, Default = "CameraLock" })
     
     -- [IMPROVED] Smart Aim Logic with Callback
     local UseSmartAimLogic = AimBox:AddToggle("bxw_aim_smart_logic", { Text = "Smart Aim Logic", Default = true })
@@ -1096,6 +1243,8 @@ local function MainHub(Exec, keydata, authToken)
     local AimTeamCheck = AimBox:AddToggle("bxw_aim_teamcheck", { Text = "Team Check", Default = true })
     local VisibilityToggle = AimBox:AddToggle("bxw_aim_visibility", { Text = "Visibility Check", Default = false })
     local AliveCheckToggle = AimBox:AddToggle("bxw_aim_alive", { Text = "Alive Check", Default = true })
+    -- [MOVED from Learn] Hit Chance
+    local HitChanceSlider = AimBox:AddSlider("bxw_aim_hitchance", { Text = "Hit Chance %", Default = 100, Min = 1, Max = 100 })
 
     local TriggerbotToggle = ExtraBox:AddToggle("bxw_triggerbot", { Text = "Triggerbot", Default = false })
     local TriggerMode = ExtraBox:AddDropdown("bxw_trigger_method", { Text = "Trigger Mode", Values = {"Always On", "Hold Key"}, Default = "Always On" })
@@ -1105,6 +1254,14 @@ local function MainHub(Exec, keydata, authToken)
     local PredToggle = ExtraBox:AddToggle("bxw_aim_pred", { Text = "Prediction Aim", Default = false })
     local PredFactor = ExtraBox:AddSlider("bxw_aim_predfactor", { Text = "Pred Factor", Default = 0.1, Min = 0, Max = 1 })
     local SnapLineToggle = ExtraBox:AddToggle("bxw_aim_snapline", { Text = "Show SnapLine", Default = false }):AddColorPicker("bxw_aim_snapcolor", { Default = Color3.fromRGB(255, 0, 0) })
+    
+    -- [MOVED from Learn] Combat Extras
+    local RCSToggle = ExtraBox:AddToggle("bxw_aim_rcs", { Text = "Recoil Control (RCS)", Default = false })
+    local RCSStrength = ExtraBox:AddSlider("bxw_aim_rcs_str", { Text = "RCS Strength", Default = 5, Min = 0, Max = 20 })
+    
+    local StrafeToggle = ExtraBox:AddToggle("bxw_aim_strafe", { Text = "Target Strafe (Hold T)", Default = false })
+    local StrafeSpeed = ExtraBox:AddSlider("bxw_strafe_speed", { Text = "Strafe Speed", Default = 20, Min = 10, Max = 50 })
+    local StrafeDist = ExtraBox:AddSlider("bxw_strafe_dist", { Text = "Strafe Distance", Default = 10, Min = 5, Max = 30 })
 
     local HeadChance = ExtraBox:AddSlider("bxw_hit_head_chance", { Text = "Head Chance", Default = 100, Min = 0, Max = 100 })
     local TorsoChance = ExtraBox:AddSlider("bxw_hit_torso_chance", { Text = "Torso Chance", Default = 100, Min = 0, Max = 100 })
@@ -1115,6 +1272,26 @@ local function MainHub(Exec, keydata, authToken)
     AimbotFOVSquare = SafeDrawingNew("Square") AimbotFOVSquare.Thickness = 1 AimbotFOVSquare.Filled = false
     AimbotSnapLine = SafeDrawingNew("Line") AimbotSnapLine.Thickness = 1 AimbotSnapLine.Visible = false
     local rainbowHue = 0
+
+    -- Strafe Logic Loop
+    local strafeAngle = 0
+    AddConnection(RunService.RenderStepped:Connect(function(dt)
+        if StrafeToggle.Value and UserInputService:IsKeyDown(Enum.KeyCode.T) then
+             local root = getRootPart()
+             local target = nil local dist = math.huge
+             for _, p in ipairs(Players:GetPlayers()) do
+                 if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                     local d = (p.Character.HumanoidRootPart.Position - root.Position).Magnitude
+                     if d < dist then dist = d target = p.Character.HumanoidRootPart end
+                 end
+             end
+             if target and root then
+                 strafeAngle = strafeAngle + (StrafeSpeed.Value * dt)
+                 local offset = Vector3.new(math.cos(strafeAngle) * StrafeDist.Value, 0, math.sin(strafeAngle) * StrafeDist.Value)
+                 root.CFrame = CFrame.new(target.Position + offset, target.Position)
+             end
+        end
+    end))
 
     -- Aimbot Logic (Updated)
     RunService:BindToRenderStep("BxBAimbot", Enum.RenderPriority.Camera.Value + 1, function()
@@ -1255,26 +1432,40 @@ local function MainHub(Exec, keydata, authToken)
                 if not onScreen or dist > fovRadius then
                     CurrentTarget = nil 
                 else
-                    local lookAt = CFrame.lookAt(cam.CFrame.Position, targetPos)
-                    cam.CFrame = cam.CFrame:Lerp(lookAt, SmoothSlider.Value)
-                    
-                    if SnapLineToggle.Value and DrawingApiAvailable then
-                        AimbotSnapLine.Visible = true
-                        AimbotSnapLine.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
-                        AimbotSnapLine.To = Vector2.new(pos.X, pos.Y)
-                        AimbotSnapLine.Color = Options.bxw_aim_snapcolor.Value
-                    end
-                    
-                    if TriggerbotToggle.Value then
-                        if (Vector2.new(pos.X, pos.Y) - ms).Magnitude < 20 then
-                            local tActive = true
-                            if TriggerMode.Value == "Hold Key" and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then tActive = false end
-                            if tActive then
-                                task.spawn(function()
-                                    task.wait(TriggerDelay.Value)
-                                    ClickMouse()
-                                    task.wait(TriggerHold.Value)
-                                end)
+                    -- [MOVED] Hit Chance Check
+                    if math.random(1, 100) <= HitChanceSlider.Value then
+                        -- [MOVED] RCS Check
+                        if RCSToggle.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                             mousemoverel(0, RCSStrength.Value)
+                        end
+                        
+                        -- [MOVED] Aim Method Check
+                        if AimMethodDropdown.Value == "MouseDelta" then
+                             local d = (Vector2.new(pos.X, pos.Y) - ms) * SmoothSlider.Value
+                             mousemoverel(d.X, d.Y)
+                        else
+                             local lookAt = CFrame.lookAt(cam.CFrame.Position, targetPos)
+                             cam.CFrame = cam.CFrame:Lerp(lookAt, SmoothSlider.Value)
+                        end
+
+                        if SnapLineToggle.Value and DrawingApiAvailable then
+                            AimbotSnapLine.Visible = true
+                            AimbotSnapLine.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+                            AimbotSnapLine.To = Vector2.new(pos.X, pos.Y)
+                            AimbotSnapLine.Color = Options.bxw_aim_snapcolor.Value
+                        end
+                        
+                        if TriggerbotToggle.Value then
+                            if (Vector2.new(pos.X, pos.Y) - ms).Magnitude < 20 then
+                                local tActive = true
+                                if TriggerMode.Value == "Hold Key" and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then tActive = false end
+                                if tActive then
+                                    task.spawn(function()
+                                        task.wait(TriggerDelay.Value)
+                                        ClickMouse()
+                                        task.wait(TriggerHold.Value)
+                                    end)
+                                end
                             end
                         end
                     end
@@ -1306,6 +1497,33 @@ local function MainHub(Exec, keydata, authToken)
         if AntiAfkToggle.Value then
             VirtualUser:Button2Down(Vector2.new(0,0))
             VirtualUser:Button2Up(Vector2.new(0,0))
+        end
+    end)
+    
+    -- [MOVED from Learn] Chat Spy
+    local ChatSpyToggle = GameToolBox:AddToggle("bxw_chatspy", { Text = "Enable Chat Spy", Default = false })
+    local csConn
+    ChatSpyToggle:OnChanged(function(state)
+        if state then
+            local chatEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+            if chatEvents and chatEvents:FindFirstChild("OnMessageDoneFiltering") then
+                csConn = AddConnection(chatEvents.OnMessageDoneFiltering.OnClientEvent:Connect(function(data)
+                    if data and data.FromSpeaker and data.Message and data.FromSpeaker ~= LocalPlayer.Name then
+                        Library:Notify(string.format("[SPY] %s: %s", data.FromSpeaker, data.Message), 4)
+                    end
+                end))
+            end
+        elseif csConn then 
+            csConn:Disconnect() csConn = nil 
+        end
+        NotifyAction("Chat Spy", state)
+    end)
+    
+    -- [MOVED from Learn] Fake Mobile UI
+    GameToolBox:AddButton("Fake Mobile UI (Touch)", function()
+        if GuiService then
+            GuiService.TouchEnabled = true
+            Library:Notify("Enabled TouchEnabled", 3)
         end
     end)
 
@@ -1407,6 +1625,27 @@ local function MainHub(Exec, keydata, authToken)
     EnvBox:AddToggle("bxw_nofog", { Text = "No Fog", Default = false, Callback = function(v) if v then Lighting.FogEnd = 1e9 else Lighting.FogEnd = 1000 end end })
     EnvBox:AddSlider("bxw_brightness", { Text = "Brightness", Default = Lighting.Brightness, Min = 0, Max = 10, Callback = function(v) Lighting.Brightness = v end })
     EnvBox:AddLabel("Ambient"):AddColorPicker("bxw_ambient", { Default = Lighting.Ambient, Callback = function(v) Lighting.Ambient = v end })
+    
+    -- [MOVED from Learn] Graphics Modes
+    EnvBox:AddButton("Potato Mode", function()
+        pcall(function()
+            Lighting.GlobalShadows = false Lighting.FogEnd = 9e9 Lighting.Brightness = 0
+            for _, v in pairs(Workspace:GetDescendants()) do if v:IsA("BasePart") and not v:IsA("MeshPart") then v.Material = Enum.Material.SmoothPlastic v.CastShadow = false end end
+        end)
+        Library:Notify("Potato Mode Enabled", 2)
+    end)
+    EnvBox:AddButton("Beautiful Mode", function()
+        pcall(function() Lighting.GlobalShadows = true Lighting.Brightness = 2 Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128) end)
+        Library:Notify("Beautiful Mode Enabled", 2)
+    end)
+    
+    local XrayToggle = EnvBox:AddToggle("bxw_xray", { Text = "X-Ray", Default = false })
+    XrayToggle:OnChanged(function(state)
+         for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then v.LocalTransparencyModifier = state and 0.5 or 0 end
+         end
+         NotifyAction("X-Ray", state)
+    end)
 
     local ServerBox = safeAddRightGroupbox(MiscTab, "Server", "server")
     ServerBox:AddButton("Rejoin Server", function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer) end)
@@ -1430,13 +1669,24 @@ local function MainHub(Exec, keydata, authToken)
     end)
     local JobIdInput = ServerBox:AddInput("bxw_jobid", { Text = "Join JobId", Default = "", Placeholder = "JobId here..." })
     ServerBox:AddButton("Join JobId", function() local id = JobIdInput.Value if id and id ~= "" then TeleportService:TeleportToPlaceInstance(game.PlaceId, id, LocalPlayer) end end)
+    -- [MOVED from Learn] Copy Buttons
+    ServerBox:AddButton("Copy Job ID", function() setclipboard(game.JobId) Library:Notify("Copied Job ID", 2) end)
+    ServerBox:AddButton("Copy Place ID", function() setclipboard(tostring(game.PlaceId)) Library:Notify("Copied Place ID", 2) end)
+
 
     local SettingsTab = Tabs.Settings
     local MenuGroup = SettingsTab:AddLeftGroupbox("Menu", "wrench")
+    
+    -- [MOVED from Learn] Force Notify
+    MenuGroup:AddToggle("ForceNotify", { Text = "Force Notification", Default = true })
+    
     MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(v) Library.KeybindFrame.Visible = v end })
     MenuGroup:AddToggle("ShowCustomCursor", { Text = "Custom Cursor", Default = true, Callback = function(v) Library.ShowCustomCursor = v end })
     MenuGroup:AddDropdown("NotificationSide", { Values = {"Left","Right"}, Default = "Right", Text = "Notification Side", Callback = function(v) Library:SetNotifySide(v) end })
     MenuGroup:AddDropdown("DPIDropdown", { Values = {"50%","75%","100%","125%","150%","200%"}, Default = "100%", Text = "DPI Scale", Callback = function(v) Library:SetDPIScale(tonumber(v:gsub("%%",""))) end })
+    
+    MenuGroup:AddLabel("Panic Button"):AddKeyPicker("PanicKey", { Default = "F8", NoUI = true, Text = "Unload Everything", Callback = function() Library:Unload() end})
+    
     MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
     Library.ToggleKeybind = Options.MenuKeybind
     MenuGroup:AddButton("Unload UI", function() Library:Unload() end)
@@ -1462,11 +1712,38 @@ local function MainHub(Exec, keydata, authToken)
                 else pcall(function() o:Remove() end) end
             end
         end
+        for _,p in pairs(itemDrawings) do
+             if p.Text then pcall(function() p.Text:Remove() end) end
+        end
         if AimbotFOVCircle then AimbotFOVCircle:Remove() end
         if AimbotFOVSquare then AimbotFOVSquare:Remove() end
         if AimbotSnapLine then AimbotSnapLine:Remove() end
         if crosshairLines then crosshairLines.h:Remove() crosshairLines.v:Remove() end
         if RadarCircle then RadarCircle:Remove() RadarBorder:Remove() RadarCenter:Remove() end
+    end)
+    
+    -- [MOVED from Learn] Watermark (Draggable)
+    pcall(function()
+        local Watermark = Library:AddDraggableLabel({
+            Text = "BxB.ware | Universal",
+            Visible = true
+        })
+
+        local lastUpdate = 0
+        AddConnection(RunService.RenderStepped:Connect(function(dt)
+            local now = tick()
+            if now - lastUpdate < 0.1 then return end
+            lastUpdate = now
+
+            local ping = 0
+            pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+            local fps = math.floor(1 / math.max(dt, 0.0001))
+            local timeStr = os.date("%H:%M:%S")
+            
+            if Watermark and Watermark.SetText then
+                Watermark:SetText(string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s", fps, ping, timeStr))
+            end
+        end))
     end)
 end
 
