@@ -1855,3 +1855,11 @@ local function MainHub(Exec, keydata, authToken)
         end)
     end
 end
+
+--/////////////////////////////////////////////////////////////////////////////////
+-- 5. RETURN EXECUTION
+--/////////////////////////////////////////////////////////////////////////////////
+return function(Exec, keydata, authToken)
+    local ok, err = pcall(MainHub, Exec, keydata, authToken)
+    if not ok then warn("[MainHub] Fatal error:", err) end
+end
