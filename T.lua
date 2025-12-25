@@ -1856,7 +1856,12 @@ local function MainHub(Exec, keydata, authToken)
         MenuGroup:AddDropdown("NotificationSide", { Values = { "Left", "Right" }, Default = "Right", Text = "Notification Side", Callback = function(Value) Library:SetNotifySide(Value) end })
         MenuGroup:AddDropdown("DPIDropdown", { Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }, Default = "100%", Text = "DPI Scale", Callback = function(Value) Value = tostring(Value):gsub("%%", "") local DPI = tonumber(Value) if DPI then Library:SetDPIScale(DPI) end end })
         MenuGroup:AddDivider()
-        MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
+        -- [FIX] Show Menu Bind in Keybind List (Changed NoUI to false)
+        MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = false, Text = "Menu keybind" })
+        
+        -- [FIX] Added dedicated Panic Keybind (Unload)
+        MenuGroup:AddLabel("Panic Bind"):AddKeyPicker("PanicKeybind", { Default = "End", NoUI = false, Text = "Panic (Unload)", Callback = function() Library:Unload() end })
+
         MenuGroup:AddButton("Unload UI", function() pcall(function() Library:Unload() end) end)
         MenuGroup:AddButton("Reload UI", function() pcall(function() Library:Unload() end) pcall(function() warn("[BxB] UI unloaded. Please re-execute.") end) end)
         Library.ToggleKeybind = Options.MenuKeybind
@@ -1868,7 +1873,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- [FEATURE] Watermark (Added Feature)
+    -- [FEATURE] Watermark
     ------------------------------------------------
     pcall(function()
         Library:SetWatermarkVisibility(true)
