@@ -395,19 +395,32 @@ local function MainHub(Exec, keydata, authToken)
 
         local expireTs = tonumber(keydata.expire) or 0
         local expireDisplay = (remoteKeyData and remoteKeyData.expire) and tostring(remoteKeyData.expire) or formatUnixTime(expireTs)
-        local timeLeftDisplay = (remoteKeyData and remoteKeyData.expire) and tostring(remoteKeyData.expire) or formatTimeLeft(expireTs)
+        -- FIXED: Initial display
+        local timeLeftDisplay = formatTimeLeft(expireTs)
 
         CreatedLabel.TextLabel.Text = string.format("<b>Created at:</b> %s", createdAtText)
         ExpireLabel.TextLabel.Text = string.format("<b>Expire:</b> %s", expireDisplay)
         TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", timeLeftDisplay)
 
-        -- Keep checking time left if not lifetime
+        -- [FIX] Keep checking time left (Real-time update logic)
+        -- If it's a number (timestamp), we loop. If it's static string "Lifetime", we set once and stop?
+        -- To be safe, we check if it's lifetime inside the loop.
         while true do
             task.wait(1)
-            if remoteKeyData and remoteKeyData.expire then break end -- Static text
             local nowExpire = tonumber(keydata.expire) or expireTs
-            local leftStr = formatTimeLeft(nowExpire)
-            if TimeLeftLabel and TimeLeftLabel.TextLabel then TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", leftStr) end
+            if nowExpire and nowExpire > 0 then
+                local leftStr = formatTimeLeft(nowExpire)
+                if TimeLeftLabel and TimeLeftLabel.TextLabel then 
+                    TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", leftStr) 
+                end
+                -- Optional: If expired, break or show expired? formatTimeLeft returns "Expired" so it handles it.
+            else
+                 -- If not a timestamp (e.g. 0 or nil), assume Lifetime
+                 if TimeLeftLabel and TimeLeftLabel.TextLabel then 
+                    TimeLeftLabel.TextLabel.Text = "<b>Time left:</b> Lifetime" 
+                 end
+                 break -- Exit loop since it won't change
+            end
         end
     end)
 
@@ -431,7 +444,8 @@ local function MainHub(Exec, keydata, authToken)
     local PlaceIdLabel    = safeRichLabel(GameBox, string.format("<b>PlaceId:</b> %d", placeId))
     local JobIdLabel      = safeRichLabel(GameBox, string.format("<b>JobId:</b> %s", jobId))
     local PlayersLabel    = safeRichLabel(GameBox, "<b>Players:</b> -/-")
-    local PerfLabel       = safeRichLabel(GameBox, "<b>Perf:</b> FPS: - | Ping: - ms | Mem: - MB")
+    -- [FIX] Removed Ping and Mem to avoid conflict with Watermark
+    local PerfLabel       = safeRichLabel(GameBox, "<b>Perf:</b> FPS: -") 
     local ServerTimeLabel = safeRichLabel(GameBox, "<b>Server Time:</b> -")
 
     task.spawn(function()
@@ -457,17 +471,10 @@ local function MainHub(Exec, keydata, authToken)
             if acc < 0.25 then return end
             acc = 0
             local fps = math.floor(1 / math.max(dt, 1/240))
-            local pingMs = 0
-            local memMb  = 0
-            local okPing, pingItem = pcall(function() return Stats.Network.ServerStatsItem["Data Ping"] end)
-            if okPing and pingItem and pingItem.GetValue then
-                local v = pingItem:GetValue()
-                if typeof(v) == "number" then pingMs = math.floor(v) end
-            end
-            local okMem, mem = pcall(function() return Stats:GetTotalMemoryUsageMb() end)
-            if okMem and type(mem) == "number" then memMb = math.floor(mem) end
+            
             updatePlayersLabel()
-            if PerfLabel and PerfLabel.TextLabel then PerfLabel.TextLabel.Text = string.format("<b>Perf:</b> FPS: %d | Ping: %d ms | Mem: %d MB", fps, pingMs, memMb) end
+            -- [FIX] Updated PerfLabel to show only FPS
+            if PerfLabel and PerfLabel.TextLabel then PerfLabel.TextLabel.Text = string.format("<b>Perf:</b> FPS: %d", fps) end
             if ServerTimeLabel and ServerTimeLabel.TextLabel then ServerTimeLabel.TextLabel.Text = string.format("<b>Server Time:</b> %s", os.date("%H:%M:%S")) end
         end))
     end
@@ -774,7 +781,6 @@ local function MainHub(Exec, keydata, authToken)
 
     ------------------------------------------------
     -- 4.3 ESP & Visuals Tab (Optimized Loop + Full Features)
-    -- [UPDATED] Embedded Color Pickers for cleaner UI
     ------------------------------------------------
     do
         local ESPTab = Tabs.ESP
@@ -785,7 +791,7 @@ local function MainHub(Exec, keydata, authToken)
         
         local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", { Text = "Box Style", Values = { "Box", "Corner" }, Default = "Box", Multi = false })
         
-        -- [UPDATE] Embedded Color Pickers in Toggles
+        -- [FIX] Embedded Color Pickers for all ESP Toggles
         local BoxToggle = ESPFeatureBox:AddToggle("bxw_esp_box", { Text = "Box", Default = true })
             :AddColorPicker("bxw_esp_box_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Box Color" })
         
@@ -807,10 +813,10 @@ local function MainHub(Exec, keydata, authToken)
         local TracerToggle = ESPFeatureBox:AddToggle("bxw_esp_tracer", { Text = "Tracer", Default = false })
             :AddColorPicker("bxw_esp_tracer_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Tracer Color" })
 
-        local TeamToggle     = ESPFeatureBox:AddToggle("bxw_esp_team",     { Text = "Team Check", Default = true })
-        local WallToggle     = ESPFeatureBox:AddToggle("bxw_esp_wall",     { Text = "Wall Check", Default = false })
+        local TeamToggle = ESPFeatureBox:AddToggle("bxw_esp_team", { Text = "Team Check", Default = true })
+        local WallToggle = ESPFeatureBox:AddToggle("bxw_esp_wall", { Text = "Wall Check", Default = false })
 
-        local SelfToggle     = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
+        local SelfToggle = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
         
         local InfoToggle = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false, Tooltip = "Shows HP, Weapon & Team" })
             :AddColorPicker("bxw_esp_info_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Info Color" })
@@ -818,7 +824,6 @@ local function MainHub(Exec, keydata, authToken)
         local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
             :AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0), Title = "Head Dot Color" })
 
-        
         ESPEnabledToggle:OnChanged(function(state) 
             NotifyAction("Global ESP", state) 
         end)
@@ -838,7 +843,8 @@ local function MainHub(Exec, keydata, authToken)
             task.spawn(function() while true do task.wait(10) refreshWhitelist() end end)
         end
 
-        -- [REMOVED] Standalone Color Labels (Moved to Toggles above)
+        -- [FIX] Removed standalone ColorPickers from Right Groupbox (Moved to Toggles)
+        -- Keeping only Sliders and non-color settings in Right Groupbox
         
         local NameSizeSlider = ESPSettingBox:AddSlider("bxw_esp_name_size", { Text = "Name Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
         
@@ -846,16 +852,15 @@ local function MainHub(Exec, keydata, authToken)
         local DistUnitDropdown = ESPSettingBox:AddDropdown("bxw_esp_dist_unit", { Text = "Distance Unit", Values = { "Studs", "Meters" }, Default = "Studs", Multi = false })
 
         local HeadDotSizeSlider = ESPSettingBox:AddSlider("bxw_esp_headdot_size", { Text = "Head Dot Size", Default = 3, Min = 1, Max = 10, Rounding = 0 })
-        
+
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
 
         local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 20, Min = 0, Max = 250, Rounding = 0, Compact = false })
 
-        -- [UPDATE] Embedded Color Picker for Crosshair
         local CrosshairToggle = ESPSettingBox:AddToggle("bxw_crosshair_enable", { Text = "Crosshair", Default = false })
             :AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Crosshair Color" })
-            
+
         local CrossSizeSlider = ESPSettingBox:AddSlider("bxw_crosshair_size", { Text = "Crosshair Size", Default = 5, Min = 1, Max = 20, Rounding = 0, Compact = false })
         local CrossThickSlider = ESPSettingBox:AddSlider("bxw_crosshair_thick", { Text = "Crosshair Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0 })
         
@@ -1638,53 +1643,42 @@ local function MainHub(Exec, keydata, authToken)
                         v.CastShadow = false
                     end
                 end
-                -- Clear Beauty Effects if active
-                 for _, v in pairs(Lighting:GetChildren()) do
-                    if v.Name:find("BxB_Beauty") then v:Destroy() end
-                end
             end)
             Library:Notify("Potato Mode Enabled", 2)
         end)
 
-        -- [FIX] Beautiful Mode: Properly add Instances and set lighting
+        -- [FIX] Beautiful Mode Logic - Enhanced
         GfxBox:AddButton("Beautiful Mode (Cinematic)", function()
+            -- Restore/Enhance
             pcall(function()
-                -- 1. Remove old effects first to prevent stacking
-                for _, v in pairs(Lighting:GetChildren()) do
-                    if v.Name:find("BxB_Beauty") then v:Destroy() end
-                end
-
-                -- 2. Enhance Lighting Properties
                 Lighting.GlobalShadows = true
                 Lighting.Brightness = 2
-                Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100) -- More realistic ambient
-                Lighting.Ambient = Color3.fromRGB(80, 80, 80)
-                Lighting.ExposureCompensation = 0.2
+                Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100)
+                Lighting.EnvironmentDiffuseScale = 1
+                Lighting.EnvironmentSpecularScale = 1
+                
+                -- Try to force better technology
+                pcall(function() sethiddenproperty(Lighting, "Technology", Enum.Technology.Future) end)
 
-                -- 3. Add Effects
-                local bloom = Instance.new("BloomEffect", Lighting)
-                bloom.Name = "BxB_Beauty_Bloom"
-                bloom.Intensity = 0.4
-                bloom.Size = 24
-                bloom.Threshold = 0.8
+                -- Add simple enhancers if missing
+                if not Lighting:FindFirstChild("ColorCorrection") then
+                    local cc = Instance.new("ColorCorrectionEffect", Lighting)
+                    cc.Saturation = 0.2
+                    cc.Contrast = 0.1
+                else
+                    local cc = Lighting:FindFirstChild("ColorCorrection")
+                    cc.Saturation = 0.2
+                    cc.Contrast = 0.1
+                    cc.Enabled = true
+                end
 
-                local cc = Instance.new("ColorCorrectionEffect", Lighting)
-                cc.Name = "BxB_Beauty_CC"
-                cc.Saturation = 0.2 -- Boost colors slightly
-                cc.Contrast = 0.1   -- Better contrast
-                cc.Brightness = 0.05
-
-                local sun = Instance.new("SunRaysEffect", Lighting)
-                sun.Name = "BxB_Beauty_Sun"
-                sun.Intensity = 0.25
-                sun.Spread = 1
-
-                -- Attempt to add atmosphere if not present (requires Atmosphere to be distinct)
-                if not Lighting:FindFirstChildOfClass("Atmosphere") then
-                     local atm = Instance.new("Atmosphere", Lighting)
-                     atm.Name = "BxB_Beauty_Atm"
-                     atm.Density = 0.3
-                     atm.Offset = 0.25
+                if not Lighting:FindFirstChild("Bloom") then
+                    local bl = Instance.new("BloomEffect", Lighting)
+                    bl.Intensity = 0.1
+                else
+                    local bl = Lighting:FindFirstChild("Bloom")
+                    bl.Intensity = 0.1
+                    bl.Enabled = true
                 end
             end)
              Library:Notify("Beautiful Mode Enabled", 2)
@@ -1911,11 +1905,6 @@ local function MainHub(Exec, keydata, authToken)
             if crosshairLines then pcall(function() crosshairLines.h:Remove() crosshairLines.v:Remove() end) end
             if AimbotFOVCircle then pcall(function() AimbotFOVCircle:Remove() end) end
             if AimbotSnapLine then pcall(function() AimbotSnapLine:Remove() end) end
-            
-            -- 4. Clear Lighting FX (Added for Graphics Feature)
-             for _, v in pairs(Lighting:GetChildren()) do
-                if v.Name:find("BxB_Beauty") then v:Destroy() end
-            end
         end)
     end
 end
