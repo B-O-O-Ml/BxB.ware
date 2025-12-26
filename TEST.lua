@@ -10,8 +10,66 @@ do
     local HttpService = game:GetService("HttpService")
     local Players = game:GetService("Players")
     local AnalyticsService = game:GetService("RbxAnalyticsService")
+    local UserInputService = game:GetService("UserInputService") -- Added for platform check
+    local RunService = game:GetService("RunService")
 
     local LocalPlayer = Players.LocalPlayer
+
+    ----------------------------------------------------------------
+    -- Security Module (NEW)
+    ----------------------------------------------------------------
+    local Security = {}
+    
+    -- สร้าง Secret แบบแตก String เพื่อป้องกันการค้นหา (String Obfuscation)
+    local _s1 = "BxB.ware"
+    local _s2 = "-Universal"
+    local _s3 = "@#$)_%@#^"
+    local _s4 = "()$@%_)+%(@"
+    Security.PEPPER = _s1 .. _s2 .. _s3 .. _s4
+
+    -- Anti-Tamper: ตรวจสอบว่าฟังก์ชันถูก Hook หรือไม่
+    function Security.AntiTamper()
+        local function isCClosure(func)
+            if iscclosure and not iscclosure(func) then return false end
+            return true
+        end
+        
+        -- ตรวจสอบฟังก์ชันสำคัญว่าเป็น Native C Closure หรือไม่
+        local checks = {
+            game.HttpGet,
+            HttpService.JSONDecode,
+            getgenv
+        }
+        
+        for _, f in pairs(checks) do
+            if not isCClosure(f) then
+                -- ถ้าเจอฟังก์ชันปลอม ให้ทำลาย script หรือเตะ
+                LocalPlayer:Kick("Security Violation: Integrity Check Failed.")
+                while true do end
+            end
+        end
+    end
+
+    -- Generate Strong HWID
+    function Security.GetStrongHWID()
+        local clientId = "unknown"
+        pcall(function() clientId = AnalyticsService:GetClientId() end)
+        
+        local platform = "PC"
+        if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+            platform = "Mobile"
+        end
+        
+        -- ผสมข้อมูลหลายอย่างเพื่อให้ Spoof ยากขึ้น
+        local raw = table.concat({
+            clientId,
+            tostring(LocalPlayer.UserId),
+            platform,
+            tostring(game.PlaceId) -- ผูกกับแมพด้วยก็ได้ถ้าต้องการ แต่เอาออกได้ถ้าอยากได้ Global HWID
+        }, "||")
+        
+        return raw -- จะถูก Hash ต่อในฟังก์ชัน secureHWIDHash
+    end
 
     ----------------------------------------------------------------
     -- Exec Abstraction (multi-executor)
@@ -45,6 +103,9 @@ do
 
         function Exec.HttpGet(url)
             assert(type(url) == "string", "[Exec.HttpGet] url must be string")
+            
+            -- Security Check before request
+            Security.AntiTamper()
 
             if httpRequest then
                 local ok, response = pcall(httpRequest, {
@@ -154,34 +215,13 @@ do
         KEYDATA_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/data.json",
         SCRIPTINFO_URL  = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json",
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
-        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua",
+        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", -- แก้ชื่อไฟล์ให้ตรงกับที่อัพโหลด
 
         KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json"
     }
     ----------------------------------------------------------------
-    -- HWID + Secure Hash (128-bit)
+    -- HWID + Secure Hash (128-bit) - UPDATED
     ----------------------------------------------------------------
-    local function getHWID()
-        local hwid
-
-        do
-            local ok, clientId = pcall(AnalyticsService.GetClientId, AnalyticsService)
-            if ok and type(clientId) == "string" and clientId ~= "" then
-                hwid = clientId
-            end
-        end
-
-        if not hwid and LocalPlayer then
-            hwid = tostring(LocalPlayer.UserId) .. "_" .. (LocalPlayer.Name or "")
-        end
-
-        if not hwid then
-            hwid = "unknown_hwid"
-        end
-
-        return hwid
-    end
-
     local bit = bit32
     if not bit then
         error("[HWID] bit32 library is required for secure HWID hash")
@@ -196,7 +236,7 @@ do
     end
 
     local function secureHWIDHash(str)
-        local salt = "BxB.ware-Universal@#$)_%@#^()$@%_)+%(@"
+        local salt = Security.PEPPER -- Use Obfuscated Pepper
         local s = salt .. "\0" .. str .. "\0" .. tostring(#str)
 
         local h1 = 0x6A09E667
@@ -237,7 +277,7 @@ do
     end
 
     local function getHWIDHash()
-        return secureHWIDHash(getHWID())
+        return secureHWIDHash(Security.GetStrongHWID())
     end
 
     ----------------------------------------------------------------
@@ -716,11 +756,9 @@ do
 
 
  ----------------------------------------------------------------
-    -- Main Hub Loader (Updated with Dynamic Token)
+    -- Main Hub Loader (Updated with Dynamic Token & Handshake)
     ----------------------------------------------------------------
     local function fnv1a32(str)
-        -- Compute a 32-bit FNV-1a hash for the given string. This matches the
-        -- implementation in MainHub so that tokens align.
         local hash = 0x811C9DC5
         for i = 1, #str do
             hash = bit.bxor(hash, str:byte(i))
@@ -730,10 +768,8 @@ do
     end
 
     local function buildExpectedToken(keydata)
-        -- Build the auth token in the same way MainHub does. Concatenate the
-        -- secret pepper, the key, hwid hash, role, datePart, and key length,
-        -- then hash with FNV-1a and format as 8‑digit uppercase hex.
-        local SECRET_PEPPER = "BxB.ware-Universal@#$)_%@#^()$@%_)+%(@"
+        -- ใช้ Obfuscated Pepper จาก Security table
+        local SECRET_PEPPER = Security.PEPPER
         local k    = tostring(keydata.key or keydata.Key or "")
         local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
         local role = tostring(keydata.role or "user")
@@ -744,6 +780,14 @@ do
     end
 
     local function startMainHub(keydata, Library)
+        -- Dual-Layer Handshake: Create a secret environment flag
+        local secretFlagName = "BxB_Auth_" .. tostring(math.random(10000,99999))
+        if getgenv then
+            getgenv()[secretFlagName] = true
+            -- Pass this flag name to main hub via keydata structure extension
+            keydata._auth_flag = secretFlagName
+        end
+
         local src = Exec.HttpGet(Config.MAINHUB_URL)
         local chunk, err = loadstring(src)
         if not chunk then
@@ -755,13 +799,13 @@ do
             warn("[Obsidian] MainHub must return a function!")
             return
         end
-        -- Generate an auth token that matches MainHub's expected format
+        
         local token = buildExpectedToken(keydata)
         local success, err2 = pcall(startFn, Exec, keydata, token)
         if not success then
             warn("[Obsidian] Runtime error: " .. tostring(err2))
         end
-        -- Close the UI after starting the hub
+        
         if Library and type(Library.Unload) == "function" then
             Library:Unload()
         end
