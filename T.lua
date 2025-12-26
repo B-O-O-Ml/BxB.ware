@@ -783,28 +783,41 @@ local function MainHub(Exec, keydata, authToken)
         local ESPEnabledToggle = ESPFeatureBox:AddToggle("bxw_esp_enable", { Text = "Enable ESP", Default = false })
         
         local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", { Text = "Box Style", Values = { "Box", "Corner" }, Default = "Box", Multi = false })
-        local BoxToggle      = ESPFeatureBox:AddToggle("bxw_esp_box",      { Text = "Box",        Default = true })
         
-        -- [REMOVED LOCK]
+        -- [MODIFIED] Embedded Color Pickers for ESP Toggles
+        local BoxToggle = ESPFeatureBox:AddToggle("bxw_esp_box", { Text = "Box", Default = true })
+            :AddColorPicker("bxw_esp_box_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Box Color" })
 
-        local ChamsToggle    = ESPFeatureBox:AddToggle("bxw_esp_chams",    { Text = "Chams",      Default = false })
-        local SkeletonToggle = ESPFeatureBox:AddToggle("bxw_esp_skeleton", { Text = "Skeleton",   Default = false })
-        local HealthToggle   = ESPFeatureBox:AddToggle("bxw_esp_health",   { Text = "Health Bar", Default = false })
-        local NameToggle     = ESPFeatureBox:AddToggle("bxw_esp_name",     { Text = "Name Tag",   Default = true })
-        local DistToggle     = ESPFeatureBox:AddToggle("bxw_esp_distance", { Text = "Distance",   Default = false })
-        local TracerToggle   = ESPFeatureBox:AddToggle("bxw_esp_tracer",   { Text = "Tracer",     Default = false })
-        local TeamToggle     = ESPFeatureBox:AddToggle("bxw_esp_team",     { Text = "Team Check", Default = true })
-        local WallToggle     = ESPFeatureBox:AddToggle("bxw_esp_wall",     { Text = "Wall Check", Default = false })
+        local ChamsToggle = ESPFeatureBox:AddToggle("bxw_esp_chams", { Text = "Chams", Default = false })
+            :AddColorPicker("bxw_esp_chams_color", { Default = Color3.fromRGB(0, 255, 0), Title = "Chams Color" })
 
-        local SelfToggle     = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
-        local InfoToggle     = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false, Tooltip = "Shows HP, Weapon & Team" })
+        local SkeletonToggle = ESPFeatureBox:AddToggle("bxw_esp_skeleton", { Text = "Skeleton", Default = false })
+            :AddColorPicker("bxw_esp_skeleton_color", { Default = Color3.fromRGB(0, 255, 255), Title = "Skeleton Color" })
+
+        local HealthToggle = ESPFeatureBox:AddToggle("bxw_esp_health", { Text = "Health Bar", Default = false })
+            :AddColorPicker("bxw_esp_health_color", { Default = Color3.fromRGB(0, 255, 0), Title = "Health Color" })
+
+        local NameToggle = ESPFeatureBox:AddToggle("bxw_esp_name", { Text = "Name Tag", Default = true })
+            :AddColorPicker("bxw_esp_name_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Name Color" })
+
+        local DistToggle = ESPFeatureBox:AddToggle("bxw_esp_distance", { Text = "Distance", Default = false })
+            :AddColorPicker("bxw_esp_dist_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Distance Color" })
+
+        local TracerToggle = ESPFeatureBox:AddToggle("bxw_esp_tracer", { Text = "Tracer", Default = false })
+            :AddColorPicker("bxw_esp_tracer_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Tracer Color" })
+
+        local TeamToggle = ESPFeatureBox:AddToggle("bxw_esp_team", { Text = "Team Check", Default = true })
+        local WallToggle = ESPFeatureBox:AddToggle("bxw_esp_wall", { Text = "Wall Check", Default = false })
+
+        local SelfToggle = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
+        local InfoToggle = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false, Tooltip = "Shows HP, Weapon & Team" })
+            :AddColorPicker("bxw_esp_info_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Info Color" })
         
         local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
+            :AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0), Title = "Head Dot Color" })
 
-        -- [REMOVED LOCK FUNCTION & CALLS]
         
         ESPEnabledToggle:OnChanged(function(state) 
-            -- [REMOVED LOCK CALL]
             NotifyAction("Global ESP", state) 
         end)
 
@@ -823,51 +836,27 @@ local function MainHub(Exec, keydata, authToken)
             task.spawn(function() while true do task.wait(10) refreshWhitelist() end end)
         end
 
-        local BoxColorLabel = ESPSettingBox:AddLabel("Box Color")
-        BoxColorLabel:AddColorPicker("bxw_esp_box_color", { Default = Color3.fromRGB(255, 255, 255) })
-        local TracerColorLabel = ESPSettingBox:AddLabel("Tracer Color")
-        TracerColorLabel:AddColorPicker("bxw_esp_tracer_color", { Default = Color3.fromRGB(255, 255, 255) })
-        local NameColorLabel = ESPSettingBox:AddLabel("Name Color")
-        NameColorLabel:AddColorPicker("bxw_esp_name_color", { Default = Color3.fromRGB(255, 255, 255) })
+        -- [REMOVED] Separate ColorPickers (Now embedded in Toggles)
         
         local NameSizeSlider = ESPSettingBox:AddSlider("bxw_esp_name_size", { Text = "Name Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
-        
-        local DistColorLabel = ESPSettingBox:AddLabel("Distance Color")
-        DistColorLabel:AddColorPicker("bxw_esp_dist_color", { Default = Color3.fromRGB(255, 255, 255) })
         
         local DistSizeSlider = ESPSettingBox:AddSlider("bxw_esp_dist_size", { Text = "Distance Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
         local DistUnitDropdown = ESPSettingBox:AddDropdown("bxw_esp_dist_unit", { Text = "Distance Unit", Values = { "Studs", "Meters" }, Default = "Studs", Multi = false })
 
-        local SkeletonColorLabel = ESPSettingBox:AddLabel("Skeleton Color")
-        SkeletonColorLabel:AddColorPicker("bxw_esp_skeleton_color", { Default = Color3.fromRGB(0, 255, 255) })
-        local HealthColorLabel = ESPSettingBox:AddLabel("Health Bar Color")
-        HealthColorLabel:AddColorPicker("bxw_esp_health_color", { Default = Color3.fromRGB(0, 255, 0) })
-        local InfoColorLabel = ESPSettingBox:AddLabel("Info Color")
-        InfoColorLabel:AddColorPicker("bxw_esp_info_color", { Default = Color3.fromRGB(255, 255, 255) })
-        local HeadDotColorLabel = ESPSettingBox:AddLabel("Head Dot Color")
-        HeadDotColorLabel:AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0) })
-        
         local HeadDotSizeSlider = ESPSettingBox:AddSlider("bxw_esp_headdot_size", { Text = "Head Dot Size", Default = 3, Min = 1, Max = 10, Rounding = 0 })
 
-        local ChamsColorLabel = ESPSettingBox:AddLabel("Chams Color")
-        ChamsColorLabel:AddColorPicker("bxw_esp_chams_color", { Default = Color3.fromRGB(0, 255, 0) })
-        
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
 
         local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 20, Min = 0, Max = 250, Rounding = 0, Compact = false })
 
         local CrosshairToggle = ESPSettingBox:AddToggle("bxw_crosshair_enable", { Text = "Crosshair", Default = false })
-        local CrossColorLabel = ESPSettingBox:AddLabel("Crosshair Color")
-        CrossColorLabel:AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255) })
+            :AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Crosshair Color" })
+
         local CrossSizeSlider = ESPSettingBox:AddSlider("bxw_crosshair_size", { Text = "Crosshair Size", Default = 5, Min = 1, Max = 20, Rounding = 0, Compact = false })
         local CrossThickSlider = ESPSettingBox:AddSlider("bxw_crosshair_thick", { Text = "Crosshair Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0 })
         
-        -- [REMOVED LOCK]
-        -- CrossSizeSlider:SetDisabled(true)
-        -- CrossThickSlider:SetDisabled(true)
         CrosshairToggle:OnChanged(function(state) 
-            -- [REMOVED LOCK]
             NotifyAction("Crosshair", state) 
         end)
 
@@ -1268,7 +1257,11 @@ local function MainHub(Exec, keydata, authToken)
 
         AimBox:AddLabel("FOV Settings")
         local FOVSlider = AimBox:AddSlider("bxw_aim_fov", { Text = "Aim FOV", Default = 10, Min = 1, Max = 50, Rounding = 1 })
+        
+        -- [MODIFIED] Embedded Color Picker for FOV
         local ShowFovToggle = AimBox:AddToggle("bxw_aim_showfov", { Text = "Show FOV Circle", Default = false })
+            :AddColorPicker("bxw_aim_fovcolor", { Default = Color3.fromRGB(255, 255, 255), Title = "FOV Color" })
+
         local SmoothSlider = AimBox:AddSlider("bxw_aim_smooth", { Text = "Aimbot Smoothness", Default = 0.1, Min = 0.01, Max = 1, Rounding = 2 })
         local AimTeamCheck = AimBox:AddToggle("bxw_aim_teamcheck", { Text = "Team Check", Default = true })
         local TriggerbotToggle = AimBox:AddToggle("bxw_triggerbot", { Text = "Triggerbot", Default = false })
@@ -1276,14 +1269,15 @@ local function MainHub(Exec, keydata, authToken)
         local HitChanceSlider = AimBox:AddSlider("bxw_aim_hitchance", { Text = "Hit Chance %", Default = 100, Min = 1, Max = 100, Rounding = 0 })
         local RainbowToggle = AimBox:AddToggle("bxw_aim_rainbow", { Text = "Rainbow FOV", Default = false })
         local RainbowSpeedSlider = AimBox:AddSlider("bxw_aim_rainbowspeed", { Text = "Rainbow Speed", Default = 5, Min = 1, Max = 10, Rounding = 1 })
-        local FOVColorLabel = AimBox:AddLabel("FOV Color")
-        FOVColorLabel:AddColorPicker("bxw_aim_fovcolor", { Default = Color3.fromRGB(255, 255, 255) })
+        
         AimBox:AddDivider()
         local AimMethodDropdown = AimBox:AddDropdown("bxw_aim_method", { Text = "Aim Method", Values = { "CameraLock", "MouseDelta" }, Default = "CameraLock", Multi = false })
         local TargetModeDropdown = AimBox:AddDropdown("bxw_aim_targetmode", { Text = "Target Mode", Values = { "Closest To Crosshair", "Closest Distance", "Lowest Health" }, Default = "Closest To Crosshair", Multi = false })
+        
+        -- [MODIFIED] Embedded Color Picker for Snapline
         local ShowSnapToggle = AimBox:AddToggle("bxw_aim_snapline", { Text = "Show SnapLine", Default = false })
-        local SnapColorLabel = AimBox:AddLabel("SnapLine Color")
-        SnapColorLabel:AddColorPicker("bxw_aim_snapcolor", { Default = Color3.fromRGB(255, 0, 0) })
+            :AddColorPicker("bxw_aim_snapcolor", { Default = Color3.fromRGB(255, 0, 0), Title = "SnapLine Color" })
+
         local SnapThicknessSlider = AimBox:AddSlider("bxw_aim_snapthick", { Text = "SnapLine Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0 })
 
         AimBox:AddDivider()
@@ -1650,23 +1644,34 @@ local function MainHub(Exec, keydata, authToken)
             Library:Notify("Potato Mode Enabled", 2)
         end)
 
+        -- [FIXED] Better Beautiful Mode Logic
         GfxBox:AddButton("Beautiful Mode (Cinematic)", function()
-            -- Restore/Enhance
             pcall(function()
-                Lighting.GlobalShadows = true
-                Lighting.Brightness = 2
-                Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                local l = game:GetService("Lighting")
+                l.GlobalShadows = true
+                l.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                l.Brightness = 2
+                l.GeographicLatitude = 41.733
                 
-                -- Add simple enhancers if missing
-                if not Lighting:FindFirstChild("ColorCorrection") then
-                    local cc = Instance.new("ColorCorrectionEffect", Lighting)
-                    cc.Saturation = 0.2
-                    cc.Contrast = 0.1
+                -- Force create or enable effects
+                local function ensureEffect(className, props)
+                    local effect = l:FindFirstChildOfClass(className)
+                    if not effect then
+                        effect = Instance.new(className)
+                        effect.Parent = l
+                    end
+                    effect.Enabled = true
+                    for k,v in pairs(props) do
+                        effect[k] = v
+                    end
                 end
-                if not Lighting:FindFirstChild("Bloom") then
-                    local bl = Instance.new("BloomEffect", Lighting)
-                    bl.Intensity = 0.1
-                end
+
+                ensureEffect("ColorCorrectionEffect", {Saturation = 0.2, Contrast = 0.1})
+                ensureEffect("BloomEffect", {Intensity = 0.4, Size = 24, Threshold = 0.8})
+                ensureEffect("SunRaysEffect", {Intensity = 0.1})
+                
+                -- Attempt to set Technology if executor allows (often read-only but worth a try)
+                pcall(function() l.Technology = Enum.Technology.Future end)
             end)
              Library:Notify("Beautiful Mode Enabled", 2)
         end)
