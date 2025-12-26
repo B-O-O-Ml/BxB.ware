@@ -15,6 +15,9 @@ local StarterGui         = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 
+-- Check Mobile/Touch
+local isMobile = UserInputService.TouchEnabled
+
 -- เก็บ connection ไว้เผื่ออยาก cleanup ตอน Unload
 local Connections = {}
 local function AddConnection(conn)
@@ -1290,7 +1293,10 @@ local function MainHub(Exec, keydata, authToken)
         local ShowFovToggle = AimBox:AddToggle("bxw_aim_showfov", { Text = "Show FOV Circle", Default = false })
         local SmoothSlider = AimBox:AddSlider("bxw_aim_smooth", { Text = "Aimbot Smoothness", Default = 0.1, Min = 0.01, Max = 1, Rounding = 2 })
         local AimTeamCheck = AimBox:AddToggle("bxw_aim_teamcheck", { Text = "Team Check", Default = true })
+        
+        -- [FIX] TRIGGERBOT MOVED TO DEDICATED LOGIC (See below loop)
         local TriggerbotToggle = AimBox:AddToggle("bxw_triggerbot", { Text = "Triggerbot", Default = false })
+        
         local VisibilityToggle = AimBox:AddToggle("bxw_aim_visibility", { Text = "Visibility Check", Default = false })
         local HitChanceSlider = AimBox:AddSlider("bxw_aim_hitchance", { Text = "Hit Chance %", Default = 100, Min = 1, Max = 100, Rounding = 0 })
         local RainbowToggle = AimBox:AddToggle("bxw_aim_rainbow", { Text = "Rainbow FOV", Default = false })
@@ -1324,10 +1330,11 @@ local function MainHub(Exec, keydata, authToken)
         local TriggerWallToggle = ExtraBox:AddToggle("bxw_trigger_wallcheck", { Text = "Trigger Wall Check", Default = false })
         local TriggerMethodDropdown = ExtraBox:AddDropdown("bxw_trigger_method", { Text = "Trigger Method", Values = { "Always On", "Hold Key" }, Default = "Always On", Multi = false })
         local TriggerFiringDropdown = ExtraBox:AddDropdown("bxw_trigger_firemode", { Text = "Firing Mode", Values = { "Single", "Burst", "Auto" }, Default = "Single", Multi = false })
-        local TriggerFovSlider = ExtraBox:AddSlider("bxw_trigger_fov", { Text = "Trigger FOV", Default = 10, Min = 1, Max = 50, Rounding = 1 })
+        
+        -- [FIX] Triggerbot FOV (Not really used for crosshair trigger, but good for tolerance)
+        local TriggerFovSlider = ExtraBox:AddSlider("bxw_trigger_fov", { Text = "Trigger FOV Tolerance", Default = 3, Min = 1, Max = 20, Rounding = 1 })
+        
         local TriggerDelaySlider = ExtraBox:AddSlider("bxw_trigger_delay", { Text = "Trigger Delay (s)", Default = 0.05, Min = 0, Max = 1, Rounding = 2 })
-        local TriggerHoldSlider = ExtraBox:AddSlider("bxw_trigger_hold", { Text = "Trigger HoldTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
-        local TriggerReleaseSlider = ExtraBox:AddSlider("bxw_trigger_release", { Text = "Trigger ReleaseTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
         
         -- [REMOVED LOCK]
         
@@ -1383,6 +1390,72 @@ local function MainHub(Exec, keydata, authToken)
         local rainbowHue = 0
 
         local function performClick() pcall(function() mouse1click() end) pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(Vector2.new()) end) end
+
+        -- [FIX] INDEPENDENT TRIGGERBOT LOGIC
+        task.spawn(function()
+            local lastTrigger = 0
+            while true do
+                task.wait()
+                if TriggerbotToggle.Value then
+                    local delayTime = (Options.bxw_trigger_delay and Options.bxw_trigger_delay.Value) or 0
+                    if tick() - lastTrigger > delayTime then
+                        
+                        -- Raycast from Center of Camera
+                        local cam = Workspace.CurrentCamera
+                        if cam then
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterDescendantsInstances = { LocalPlayer.Character, cam }
+                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                            
+                            -- Use Camera LookVector directly from center
+                            local rayOrigin = cam.CFrame.Position
+                            local rayDirection = cam.CFrame.LookVector * 1000
+                            
+                            local rayResult = Workspace:Raycast(rayOrigin, rayDirection, rayParams)
+                            
+                            if rayResult and rayResult.Instance then
+                                local hitPart = rayResult.Instance
+                                local hitModel = hitPart:FindFirstAncestorOfClass("Model")
+                                
+                                if hitModel then
+                                    local hitPlr = Players:GetPlayerFromCharacter(hitModel)
+                                    if hitPlr and hitPlr ~= LocalPlayer then
+                                        local isEnemy = true
+                                        if TriggerTeamToggle.Value then
+                                            -- Check Team
+                                            if LocalPlayer.Team and hitPlr.Team and LocalPlayer.Team == hitPlr.Team then
+                                                isEnemy = false
+                                            end
+                                             -- Fallback Color Check
+                                            if LocalPlayer.TeamColor and hitPlr.TeamColor and LocalPlayer.TeamColor == hitPlr.TeamColor then
+                                                isEnemy = false
+                                            end
+                                        end
+
+                                        -- Check Health
+                                        local hum = hitModel:FindFirstChildOfClass("Humanoid")
+                                        if hum and hum.Health > 0 and isEnemy then
+                                            -- Fire
+                                            lastTrigger = tick()
+                                            
+                                            local fireMode = (Options.bxw_trigger_firemode and Options.bxw_trigger_firemode.Value) or "Single"
+                                            
+                                            if fireMode == "Single" then
+                                                performClick()
+                                            elseif fireMode == "Burst" then
+                                                for i=1, 3 do performClick() task.wait(0.05) end
+                                            elseif fireMode == "Auto" then
+                                                performClick() 
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
 
         AddConnection(RunService.RenderStepped:Connect(function()
             local cam = Workspace.CurrentCamera
@@ -1536,20 +1609,7 @@ local function MainHub(Exec, keydata, authToken)
                                 AimbotSnapLine.Color = (Options.bxw_aim_snapcolor and Options.bxw_aim_snapcolor.Value) or Color3.fromRGB(255,0,0)
                                 AimbotSnapLine.Thickness = (Options.bxw_aim_snapthick and Options.bxw_aim_snapthick.Value) or 1
                             end
-                            if Toggles.bxw_triggerbot and Toggles.bxw_triggerbot.Value then
-                                local tFov = ((Options.bxw_trigger_fov and Options.bxw_trigger_fov.Value) or 10) * 15
-                                local tDist = (Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y) - mouseLoc).Magnitude
-                                if tDist <= tFov then
-                                    local fireMode = (Options.bxw_trigger_firing and Options.bxw_trigger_firing.Value) or "Single"
-                                    local delayTime = (Options.bxw_trigger_delay and Options.bxw_trigger_delay.Value) or 0
-                                    task.spawn(function()
-                                        task.wait(delayTime)
-                                        if fireMode == "Single" then performClick()
-                                        elseif fireMode == "Burst" then for i=1,3 do performClick() task.wait(0.05) end
-                                        elseif fireMode == "Auto" then performClick() end
-                                    end)
-                                end
-                            end
+                            -- [NOTE] Triggerbot logic is now handled in a separate loop above
                         end
                     end
                 end
@@ -1684,18 +1744,72 @@ local function MainHub(Exec, keydata, authToken)
         local MiscLeft  = MiscTab:AddLeftGroupbox("Game Tools", "tool")
         local MiscRight = safeAddRightGroupbox(MiscTab, "Environment", "sun")
 
-        -- [FEATURE] Auto Clicker
+        -- [FEATURE] Auto Clicker (Advanced: Set Point for Mobile, Keybind for PC)
         MiscLeft:AddLabel("Auto Clicker")
+        
         local AutoClickerToggle = MiscLeft:AddToggle("bxw_autoclicker", { Text = "Enable Auto Click", Default = false })
+        
+        -- Keybind for PC Users
+        AutoClickerToggle:AddKeyPicker("AutoClickKey", { Default = "V", NoUI = false, Text = "Auto Click Toggle" })
+
+        local AutoClickDelaySlider = MiscLeft:AddSlider("bxw_autoclick_delay", { Text = "Click Delay (s)", Default = 0.1, Min = 0, Max = 2, Rounding = 2 })
+        
+        -- Mobile Specific UI
+        local clickPosition = nil -- Vector2
+        local PositionLabel = MiscLeft:AddLabel("Pos: Default (Center/Mouse)")
+        
+        local SetPointBtn = MiscLeft:AddButton("Set Click Point (Mobile)", function()
+             if not isMobile then 
+                 Library:Notify("This feature is for Mobile devices only.", 2)
+                 return 
+             end
+             
+             Library:Notify("Tap anywhere on screen to set point...", 3)
+             
+             local connection
+             connection = UserInputService.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    clickPosition = Vector2.new(input.Position.X, input.Position.Y)
+                    PositionLabel.TextLabel.Text = string.format("Pos: %d, %d", clickPosition.X, clickPosition.Y)
+                    Library:Notify("Click Point Set!", 2)
+                    connection:Disconnect()
+                end
+             end)
+        end)
+        
+        -- Disabled if not mobile
+        if not isMobile then
+             -- We can't disable the button object directly easily in this lib without modifying source, 
+             -- but we added the logic guard inside the callback.
+             -- Optional: Gray out text or change text
+             SetPointBtn.TextLabel.Text = "Set Point (Mobile Only)"
+        end
+        
         local AutoClickerConn
         AutoClickerToggle:OnChanged(function(state)
             if state then
                 if AutoClickerConn then AutoClickerConn:Disconnect() end
+                local lastClick = 0
+                
                 AutoClickerConn = AddConnection(RunService.RenderStepped:Connect(function()
-                     if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                         -- Already clicking
-                     else
-                        pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(Vector2.new()) end)
+                     -- Check Toggle again (redundant safety)
+                     if not Toggles.bxw_autoclicker.Value then return end
+                     
+                     local delayTime = AutoClickDelaySlider.Value or 0.1
+                     
+                     if tick() - lastClick > delayTime then
+                         lastClick = tick()
+                         
+                         if isMobile and clickPosition then
+                             -- Mobile with specific point
+                             pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(clickPosition) end)
+                         else
+                             -- PC (Mouse pos) or Mobile (No point set - Center/Tap)
+                             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                                 -- Already holding, maybe do nothing or spam? Spamming is usually desired.
+                             end
+                             pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(Vector2.new()) end)
+                         end
                      end
                 end))
             else
