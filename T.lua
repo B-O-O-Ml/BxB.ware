@@ -212,7 +212,7 @@ local function MainHub(Exec, keydata, authToken)
     local AimbotFOVCircle = nil
     local AimbotSnapLine = nil
 
-    -- ESP Drawings Storage moved to MainHub scope so OnUnload can access it
+    -- [CRITICAL FIX] ESP Drawings Storage moved to MainHub scope so OnUnload can access it
     local espDrawings = {}
 
     -- normalize role
@@ -473,7 +473,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     --------------------------------------------------------
-    -- 2. PLAYER TAB (Full Features - NO LOCKS)
+    -- 2. PLAYER TAB (Full Features + Disabled Logic)
     --------------------------------------------------------
    local PlayerTab = Tabs.Player
 
@@ -491,12 +491,12 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [REMOVED LOCK]
-    -- WalkSpeedSlider:SetDisabled(true)
+    -- [FEATURE] Lock slider if toggle is off
+    WalkSpeedSlider:SetDisabled(true)
 
     WalkSpeedToggle:OnChanged(function(state)
         walkSpeedEnabled = state
-        -- [REMOVED LOCK]
+        if WalkSpeedSlider.SetDisabled then WalkSpeedSlider:SetDisabled(not state) end
         local hum = getHumanoid()
         if hum then hum.WalkSpeed = state and WalkSpeedSlider.Value or defaultWalkSpeed end
         NotifyAction("WalkSpeed", state)
@@ -522,12 +522,12 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [REMOVED LOCK]
-    -- JumpPowerSlider:SetDisabled(true)
+    -- [FEATURE] Lock slider if toggle is off
+    JumpPowerSlider:SetDisabled(true)
 
     JumpPowerToggle:OnChanged(function(state)
         jumpPowerEnabled = state
-        -- [REMOVED LOCK]
+        if JumpPowerSlider.SetDisabled then JumpPowerSlider:SetDisabled(not state) end
         local hum = getHumanoid()
         if hum then pcall(function() hum.UseJumpPower = true end) hum.JumpPower = state and JumpPowerSlider.Value or defaultJumpPower end
         NotifyAction("JumpPower", state)
@@ -548,10 +548,9 @@ local function MainHub(Exec, keydata, authToken)
             if hum then hum.HipHeight = value end
         end
     })
-    -- [REMOVED LOCK]
-    -- HipHeightSlider:SetDisabled(true)
+    HipHeightSlider:SetDisabled(true)
     HipHeightToggle:OnChanged(function(state)
-        -- [REMOVED LOCK]
+        HipHeightSlider:SetDisabled(not state)
         local hum = getHumanoid()
         if hum then hum.HipHeight = state and HipHeightSlider.Value or 0 end
         NotifyAction("Hip Height", state)
@@ -597,12 +596,12 @@ local function MainHub(Exec, keydata, authToken)
     local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = flySpeed, Min = 1, Max = 300, Rounding = 0, Compact = false, Callback = function(value) flySpeed = value end })
     
-    -- [REMOVED LOCK]
-    -- FlySpeedSlider:SetDisabled(true)
+    -- [FEATURE] Lock slider
+    FlySpeedSlider:SetDisabled(true)
 
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
-        -- [REMOVED LOCK]
+        FlySpeedSlider:SetDisabled(not state)
 
         local char = getCharacter()
         local root = getRootPart()
@@ -774,7 +773,6 @@ local function MainHub(Exec, keydata, authToken)
 
     ------------------------------------------------
     -- 4.3 ESP & Visuals Tab (Optimized Loop + Full Features)
-    -- [UPDATED] Embedded Color Pickers for cleaner UI
     ------------------------------------------------
     do
         local ESPTab = Tabs.ESP
@@ -782,46 +780,28 @@ local function MainHub(Exec, keydata, authToken)
         local ESPSettingBox = safeAddRightGroupbox(ESPTab, "ESP Settings", "palette")
 
         local ESPEnabledToggle = ESPFeatureBox:AddToggle("bxw_esp_enable", { Text = "Enable ESP", Default = false })
-        
+        ESPEnabledToggle:OnChanged(function(state) NotifyAction("Global ESP", state) end)
+
         local BoxStyleDropdown = ESPFeatureBox:AddDropdown("bxw_esp_box_style", { Text = "Box Style", Values = { "Box", "Corner" }, Default = "Box", Multi = false })
+        local BoxToggle      = ESPFeatureBox:AddToggle("bxw_esp_box",      { Text = "Box",        Default = true })
         
-        -- [UPDATE] Embedded Color Pickers in Toggles
-        local BoxToggle = ESPFeatureBox:AddToggle("bxw_esp_box", { Text = "Box", Default = true })
-            :AddColorPicker("bxw_esp_box_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Box Color" })
-        
-        local ChamsToggle = ESPFeatureBox:AddToggle("bxw_esp_chams", { Text = "Chams", Default = false })
-            :AddColorPicker("bxw_esp_chams_color", { Default = Color3.fromRGB(0, 255, 0), Title = "Chams Color" })
+        -- [FEATURE] Lock Box Style
+        BoxStyleDropdown:SetDisabled(true)
+        BoxToggle:OnChanged(function(state) BoxStyleDropdown:SetDisabled(not state) end)
 
-        local SkeletonToggle = ESPFeatureBox:AddToggle("bxw_esp_skeleton", { Text = "Skeleton", Default = false })
-            :AddColorPicker("bxw_esp_skeleton_color", { Default = Color3.fromRGB(0, 255, 255), Title = "Skeleton Color" })
-
-        local HealthToggle = ESPFeatureBox:AddToggle("bxw_esp_health", { Text = "Health Bar", Default = false })
-            :AddColorPicker("bxw_esp_health_color", { Default = Color3.fromRGB(0, 255, 0), Title = "Health Bar Color" })
-
-        local NameToggle = ESPFeatureBox:AddToggle("bxw_esp_name", { Text = "Name Tag", Default = true })
-            :AddColorPicker("bxw_esp_name_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Name Color" })
-
-        local DistToggle = ESPFeatureBox:AddToggle("bxw_esp_distance", { Text = "Distance", Default = false })
-            :AddColorPicker("bxw_esp_dist_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Distance Color" })
-
-        local TracerToggle = ESPFeatureBox:AddToggle("bxw_esp_tracer", { Text = "Tracer", Default = false })
-            :AddColorPicker("bxw_esp_tracer_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Tracer Color" })
-
+        local ChamsToggle    = ESPFeatureBox:AddToggle("bxw_esp_chams",    { Text = "Chams",      Default = false })
+        local SkeletonToggle = ESPFeatureBox:AddToggle("bxw_esp_skeleton", { Text = "Skeleton",   Default = false })
+        local HealthToggle   = ESPFeatureBox:AddToggle("bxw_esp_health",   { Text = "Health Bar", Default = false })
+        local NameToggle     = ESPFeatureBox:AddToggle("bxw_esp_name",     { Text = "Name Tag",   Default = true })
+        local DistToggle     = ESPFeatureBox:AddToggle("bxw_esp_distance", { Text = "Distance",   Default = false })
+        local TracerToggle   = ESPFeatureBox:AddToggle("bxw_esp_tracer",   { Text = "Tracer",     Default = false })
         local TeamToggle     = ESPFeatureBox:AddToggle("bxw_esp_team",     { Text = "Team Check", Default = true })
         local WallToggle     = ESPFeatureBox:AddToggle("bxw_esp_wall",     { Text = "Wall Check", Default = false })
 
         local SelfToggle     = ESPFeatureBox:AddToggle("bxw_esp_self", { Text = "Self ESP", Default = false })
-        
-        local InfoToggle = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false, Tooltip = "Shows HP, Weapon & Team" })
-            :AddColorPicker("bxw_esp_info_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Info Color" })
+        local InfoToggle     = ESPFeatureBox:AddToggle("bxw_esp_info", { Text = "Target Info", Default = false, Tooltip = "Shows HP, Weapon & Team" })
         
         local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
-            :AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0), Title = "Head Dot Color" })
-
-        
-        ESPEnabledToggle:OnChanged(function(state) 
-            NotifyAction("Global ESP", state) 
-        end)
 
         local function getPlayerNames()
             local names = {}
@@ -838,51 +818,80 @@ local function MainHub(Exec, keydata, authToken)
             task.spawn(function() while true do task.wait(10) refreshWhitelist() end end)
         end
 
-        -- [REMOVED] Standalone Color Labels (Moved to Toggles above)
+        local BoxColorLabel = ESPSettingBox:AddLabel("Box Color")
+        BoxColorLabel:AddColorPicker("bxw_esp_box_color", { Default = Color3.fromRGB(255, 255, 255) })
+        local TracerColorLabel = ESPSettingBox:AddLabel("Tracer Color")
+        TracerColorLabel:AddColorPicker("bxw_esp_tracer_color", { Default = Color3.fromRGB(255, 255, 255) })
+        local NameColorLabel = ESPSettingBox:AddLabel("Name Color")
+        NameColorLabel:AddColorPicker("bxw_esp_name_color", { Default = Color3.fromRGB(255, 255, 255) })
         
         local NameSizeSlider = ESPSettingBox:AddSlider("bxw_esp_name_size", { Text = "Name Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
+        -- [FEATURE] Lock Name Size
+        NameSizeSlider:SetDisabled(true)
+        NameToggle:OnChanged(function(state) NameSizeSlider:SetDisabled(not state) end)
+
+        local DistColorLabel = ESPSettingBox:AddLabel("Distance Color")
+        DistColorLabel:AddColorPicker("bxw_esp_dist_color", { Default = Color3.fromRGB(255, 255, 255) })
         
         local DistSizeSlider = ESPSettingBox:AddSlider("bxw_esp_dist_size", { Text = "Distance Size", Default = 14, Min = 10, Max = 30, Rounding = 0 })
         local DistUnitDropdown = ESPSettingBox:AddDropdown("bxw_esp_dist_unit", { Text = "Distance Unit", Values = { "Studs", "Meters" }, Default = "Studs", Multi = false })
+        -- [FEATURE] Lock Distance Settings
+        DistSizeSlider:SetDisabled(true)
+        DistUnitDropdown:SetDisabled(true)
+        DistToggle:OnChanged(function(state) DistSizeSlider:SetDisabled(not state) DistUnitDropdown:SetDisabled(not state) end)
 
+        local SkeletonColorLabel = ESPSettingBox:AddLabel("Skeleton Color")
+        SkeletonColorLabel:AddColorPicker("bxw_esp_skeleton_color", { Default = Color3.fromRGB(0, 255, 255) })
+        local HealthColorLabel = ESPSettingBox:AddLabel("Health Bar Color")
+        HealthColorLabel:AddColorPicker("bxw_esp_health_color", { Default = Color3.fromRGB(0, 255, 0) })
+        local InfoColorLabel = ESPSettingBox:AddLabel("Info Color")
+        InfoColorLabel:AddColorPicker("bxw_esp_info_color", { Default = Color3.fromRGB(255, 255, 255) })
+        local HeadDotColorLabel = ESPSettingBox:AddLabel("Head Dot Color")
+        HeadDotColorLabel:AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0) })
+        
         local HeadDotSizeSlider = ESPSettingBox:AddSlider("bxw_esp_headdot_size", { Text = "Head Dot Size", Default = 3, Min = 1, Max = 10, Rounding = 0 })
+        -- [FEATURE] Lock Head Dot Size
+        HeadDotSizeSlider:SetDisabled(true)
+        HeadDotToggle:OnChanged(function(state) HeadDotSizeSlider:SetDisabled(not state) end)
+
+        local ChamsColorLabel = ESPSettingBox:AddLabel("Chams Color")
+        ChamsColorLabel:AddColorPicker("bxw_esp_chams_color", { Default = Color3.fromRGB(0, 255, 0) })
         
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
+        -- [FEATURE] Lock Chams Settings
+        ChamsTransSlider:SetDisabled(true)
+        ChamsVisibleToggle:SetDisabled(true)
+        ChamsToggle:OnChanged(function(state) ChamsTransSlider:SetDisabled(not state) ChamsVisibleToggle:SetDisabled(not state) end)
 
-        local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 20, Min = 0, Max = 250, Rounding = 0, Compact = false })
+        local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 50, Min = 0, Max = 250, Rounding = 0, Compact = false })
 
-        -- [UPDATE] Embedded Color Picker for Crosshair
         local CrosshairToggle = ESPSettingBox:AddToggle("bxw_crosshair_enable", { Text = "Crosshair", Default = false })
-            :AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Crosshair Color" })
-            
+        local CrossColorLabel = ESPSettingBox:AddLabel("Crosshair Color")
+        CrossColorLabel:AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255) })
         local CrossSizeSlider = ESPSettingBox:AddSlider("bxw_crosshair_size", { Text = "Crosshair Size", Default = 5, Min = 1, Max = 20, Rounding = 0, Compact = false })
         local CrossThickSlider = ESPSettingBox:AddSlider("bxw_crosshair_thick", { Text = "Crosshair Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0 })
-        
-        CrosshairToggle:OnChanged(function(state) 
-            NotifyAction("Crosshair", state) 
-        end)
+        -- [FEATURE] Lock Crosshair Settings
+        CrossSizeSlider:SetDisabled(true)
+        CrossThickSlider:SetDisabled(true)
+        CrosshairToggle:OnChanged(function(state) CrossSizeSlider:SetDisabled(not state) CrossThickSlider:SetDisabled(not state) NotifyAction("Crosshair", state) end)
 
-        -- [FIX] Logic to deep clean drawings (Unload Bug & Ghost Drawings)
+        -- [FIX] Logic to deep clean drawings (Unload Bug)
         local lastESPUpdate = 0
         local function removePlayerESP(plr)
-            if espDrawings[plr] then
-                local data = espDrawings[plr]
-                if data.Box then pcall(function() data.Box:Remove() end) data.Box = nil end
-                if data.Corners then for _, ln in pairs(data.Corners) do pcall(function() ln:Remove() end) end data.Corners = nil end
-                if data.Health then 
-                    if data.Health.Outline then pcall(function() data.Health.Outline:Remove() end) end 
-                    if data.Health.Bar then pcall(function() data.Health.Bar:Remove() end) end 
-                    data.Health = nil
-                end
-                if data.Name then pcall(function() data.Name:Remove() end) data.Name = nil end
-                if data.Distance then pcall(function() data.Distance:Remove() end) data.Distance = nil end
-                if data.Tracer then pcall(function() data.Tracer:Remove() end) data.Tracer = nil end
-                if data.Highlight then pcall(function() data.Highlight:Destroy() end) data.Highlight = nil end
-                if data.Skeleton then for _, ln in pairs(data.Skeleton) do pcall(function() ln:Remove() end) end data.Skeleton = nil end
-                if data.HeadDot then pcall(function() data.HeadDot:Remove() end) data.HeadDot = nil end
-                if data.Info then pcall(function() data.Info:Remove() end) data.Info = nil end
-                espDrawings[plr] = nil -- Fully remove from table
+            local data = espDrawings[plr]
+            if data then
+                if data.Box then pcall(function() data.Box:Remove() end) end
+                if data.Corners then for _, ln in pairs(data.Corners) do pcall(function() ln:Remove() end) end end
+                if data.Health then if data.Health.Outline then pcall(function() data.Health.Outline:Remove() end) end if data.Health.Bar then pcall(function() data.Health.Bar:Remove() end) end end
+                if data.Name then pcall(function() data.Name:Remove() end) end
+                if data.Distance then pcall(function() data.Distance:Remove() end) end
+                if data.Tracer then pcall(function() data.Tracer:Remove() end) end
+                if data.Highlight then pcall(function() data.Highlight:Destroy() end) end
+                if data.Skeleton then for _, ln in pairs(data.Skeleton) do pcall(function() ln:Remove() end) end end
+                if data.HeadDot then pcall(function() data.HeadDot:Remove() end) end
+                if data.Info then pcall(function() data.Info:Remove() end) end
+                espDrawings[plr] = nil
             end
         end
 
@@ -909,8 +918,17 @@ local function MainHub(Exec, keydata, authToken)
             -- [LAG FIX] If disabled, disable all once and return
             if not ESPEnabledToggle.Value then
                 if espPreviouslyEnabled then
-                    for plr, v in pairs(espDrawings) do
-                        removePlayerESP(plr) -- Clear memory
+                    for _, v in pairs(espDrawings) do
+                        if v.Box then v.Box.Visible = false end
+                        if v.Corners then for _, ln in pairs(v.Corners) do ln.Visible = false end end
+                        if v.Health then if v.Health.Outline then v.Health.Outline.Visible = false end if v.Health.Bar then v.Health.Bar.Visible = false end end
+                        if v.Name then v.Name.Visible = false end
+                        if v.Distance then v.Distance.Visible = false end
+                        if v.Tracer then v.Tracer.Visible = false end
+                        if v.HeadDot then v.HeadDot.Visible = false end
+                        if v.Highlight then v.Highlight.Enabled = false end
+                        if v.Info then v.Info.Visible = false end
+                        if v.Skeleton then for _, ln in pairs(v.Skeleton) do ln.Visible = false end end
                     end
                     espPreviouslyEnabled = false
                 end
@@ -930,7 +948,19 @@ local function MainHub(Exec, keydata, authToken)
                     local root = char and char:FindFirstChild("HumanoidRootPart") or char and char:FindFirstChild("Torso") or char and char:FindFirstChild("UpperTorso")
                     
                     if not hum or hum.Health <= 0 or not root then
-                        removePlayerESP(plr)
+                        local d = espDrawings[plr]
+                        if d then
+                            if d.Box then d.Box.Visible = false end
+                            if d.Corners then for _, ln in pairs(d.Corners) do ln.Visible = false end end
+                            if d.Health then if d.Health.Outline then d.Health.Outline.Visible = false end if d.Health.Bar then d.Health.Bar.Visible = false end end
+                            if d.Name then d.Name.Visible = false end
+                            if d.Distance then d.Distance.Visible = false end
+                            if d.Tracer then d.Tracer.Visible = false end
+                            if d.Skeleton then for _, ln in pairs(d.Skeleton) do ln.Visible = false end end
+                            if d.Highlight then d.Highlight.Enabled = false end
+                            if d.HeadDot then d.HeadDot.Visible = false end
+                            if d.Info then d.Info.Visible = false end
+                        end
                     elseif hum and hum.Health > 0 and root then
                         local skipPlayer = false
                         if TeamToggle.Value then
@@ -946,26 +976,23 @@ local function MainHub(Exec, keydata, authToken)
                         end
 
                         if skipPlayer then
-                            removePlayerESP(plr)
+                            if espDrawings[plr] then
+                                local d = espDrawings[plr]
+                                if d.Box then d.Box.Visible = false end
+                                if d.Corners then for _, ln in pairs(d.Corners) do ln.Visible = false end end
+                                if d.Health then if d.Health.Outline then d.Health.Outline.Visible = false end if d.Health.Bar then d.Health.Bar.Visible = false end end
+                                if d.Name then d.Name.Visible = false end
+                                if d.Distance then d.Distance.Visible = false end
+                                if d.Tracer then d.Tracer.Visible = false end
+                                if d.Highlight then d.Highlight.Enabled = false end
+                                if d.HeadDot then d.HeadDot.Visible = false end
+                                if d.Info then d.Info.Visible = false end
+                            end
                         else
                             local data = espDrawings[plr]
                             if not data then data = {} espDrawings[plr] = data end
 
-                            -- [OPTIMIZATION] Use GetBoundingBox instead of looping GetDescendants
-                            -- This significantly reduces lag/FPS drops
-                            local cf, size = char:GetBoundingBox()
-                            local cornersWorld = {
-                                cf * CFrame.new(-size.X/2, size.Y/2, -size.Z/2),
-                                cf * CFrame.new(size.X/2, size.Y/2, -size.Z/2),
-                                cf * CFrame.new(-size.X/2, -size.Y/2, -size.Z/2),
-                                cf * CFrame.new(size.X/2, -size.Y/2, -size.Z/2),
-                                cf * CFrame.new(-size.X/2, size.Y/2, size.Z/2),
-                                cf * CFrame.new(size.X/2, size.Y/2, size.Z/2),
-                                cf * CFrame.new(-size.X/2, -size.Y/2, size.Z/2),
-                                cf * CFrame.new(size.X/2, -size.Y/2, size.Z/2),
-                            }
-                            
-                            -- Manual Visibility Check Logic (WallCheck)
+                            -- [FIX] Wall Check Logic First (Determine Shared Color)
                             local isVisible = true
                             if WallToggle.Value then
                                 local rayDir = (root.Position - camPos)
@@ -1002,17 +1029,29 @@ local function MainHub(Exec, keydata, authToken)
                                 if data.Highlight then data.Highlight.Enabled = false end
                             end
 
-                            local minX, minY = math.huge, math.huge
-                            local maxX, maxY = -math.huge, -math.huge
+                            local minVec, maxVec = Vector3.new(math.huge, math.huge, math.huge), Vector3.new(-math.huge, -math.huge, -math.huge)
+                            for _, part in ipairs(char:GetDescendants()) do
+                                if part:IsA("BasePart") then
+                                    local pos = part.Position
+                                    minVec = Vector3.new(math.min(minVec.X, pos.X), math.min(minVec.Y, pos.Y), math.min(minVec.Z, pos.Z))
+                                    maxVec = Vector3.new(math.max(maxVec.X, pos.X), math.max(maxVec.Y, pos.Y), math.max(maxVec.Z, pos.Z))
+                                end
+                            end
+                            local size = maxVec - minVec
+                            local center = (maxVec + minVec) / 2
+                            local halfSize = size / 2
+                            local cornersWorld = {
+                                center + Vector3.new(-halfSize.X,  halfSize.Y, -halfSize.Z), center + Vector3.new( halfSize.X,  halfSize.Y, -halfSize.Z),
+                                center + Vector3.new(-halfSize.X, -halfSize.Y, -halfSize.Z), center + Vector3.new( halfSize.X, -halfSize.Y, -halfSize.Z),
+                                center + Vector3.new(-halfSize.X,  halfSize.Y,  halfSize.Z), center + Vector3.new( halfSize.X,  halfSize.Y,  halfSize.Z),
+                                center + Vector3.new(-halfSize.X, -halfSize.Y,  halfSize.Z), center + Vector3.new( halfSize.X, -halfSize.Y,  halfSize.Z),
+                            }
+                            local screenPoints = {}
                             local onScreen = false
-
-                            for i, worldCFrame in ipairs(cornersWorld) do
-                                local screenPos, vis = cam:WorldToViewportPoint(worldCFrame.Position)
-                                if vis then onScreen = true end
-                                minX = math.min(minX, screenPos.X)
-                                minY = math.min(minY, screenPos.Y)
-                                maxX = math.max(maxX, screenPos.X)
-                                maxY = math.max(maxY, screenPos.Y)
+                            for i, worldPos in ipairs(cornersWorld) do
+                                local screenPos, vis = cam:WorldToViewportPoint(worldPos)
+                                screenPoints[i] = Vector2.new(screenPos.X, screenPos.Y)
+                                onScreen = onScreen or vis
                             end
 
                             if not onScreen then
@@ -1025,6 +1064,12 @@ local function MainHub(Exec, keydata, authToken)
                                 if data.HeadDot then data.HeadDot.Visible = false end
                                 if data.Info then data.Info.Visible = false end
                             else
+                                local minX, minY = math.huge, math.huge
+                                local maxX, maxY = -math.huge, -math.huge
+                                for _, v2 in ipairs(screenPoints) do
+                                    minX = math.min(minX, v2.X) maxX = math.max(maxX, v2.X)
+                                    minY = math.min(minY, v2.Y) maxY = math.max(maxY, v2.Y)
+                                end
                                 local boxW, boxH = maxX - minX, maxY - minY
                                 local finalColor = sharedColor or (Options.bxw_esp_box_color and Options.bxw_esp_box_color.Value) or Color3.fromRGB(255, 255, 255)
 
@@ -1095,7 +1140,7 @@ local function MainHub(Exec, keydata, authToken)
                                     if data.Distance then data.Distance.Visible = false end
                                 end
 
-                                -- [FIX] Target Info Upgrade (Requested Format: Name, Dist, Team)
+                                -- [FIX] Target Info Upgrade (Real data & Weapon check)
                                 if InfoToggle and InfoToggle.Value then
                                     if not data.Info then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Info = txt end
                                     local distStudInfo = (root.Position - camPos).Magnitude
@@ -1111,13 +1156,14 @@ local function MainHub(Exec, keydata, authToken)
                                     local currentTool = char:FindFirstChildOfClass("Tool")
                                     local toolName = currentTool and currentTool.Name or "None"
 
+                                    -- Check Real HP
+                                    local hpVal = math.floor(hum.Health)
+
                                     data.Info.Visible = true
                                     data.Info.Color = sharedColor or (Options.bxw_esp_info_color and Options.bxw_esp_info_color.Value) or Color3.fromRGB(255, 255, 255)
                                     data.Info.Size = NameSizeSlider.Value
-                                    
-                                    -- New Format per Request
-                                    data.Info.Text = string.format("%s\n[Dist: %.0f%s] [Team: %s]", plr.Name, distNumInfo, suffixInfo, teamName)
-                                    
+                                    -- Updated Text Format
+                                    data.Info.Text = string.format("[HP: %d] [Dist: %.0f%s]\n[Team: %s] [Wep: %s]", hpVal, distNumInfo, suffixInfo, teamName, toolName)
                                     data.Info.Position = Vector2.new((minX + maxX) / 2, maxY + 16)
                                 else
                                     if data.Info then data.Info.Visible = false end
@@ -1285,10 +1331,18 @@ local function MainHub(Exec, keydata, authToken)
         local PredToggle = AimBox:AddToggle("bxw_aim_pred", { Text = "Prediction Aim", Default = false })
         local PredSlider = AimBox:AddSlider("bxw_aim_predfactor", { Text = "Prediction Factor", Default = 0.1, Min = 0, Max = 1, Rounding = 2 })
 
-        -- [REMOVED LOCK]
-        
+        -- [FEATURE] Interlock Aimbot UI
+        local function UpdateAimUI(state)
+            FOVSlider:SetDisabled(not state)
+            SmoothSlider:SetDisabled(not state)
+            HitChanceSlider:SetDisabled(not state)
+            AimPartDropdown:SetDisabled(not state)
+            AimMethodDropdown:SetDisabled(not state)
+        end
+        -- Default Locked
+        UpdateAimUI(false)
         AimbotToggle:OnChanged(function(state)
-            -- [REMOVED LOCK]
+            UpdateAimUI(state)
             NotifyAction("Aimbot", state)
         end)
 
@@ -1302,10 +1356,12 @@ local function MainHub(Exec, keydata, authToken)
         local TriggerHoldSlider = ExtraBox:AddSlider("bxw_trigger_hold", { Text = "Trigger HoldTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
         local TriggerReleaseSlider = ExtraBox:AddSlider("bxw_trigger_release", { Text = "Trigger ReleaseTime (s)", Default = 0.05, Min = 0.01, Max = 0.5, Rounding = 2 })
         
-        -- [REMOVED LOCK]
-        
+        -- [FEATURE] Lock Trigger settings
+        TriggerFiringDropdown:SetDisabled(true)
+        TriggerFovSlider:SetDisabled(true)
         TriggerbotToggle:OnChanged(function(state)
-            -- [REMOVED LOCK]
+            TriggerFiringDropdown:SetDisabled(not state)
+            TriggerFovSlider:SetDisabled(not state)
             NotifyAction("Triggerbot", state)
         end)
 
@@ -1638,53 +1694,26 @@ local function MainHub(Exec, keydata, authToken)
                         v.CastShadow = false
                     end
                 end
-                -- Clear Beauty Effects if active
-                 for _, v in pairs(Lighting:GetChildren()) do
-                    if v.Name:find("BxB_Beauty") then v:Destroy() end
-                end
             end)
             Library:Notify("Potato Mode Enabled", 2)
         end)
 
-        -- [FIX] Beautiful Mode: Properly add Instances and set lighting
         GfxBox:AddButton("Beautiful Mode (Cinematic)", function()
+            -- Restore/Enhance
             pcall(function()
-                -- 1. Remove old effects first to prevent stacking
-                for _, v in pairs(Lighting:GetChildren()) do
-                    if v.Name:find("BxB_Beauty") then v:Destroy() end
-                end
-
-                -- 2. Enhance Lighting Properties
                 Lighting.GlobalShadows = true
                 Lighting.Brightness = 2
-                Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100) -- More realistic ambient
-                Lighting.Ambient = Color3.fromRGB(80, 80, 80)
-                Lighting.ExposureCompensation = 0.2
-
-                -- 3. Add Effects
-                local bloom = Instance.new("BloomEffect", Lighting)
-                bloom.Name = "BxB_Beauty_Bloom"
-                bloom.Intensity = 0.4
-                bloom.Size = 24
-                bloom.Threshold = 0.8
-
-                local cc = Instance.new("ColorCorrectionEffect", Lighting)
-                cc.Name = "BxB_Beauty_CC"
-                cc.Saturation = 0.2 -- Boost colors slightly
-                cc.Contrast = 0.1   -- Better contrast
-                cc.Brightness = 0.05
-
-                local sun = Instance.new("SunRaysEffect", Lighting)
-                sun.Name = "BxB_Beauty_Sun"
-                sun.Intensity = 0.25
-                sun.Spread = 1
-
-                -- Attempt to add atmosphere if not present (requires Atmosphere to be distinct)
-                if not Lighting:FindFirstChildOfClass("Atmosphere") then
-                     local atm = Instance.new("Atmosphere", Lighting)
-                     atm.Name = "BxB_Beauty_Atm"
-                     atm.Density = 0.3
-                     atm.Offset = 0.25
+                Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                
+                -- Add simple enhancers if missing
+                if not Lighting:FindFirstChild("ColorCorrection") then
+                    local cc = Instance.new("ColorCorrectionEffect", Lighting)
+                    cc.Saturation = 0.2
+                    cc.Contrast = 0.1
+                end
+                if not Lighting:FindFirstChild("Bloom") then
+                    local bl = Instance.new("BloomEffect", Lighting)
+                    bl.Intensity = 0.1
                 end
             end)
              Library:Notify("Beautiful Mode Enabled", 2)
@@ -1762,10 +1791,10 @@ local function MainHub(Exec, keydata, authToken)
         local SpinSpeedSlider = MiscLeft:AddSlider("bxw_spin_speed", { Text = "Spin Speed", Default = 5, Min = 0.1, Max = 10, Rounding = 1, Compact = false })
         local ReverseSpinToggle = MiscLeft:AddToggle("bxw_spin_reverse", { Text = "Reverse Spin", Default = false })
         
-        -- [REMOVED LOCK]
-        
+        -- [FEATURE] Lock Spin settings
+        SpinSpeedSlider:SetDisabled(true)
         SpinToggle:OnChanged(function(state)
-            -- [REMOVED LOCK]
+            SpinSpeedSlider:SetDisabled(not state)
             if state then
                 if spinConn then spinConn:Disconnect() end
                 spinConn = AddConnection(RunService.RenderStepped:Connect(function(dt)
@@ -1852,12 +1881,7 @@ local function MainHub(Exec, keydata, authToken)
         MenuGroup:AddDropdown("NotificationSide", { Values = { "Left", "Right" }, Default = "Right", Text = "Notification Side", Callback = function(Value) Library:SetNotifySide(Value) end })
         MenuGroup:AddDropdown("DPIDropdown", { Values = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }, Default = "100%", Text = "DPI Scale", Callback = function(Value) Value = tostring(Value):gsub("%%", "") local DPI = tonumber(Value) if DPI then Library:SetDPIScale(DPI) end end })
         MenuGroup:AddDivider()
-        -- [FIX] Show Menu Bind in Keybind List (Changed NoUI to false)
-        MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = false, Text = "Menu keybind" })
-        
-        -- [FIX] Added dedicated Panic Keybind (Unload)
-        MenuGroup:AddLabel("Panic Bind"):AddKeyPicker("PanicKeybind", { Default = "End", NoUI = false, Text = "Panic (Unload)", Callback = function() Library:Unload() end })
-
+        MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
         MenuGroup:AddButton("Unload UI", function() pcall(function() Library:Unload() end) end)
         MenuGroup:AddButton("Reload UI", function() pcall(function() Library:Unload() end) pcall(function() warn("[BxB] UI unloaded. Please re-execute.") end) end)
         Library.ToggleKeybind = Options.MenuKeybind
@@ -1869,21 +1893,17 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- [FEATURE] Watermark (OPTIMIZED - 1s Interval)
+    -- [FEATURE] Watermark
     ------------------------------------------------
     pcall(function()
         Library:SetWatermarkVisibility(true)
-        -- Update Watermark loop - OPTIMIZED to update only once per second
-        local lastUpdate = 0
+        -- Update Watermark loop
         AddConnection(RunService.RenderStepped:Connect(function()
-            if tick() - lastUpdate >= 1 then
-                lastUpdate = tick()
-                local ping = 0
-                pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
-                local fps = math.floor(1 / math.max(RunService.RenderStepped:Wait(), 0.001))
-                local timeStr = os.date("%H:%M:%S")
-                Library:SetWatermark(string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s", fps, ping, timeStr))
-            end
+            local ping = 0
+            pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+            local fps = math.floor(1 / math.max(RunService.RenderStepped:Wait(), 0.001))
+            local timeStr = os.date("%H:%M:%S")
+            Library:SetWatermark(string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s", fps, ping, timeStr))
         end))
     end)
 
@@ -1911,11 +1931,6 @@ local function MainHub(Exec, keydata, authToken)
             if crosshairLines then pcall(function() crosshairLines.h:Remove() crosshairLines.v:Remove() end) end
             if AimbotFOVCircle then pcall(function() AimbotFOVCircle:Remove() end) end
             if AimbotSnapLine then pcall(function() AimbotSnapLine:Remove() end) end
-            
-            -- 4. Clear Lighting FX (Added for Graphics Feature)
-             for _, v in pairs(Lighting:GetChildren()) do
-                if v.Name:find("BxB_Beauty") then v:Destroy() end
-            end
         end)
     end
 end
