@@ -47,10 +47,15 @@ local function getRootPart()
 end
 
 --====================================================
--- 1. Secret + Token Verify (ต้องแมพกับ KeyUI.lua)
+-- 1. Secret + Token Verify (SECURITY UPGRADED)
 --====================================================
 
-local SECRET_PEPPER = "BxB.ware-Universal@#$)_%@#^()$@%_)+%(@"  -- ต้องเหมือนใน KeyUI.lua
+-- Obfuscated Secret Construction (ตรงกับ KeyMain)
+local _s1 = "BxB.ware"
+local _s2 = "-Universal"
+local _s3 = "@#$)_%@#^"
+local _s4 = "()$@%_)+%(@"
+local SECRET_PEPPER = _s1 .. _s2 .. _s3 .. _s4
 
 local bit = bit32 or bit
 
@@ -82,6 +87,14 @@ local function buildExpectedToken(keydata)
 
     local h = fnv1a32(raw)
     return ("%08X"):format(h)
+end
+
+-- Anti-Tamper: Basic Integrity Check
+local function IntegrityCheck()
+    if iscclosure and not iscclosure(game.HttpGet) then
+        return false -- HttpGet was hooked
+    end
+    return true
 end
 
 --====================================================
@@ -193,8 +206,15 @@ end
 
 local function MainHub(Exec, keydata, authToken)
     ---------------------------------------------
-    -- 4.1 ตรวจ Exec + keydata + token
+    -- 4.1 ตรวจ Security: Exec + keydata + token + Flag
     ---------------------------------------------
+    
+    -- 1. Anti-Tamper Check
+    if not IntegrityCheck() then
+        LocalPlayer:Kick("Security Error: Environment Tampered.")
+        return
+    end
+
     if type(Exec) ~= "table" or type(Exec.HttpGet) ~= "function" then
         warn("[MainHub] Exec invalid")
         return
@@ -205,10 +225,24 @@ local function MainHub(Exec, keydata, authToken)
         return
     end
 
+    -- 2. Token Check
     local expected = buildExpectedToken(keydata)
     if authToken ~= expected then
         warn("[MainHub] Invalid auth token, abort")
+        LocalPlayer:Kick("Security Error: Invalid Handshake.")
         return
+    end
+
+    -- 3. Environment Flag Check (Dual-Layer Handshake)
+    if getgenv then
+        local flagName = keydata._auth_flag
+        if not flagName or not getgenv()[flagName] then
+            warn("[MainHub] Missing auth flag. Direct execution detected.")
+            LocalPlayer:Kick("Security Error: Direct execution is not allowed. Use KeyUI.")
+            return
+        end
+        -- Clear the flag to prevent reuse (One-time handshake)
+        getgenv()[flagName] = nil
     end
 
     -- Crosshair & Aimbot Drawings storage (Defined here for cleanup access)
