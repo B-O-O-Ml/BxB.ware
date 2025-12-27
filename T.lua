@@ -118,6 +118,7 @@ local function NormalizeRole(role)
     return "free"
 end
 
+-- Function เช็คว่ามีสิทธิ์พอไหม
 local function RoleAtLeast(haveRole, needRole)
     local have  = NormalizeRole(haveRole)
     local need  = NormalizeRole(needRole)
@@ -255,6 +256,7 @@ local function MainHub(Exec, keydata, authToken)
 
     -- normalize role
     keydata.role = NormalizeRole(keydata.role)
+    local MyRole = keydata.role -- Cache current role
 
     ---------------------------------------------
     -- 4.2 โหลด Obsidian Library + Theme/Save
@@ -274,6 +276,46 @@ local function MainHub(Exec, keydata, authToken)
         if Toggles.ForceNotify and Toggles.ForceNotify.Value then
             local s = state and "Enabled" or "Disabled"
             Library:Notify(string.format("%s: %s", feature, s), 1.5)
+        end
+    end
+
+    -- [FEATURE] Helper Functions for Locked UI
+    -- หาก Role ไม่ถึง จะสร้าง UI แต่ Disabled = true และ Tooltip บอกระดับที่ต้องการ
+    
+    local function IsLocked(reqRole)
+        return not RoleAtLeast(MyRole, reqRole)
+    end
+
+    local function GetLockTooltip(reqRole)
+        return "Requires " .. string.upper(reqRole) .. " rank or higher"
+    end
+
+    -- Wrapper for AddToggle
+    local function AddLockedToggle(groupbox, id, config)
+        local reqRole = config.Role or "free"
+        config.Role = nil -- Clean up before passing to lib
+        
+        if IsLocked(reqRole) then
+            config.Disabled = true
+            config.Default = false
+            -- config.Tooltip = (config.Tooltip and config.Tooltip .. "\n" or "") .. GetLockTooltip(reqRole)
+            -- If lib doesn't support changing tooltip dynamically well, we append to Text
+            config.Text = config.Text .. " <font color='#FF0000'>[LOCKED]</font>"
+            config.Tooltip = GetLockTooltip(reqRole)
+        end
+        
+        return groupbox:AddToggle(id, config)
+    end
+
+    -- Wrapper for AddButton
+    local function AddLockedButton(groupbox, text, callback, reqRole)
+        if IsLocked(reqRole) then
+            -- Disable logic inside callback + visuals
+            return groupbox:AddButton(text .. " [LOCKED]", function()
+                Library:Notify(GetLockTooltip(reqRole), 3)
+            end)
+        else
+            return groupbox:AddButton(text, callback)
         end
     end
 
@@ -368,7 +410,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 TAB 1: Info [Optimized Async Loading]
+    -- 4.3 TAB 1: Info [Modified Layout]
     ------------------------------------------------
     local InfoTab = Tabs.Info
 
@@ -463,62 +505,59 @@ local function MainHub(Exec, keydata, authToken)
     end)
 
     KeyBox:AddDivider()
-    KeyBox:AddButton("Copy Key Info", function()
-        local infoText = string.format("Key: %s\nRole: %s", rawKey, tostring(keydata.role))
-        pcall(function()
-            if setclipboard then setclipboard(infoText) Library:Notify("Key info copied to clipboard", 2)
-            else Library:Notify("Clipboard copy not supported on this executor", 2) end
-        end)
-    end)
+    -- [REMOVED] Copy Key Info Button as requested
 
-    local GameBox = safeAddRightGroupbox(InfoTab, "Game Info", "info")
-    safeRichLabel(GameBox, '<font size="14"><b>Game / Server Information</b></font>')
-    GameBox:AddDivider()
+    -- [NEW] Script Info & Changelog Groupbox (Replacing Game Info)
+    local ScriptBox = safeAddRightGroupbox(InfoTab, "Script Info & News", "newspaper")
+    
+    local ScriptInfoLabel = safeRichLabel(ScriptBox, "Loading Script Info...")
+    ScriptBox:AddDivider()
+    local ChangelogLabel = safeRichLabel(ScriptBox, "Loading Changelog...")
 
-    local placeId = game.PlaceId or 0
-    local jobId   = tostring(game.JobId or "N/A")
-
-    local GameNameLabel   = safeRichLabel(GameBox, "<b>Game:</b> Loading...")
-    local PlaceIdLabel    = safeRichLabel(GameBox, string.format("<b>PlaceId:</b> %d", placeId))
-    local JobIdLabel      = safeRichLabel(GameBox, string.format("<b>JobId:</b> %s", jobId))
-    local PlayersLabel    = safeRichLabel(GameBox, "<b>Players:</b> -/-")
-    -- [FIX] Removed Ping and Mem to avoid conflict with Watermark
-    local PerfLabel       = safeRichLabel(GameBox, "<b>Perf:</b> FPS: -") 
-    local ServerTimeLabel = safeRichLabel(GameBox, "<b>Server Time:</b> -")
-
+    -- Async Load Script Info
     task.spawn(function()
-        local gameName = "Unknown Place"
-        local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, placeId)
-        if ok and info and info.Name then gameName = info.Name end
-        if GameNameLabel and GameNameLabel.TextLabel then GameNameLabel.TextLabel.Text = string.format("<b>Game:</b> %s", gameName) end
+        local scriptUrl = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/scriptinfo.json"
+        local changeUrl = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/changelog.json"
+        
+        local sBody = game:HttpGet(scriptUrl)
+        local cBody = game:HttpGet(changeUrl)
+        
+        if sBody and sBody ~= "" then
+            local ok, decoded = pcall(function() return HttpService:JSONDecode(sBody) end)
+            if ok and decoded then
+                local text = string.format("<b>%s</b> v%s\nStatus: %s\nLast Update: %s\n\n%s", 
+                    decoded.hub_name or "Hub", 
+                    decoded.version or "?",
+                    decoded.status or "Online",
+                    decoded.last_update or "?",
+                    type(decoded.description)=="table" and decoded.description.short or decoded.description or ""
+                )
+                ScriptInfoLabel.TextLabel.Text = text
+            end
+        end
+
+        if cBody and cBody ~= "" then
+            local ok, decoded = pcall(function() return HttpService:JSONDecode(cBody) end)
+            if ok and decoded and decoded.latest_version then
+               -- Simple latest version highlights
+               local text = "<b>Latest Changes:</b>\n"
+               if decoded.entries and decoded.entries[1] then
+                   local entry = decoded.entries[1]
+                   text = text .. string.format("v%s (%s)\n", entry.version, entry.date)
+                   if entry.highlights then
+                       for _, h in ipairs(entry.highlights) do
+                           text = text .. "• " .. h .. "\n"
+                       end
+                   end
+               end
+               ChangelogLabel.TextLabel.Text = text
+            end
+        end
     end)
 
-    local function updatePlayersLabel()
-        local current = #Players:GetPlayers()
-        local max = Players.MaxPlayers or "-"
-        if PlayersLabel and PlayersLabel.TextLabel then PlayersLabel.TextLabel.Text = string.format("<b>Players:</b> %d / %s", current, tostring(max)) end
-    end
-    updatePlayersLabel()
-    AddConnection(Players.PlayerAdded:Connect(updatePlayersLabel))
-    AddConnection(Players.PlayerRemoving:Connect(updatePlayersLabel))
-
-    do
-        local acc = 0
-        AddConnection(RunService.Heartbeat:Connect(function(dt)
-            acc = acc + dt
-            if acc < 0.25 then return end
-            acc = 0
-            local fps = math.floor(1 / math.max(dt, 1/240))
-            
-            updatePlayersLabel()
-            -- [FIX] Updated PerfLabel to show only FPS
-            if PerfLabel and PerfLabel.TextLabel then PerfLabel.TextLabel.Text = string.format("<b>Perf:</b> FPS: %d", fps) end
-            if ServerTimeLabel and ServerTimeLabel.TextLabel then ServerTimeLabel.TextLabel.Text = string.format("<b>Server Time:</b> %s", os.date("%H:%M:%S")) end
-        end))
-    end
 
     --------------------------------------------------------
-    -- 2. PLAYER TAB (Full Features - NO LOCKS)
+    -- 2. PLAYER TAB (Locked Features)
     --------------------------------------------------------
    local PlayerTab = Tabs.Player
 
@@ -536,12 +575,8 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [REMOVED LOCK]
-    -- WalkSpeedSlider:SetDisabled(true)
-
     WalkSpeedToggle:OnChanged(function(state)
         walkSpeedEnabled = state
-        -- [REMOVED LOCK]
         local hum = getHumanoid()
         if hum then hum.WalkSpeed = state and WalkSpeedSlider.Value or defaultWalkSpeed end
         NotifyAction("WalkSpeed", state)
@@ -567,12 +602,8 @@ local function MainHub(Exec, keydata, authToken)
         end,
     })
 
-    -- [REMOVED LOCK]
-    -- JumpPowerSlider:SetDisabled(true)
-
     JumpPowerToggle:OnChanged(function(state)
         jumpPowerEnabled = state
-        -- [REMOVED LOCK]
         local hum = getHumanoid()
         if hum then pcall(function() hum.UseJumpPower = true end) hum.JumpPower = state and JumpPowerSlider.Value or defaultJumpPower end
         NotifyAction("JumpPower", state)
@@ -593,10 +624,8 @@ local function MainHub(Exec, keydata, authToken)
             if hum then hum.HipHeight = value end
         end
     })
-    -- [REMOVED LOCK]
-    -- HipHeightSlider:SetDisabled(true)
+    
     HipHeightToggle:OnChanged(function(state)
-        -- [REMOVED LOCK]
         local hum = getHumanoid()
         if hum then hum.HipHeight = state and HipHeightSlider.Value or 0 end
         NotifyAction("Hip Height", state)
@@ -634,21 +663,16 @@ local function MainHub(Exec, keydata, authToken)
         NotifyAction("Infinite Jump", state)
     end)
 
-    -- Smooth Fly
+    -- Smooth Fly [LOCKED: Premium+]
     local flyConn, flyBV, flyBG
     local flyEnabled = false
     local flySpeed = 60
-    -- [RISKY] Added warning text
-    local FlyToggle = MoveBox:AddToggle("bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false })
+    
+    local FlyToggle = AddLockedToggle(MoveBox, "bxw_fly", { Text = MarkRisky("Fly (Smooth)"), Default = false, Role = "premium" })
     local FlySpeedSlider = MoveBox:AddSlider("bxw_fly_speed", { Text = "Fly Speed", Default = flySpeed, Min = 1, Max = 300, Rounding = 0, Compact = false, Callback = function(value) flySpeed = value end })
     
-    -- [REMOVED LOCK]
-    -- FlySpeedSlider:SetDisabled(true)
-
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
-        -- [REMOVED LOCK]
-
         local char = getCharacter()
         local root = getRootPart()
         local hum  = getHumanoid()
@@ -687,29 +711,15 @@ local function MainHub(Exec, keydata, authToken)
             
             local moveDir = Vector3.new(0, 0, 0)
             
-            -- [FIX] Universal Fly Input (Mobile & PC)
-            -- Use Humanoid.MoveDirection to capture Joystick/Thumbstick/WASD automatically
             if hum.MoveDirection.Magnitude > 0 then
-                -- Player is trying to move (Joystick push or WASD)
-                -- We fly in the direction of the camera's look vector projected onto movement
                 local camLook = cam.CFrame.LookVector
-                -- Simple fly logic: Move towards where camera is looking if joystick is forward
-                -- or just use MoveDirection (which is relative to camera on PC/Mobile usually)
-                
-                -- The MoveDirection is already world-space relative to camera.
-                -- We just need to apply speed.
-                
-                -- Check if "forward" relative to camera to allow pitch (flying up/down with look)
                 local dot = camLook:Dot(hum.MoveDirection.Unit)
                 if dot > 0.5 then
-                    -- Moving roughly forward, follow camera pitch
                     moveDir = camLook * hum.MoveDirection.Magnitude
                 else
-                    -- Moving sideways/back, keep horizontal plane but respect input
                     moveDir = hum.MoveDirection
                 end
             else
-                -- Vertical Control specific for PC keys (Mobile users look up/down to fly up/down)
                 if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
                 if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
             end
@@ -725,10 +735,10 @@ local function MainHub(Exec, keydata, authToken)
         NotifyAction("Fly", true)
     end)
 
-    -- Noclip
+    -- Noclip [LOCKED: User+]
     local noclipConn
-    -- [RISKY] Added warning text
-    local NoclipToggle = MoveBox:AddToggle("bxw_noclip", { Text = MarkRisky("Noclip"), Default = false })
+    local NoclipToggle = AddLockedToggle(MoveBox, "bxw_noclip", { Text = MarkRisky("Noclip"), Default = false, Role = "user" })
+    
     NoclipToggle:OnChanged(function(state)
         if not state then
             if noclipConn then noclipConn:Disconnect() noclipConn = nil end
@@ -760,7 +770,9 @@ local function MainHub(Exec, keydata, authToken)
     refreshPlayerList()
     local TeleportDropdown = UtilBox:AddDropdown("bxw_tpplayer", { Text = "Teleport to Player", Values = playerNames, Default = "", Multi = false, AllowNull = true })
     UtilBox:AddButton("Refresh Player List", function() refreshPlayerList() TeleportDropdown:SetValues(playerNames) end)
-    UtilBox:AddButton("Teleport", function()
+    
+    -- TP [LOCKED: Premium]
+    AddLockedButton(UtilBox, "Teleport", function()
         local targetName = TeleportDropdown.Value
         if not targetName or targetName == "" then Library:Notify("Select player first", 2) return end
         local target = Players:FindFirstChild(targetName)
@@ -770,7 +782,7 @@ local function MainHub(Exec, keydata, authToken)
         local tRoot = tChar and (tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso"))
         if not tRoot then Library:Notify("Target has no root part", 2) return end
         root.CFrame = tRoot.CFrame + Vector3.new(0, 3, 0)
-    end)
+    end, "premium")
 
     UtilBox:AddDivider()
     local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate_target", { Text = "Spectate Target", Values = playerNames, Default = "", Multi = false, AllowNull = true })
@@ -1341,8 +1353,9 @@ local function MainHub(Exec, keydata, authToken)
         local ExtraBox = safeAddRightGroupbox(CombatTab, "Extra Settings", "adjust")
 
         AimBox:AddLabel("Core Settings")
-        local AimbotToggle = AimBox:AddToggle("bxw_aimbot_enable", { Text = "Enable Aimbot", Default = false })
-        local SilentToggle = AimBox:AddToggle("bxw_silent_enable", { Text = "Silent Aim", Default = false })
+        -- [LOCKED: Premium] Aimbot
+        local AimbotToggle = AddLockedToggle(AimBox, "bxw_aimbot_enable", { Text = "Enable Aimbot", Default = false, Role = "premium" })
+        local SilentToggle = AddLockedToggle(AimBox, "bxw_silent_enable", { Text = "Silent Aim", Default = false, Role = "vip" })
 
         AimBox:AddLabel("Aim & Target Settings")
         local AimPartDropdown = AimBox:AddDropdown("bxw_aim_part", { Text = "Aim Part", Values = { "Head", "UpperTorso", "Torso", "HumanoidRootPart", "Closest", "Random", "Custom" }, Default = "Head", Multi = false })
@@ -1380,10 +1393,7 @@ local function MainHub(Exec, keydata, authToken)
         local PredToggle = AimBox:AddToggle("bxw_aim_pred", { Text = "Prediction Aim", Default = false })
         local PredSlider = AimBox:AddSlider("bxw_aim_predfactor", { Text = "Prediction Factor", Default = 0.1, Min = 0, Max = 1, Rounding = 2 })
 
-        -- [REMOVED LOCK]
-        
         AimbotToggle:OnChanged(function(state)
-            -- [REMOVED LOCK]
             NotifyAction("Aimbot", state)
         end)
 
@@ -1398,19 +1408,16 @@ local function MainHub(Exec, keydata, authToken)
         
         local TriggerDelaySlider = ExtraBox:AddSlider("bxw_trigger_delay", { Text = "Trigger Delay (s)", Default = 0.05, Min = 0, Max = 1, Rounding = 2 })
         
-        -- [REMOVED LOCK]
-        
         TriggerbotToggle:OnChanged(function(state)
-            -- [REMOVED LOCK]
             NotifyAction("Triggerbot", state)
         end)
 
-        -- [FEATURE] Hitbox Expander
+        -- [FEATURE] Hitbox Expander [LOCKED: User+]
         ExtraBox:AddDivider()
         ExtraBox:AddLabel("Hitbox Expander")
         local HitboxSizeSlider = ExtraBox:AddSlider("bxw_hitbox_size", { Text = "Expand Size", Default = 0, Min = 0, Max = 10, Rounding = 1 })
         local HitboxTransSlider = ExtraBox:AddSlider("bxw_hitbox_trans", { Text = "Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 1 })
-        local HitboxToggle = ExtraBox:AddToggle("bxw_hitbox_enable", { Text = "Enable Expander", Default = false })
+        local HitboxToggle = AddLockedToggle(ExtraBox, "bxw_hitbox_enable", { Text = "Enable Expander", Default = false, Role = "user" })
         
         task.spawn(function()
             while true do
@@ -1549,10 +1556,6 @@ local function MainHub(Exec, keydata, authToken)
                     isActive = true
                 elseif activation == "Hold Right Click" then
                     if isMobile then
-                        -- Mobile Fallback: Active if touching screen? Or just warn user?
-                        -- Best practice: Assume "Always On" behavior OR simple screen touch check if not clicking GUI
-                        -- For simplicity and effectiveness on mobile: UserInputService.TouchEnabled doesn't mean *currently* touching
-                        -- We use standard mouse pressed for consistency, but advise user to use Always On for mobile
                         isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)
                     else
                         isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
@@ -1697,12 +1700,14 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- [NEW FEATURE] Server Tab
+    -- [NEW FEATURE] Server Tab (Game Info Moved Here)
     ------------------------------------------------
     do
         local ServerTab = Tabs.Server
         local ServerLeft = ServerTab:AddLeftGroupbox("Server Actions", "server")
         local ServerRight = safeAddRightGroupbox(ServerTab, "Connection & Config", "wifi")
+        -- [MOVED] Game Info Groupbox
+        local GameInfoBox = safeAddRightGroupbox(ServerTab, "Game Info", "info")
 
         -- Server Hop
         ServerLeft:AddButton("Server Hop", function()
@@ -1813,6 +1818,43 @@ local function MainHub(Exec, keydata, authToken)
                  Library:Notify("Clipboard not supported", 2)
             end
         end)
+
+        -- [MOVED] Game Info Logic
+        local placeId = game.PlaceId or 0
+        local jobId   = tostring(game.JobId or "N/A")
+
+        local GameNameLabel   = safeRichLabel(GameInfoBox, "<b>Game:</b> Loading...")
+        local PlaceIdLabel    = safeRichLabel(GameInfoBox, string.format("<b>PlaceId:</b> %d", placeId))
+        local JobIdLabel      = safeRichLabel(GameInfoBox, string.format("<b>JobId:</b> %s", jobId))
+        local PlayersLabel    = safeRichLabel(GameInfoBox, "<b>Players:</b> -/-")
+        local ServerTimeLabel = safeRichLabel(GameInfoBox, "<b>Server Time:</b> -")
+
+        task.spawn(function()
+            local gameName = "Unknown Place"
+            local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, placeId)
+            if ok and info and info.Name then gameName = info.Name end
+            if GameNameLabel and GameNameLabel.TextLabel then GameNameLabel.TextLabel.Text = string.format("<b>Game:</b> %s", gameName) end
+        end)
+
+        local function updatePlayersLabel()
+            local current = #Players:GetPlayers()
+            local max = Players.MaxPlayers or "-"
+            if PlayersLabel and PlayersLabel.TextLabel then PlayersLabel.TextLabel.Text = string.format("<b>Players:</b> %d / %s", current, tostring(max)) end
+        end
+        updatePlayersLabel()
+        AddConnection(Players.PlayerAdded:Connect(updatePlayersLabel))
+        AddConnection(Players.PlayerRemoving:Connect(updatePlayersLabel))
+
+        do
+            local acc = 0
+            AddConnection(RunService.Heartbeat:Connect(function(dt)
+                acc = acc + dt
+                if acc < 0.25 then return end
+                acc = 0
+                -- Removed PerfLabel update here as requested
+                if ServerTimeLabel and ServerTimeLabel.TextLabel then ServerTimeLabel.TextLabel.Text = string.format("<b>Server Time:</b> %s", os.date("%H:%M:%S")) end
+            end))
+        end
     end
 
     ------------------------------------------------
@@ -1858,9 +1900,6 @@ local function MainHub(Exec, keydata, authToken)
         
         -- Disabled if not mobile
         if not isMobile then
-             -- We can't disable the button object directly easily in this lib without modifying source, 
-             -- but we added the logic guard inside the callback.
-             -- Optional: Gray out text or change text
              SetPointBtn.TextLabel.Text = "Set Point (Mobile Only)"
         end
         
