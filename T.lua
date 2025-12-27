@@ -196,6 +196,11 @@ local function safeRichLabel(groupbox, text)
     local lbl = groupbox:AddLabel(text, true)
     if lbl and lbl.TextLabel then
         lbl.TextLabel.RichText = true
+        -- [FIX] Text Wrapping & AutoSizing
+        lbl.TextLabel.TextWrapped = true
+        lbl.TextLabel.AutomaticSize = Enum.AutomaticSize.Y
+        lbl.TextLabel.Size = UDim2.new(1, 0, 0, 0)
+        lbl.TextLabel.TextYAlignment = Enum.TextYAlignment.Top
     end
     return lbl
 end
