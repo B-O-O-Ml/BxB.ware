@@ -215,7 +215,7 @@ do
         KEYDATA_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/data.json",
         SCRIPTINFO_URL  = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json",
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
-        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", -- แก้ชื่อไฟล์ให้ตรงกับที่อัพโหลด
+        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/MainHub.lua", -- แก้ชื่อไฟล์ให้ตรงกับที่อัพโหลด
 
         KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json"
     }
@@ -1115,7 +1115,15 @@ do
         ----------------------------------------------------------------
         local function addRichLabel(group, text)
             local lbl = group:AddLabel(text, true)
-            if lbl and lbl.TextLabel then lbl.TextLabel.RichText = true end
+            if lbl and lbl.TextLabel then
+                lbl.TextLabel.RichText = true
+                -- [FIX] Prevent overflow and overlapping
+                lbl.TextLabel.TextWrapped = true
+                lbl.TextLabel.AutomaticSize = Enum.AutomaticSize.Y
+                lbl.TextLabel.Size = UDim2.new(1, 0, 0, 0) -- Allow height to grow
+                lbl.TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+                lbl.TextLabel.TextYAlignment = Enum.TextYAlignment.Top
+            end
             return lbl
         end
 
