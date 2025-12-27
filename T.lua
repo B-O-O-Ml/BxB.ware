@@ -15,7 +15,7 @@ local StarterGui         = game:GetService("StarterGui")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Check Mobile/Touch
+-- Check Mobile/Touch (Universal Check)
 local isMobile = UserInputService.TouchEnabled
 
 -- เก็บ connection ไว้เผื่ออยาก cleanup ตอน Unload
@@ -684,14 +684,42 @@ local function MainHub(Exec, keydata, authToken)
             local hum  = getHumanoid()
             local cam  = Workspace.CurrentCamera
             if not (root and hum and cam and flyBV and flyBG) then return end
+            
             local moveDir = Vector3.new(0, 0, 0)
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-            if moveDir.Magnitude > 0 then moveDir = moveDir.Unit flyBV.Velocity = moveDir * flySpeed else flyBV.Velocity = Vector3.zero end
+            
+            -- [FIX] Universal Fly Input (Mobile & PC)
+            -- Use Humanoid.MoveDirection to capture Joystick/Thumbstick/WASD automatically
+            if hum.MoveDirection.Magnitude > 0 then
+                -- Player is trying to move (Joystick push or WASD)
+                -- We fly in the direction of the camera's look vector projected onto movement
+                local camLook = cam.CFrame.LookVector
+                -- Simple fly logic: Move towards where camera is looking if joystick is forward
+                -- or just use MoveDirection (which is relative to camera on PC/Mobile usually)
+                
+                -- The MoveDirection is already world-space relative to camera.
+                -- We just need to apply speed.
+                
+                -- Check if "forward" relative to camera to allow pitch (flying up/down with look)
+                local dot = camLook:Dot(hum.MoveDirection.Unit)
+                if dot > 0.5 then
+                    -- Moving roughly forward, follow camera pitch
+                    moveDir = camLook * hum.MoveDirection.Magnitude
+                else
+                    -- Moving sideways/back, keep horizontal plane but respect input
+                    moveDir = hum.MoveDirection
+                end
+            else
+                -- Vertical Control specific for PC keys (Mobile users look up/down to fly up/down)
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+            end
+
+            if moveDir.Magnitude > 0 then 
+                flyBV.Velocity = moveDir.Unit * flySpeed 
+            else 
+                flyBV.Velocity = Vector3.zero 
+            end
+            
             flyBG.CFrame = CFrame.new(root.Position, root.Position + cam.CFrame.LookVector)
         end))
         NotifyAction("Fly", true)
@@ -1514,7 +1542,24 @@ local function MainHub(Exec, keydata, authToken)
 
             if Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
                 local activation = (Options.bxw_aim_activation and Options.bxw_aim_activation.Value) or "Hold Right Click"
-                if activation == "Always On" or (activation == "Hold Right Click" and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)) then
+                
+                -- [FIX] Mobile Activation Logic (Adaptation)
+                local isActive = false
+                if activation == "Always On" then
+                    isActive = true
+                elseif activation == "Hold Right Click" then
+                    if isMobile then
+                        -- Mobile Fallback: Active if touching screen? Or just warn user?
+                        -- Best practice: Assume "Always On" behavior OR simple screen touch check if not clicking GUI
+                        -- For simplicity and effectiveness on mobile: UserInputService.TouchEnabled doesn't mean *currently* touching
+                        -- We use standard mouse pressed for consistency, but advise user to use Always On for mobile
+                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)
+                    else
+                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                    end
+                end
+
+                if isActive then
                     local bestPlr = nil
                     local bestScore = math.huge
                     local myRoot = getRootPart()
