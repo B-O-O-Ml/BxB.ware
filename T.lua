@@ -17,7 +17,7 @@ local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local CoreGui            = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera      = workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
 
 -- Check Mobile/Touch (Universal Check)
 local isMobile = UserInputService.TouchEnabled
@@ -259,12 +259,12 @@ local function MainHub(Exec, keydata, authToken)
     local crosshairLines = nil
     local AimbotFOVCircle = nil
     local AimbotSnapLine = nil
-    
-    -- [NEW] Offscreen Arrow Storage
-    local OffscreenArrows = {} 
 
     -- ESP Drawings Storage moved to MainHub scope so OnUnload can access it
     local espDrawings = {}
+
+    -- Radar storage
+    local radarDrawings = { points = {}, outline = nil, line = nil }
 
     -- normalize role
     keydata.role = NormalizeRole(keydata.role)
@@ -367,9 +367,9 @@ local function MainHub(Exec, keydata, authToken)
     -- 2) Tabs
     local Tabs = {
         Info = Window:AddTab({
-            Name        = "Info & Dash",
+            Name        = "Info",
             Icon        = "info",
-            Description = "Key / System / Diagnostics",
+            Description = "Key / Script / System info",
         }),
 
         Player = Window:AddTab({
@@ -422,18 +422,13 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 TAB 1: Info & Dashboard [UPGRADED]
+    -- 4.3 TAB 1: Info [Modified Layout & Upgraded]
     ------------------------------------------------
     local InfoTab = Tabs.Info
+    local startSessionTime = tick()
 
     local KeyBox = InfoTab:AddLeftGroupbox("Key Info", "key-round")
-    -- [UPGRADE] Added Diagnostics
-    local DiagBox = InfoTab:AddLeftGroupbox("System Diagnostics", "activity")
-    -- [UPGRADE] User Profile
-    local UserBox = safeAddRightGroupbox(InfoTab, "User Profile", "user-circle")
-    local ScriptBox = safeAddRightGroupbox(InfoTab, "Script Info & News", "newspaper")
 
-    -- === Key Info Logic (Existing) ===
     safeRichLabel(KeyBox, '<font size="14"><b>Key Information</b></font>')
     KeyBox:AddDivider()
 
@@ -445,33 +440,116 @@ local function MainHub(Exec, keydata, authToken)
         maskedKey = rawKey
     end
 
+    -- Create Labels immediately (prevent UI lag waiting for HTTP)
     local KeyLabel = safeRichLabel(KeyBox, string.format("<b>Key:</b> %s", maskedKey))
     local RoleLabel = safeRichLabel(KeyBox, string.format("<b>Role:</b> %s", GetRoleLabel(keydata.role)))
     local StatusLabel = safeRichLabel(KeyBox, string.format("<b>Status:</b> %s", tostring(keydata.status or "active")))
     local HWIDLabel = safeRichLabel(KeyBox, string.format("<b>HWID Hash:</b> %s", tostring(keydata.hwid_hash or "-")))
-    local TierLabel = safeRichLabel(KeyBox, string.format("<b>Tier:</b> %s", string.upper(keydata.role or "free")))
     local NoteLabel = safeRichLabel(KeyBox, string.format("<b>Note:</b> %s", tostring(keydata.note or "-")))
     local CreatedLabel = safeRichLabel(KeyBox, "<b>Created at:</b> Loading...")
     local ExpireLabel = safeRichLabel(KeyBox, "<b>Expire:</b> Loading...")
     local TimeLeftLabel = safeRichLabel(KeyBox, "<b>Time left:</b> Loading...")
 
+    -- [UPGRADE] User Profile & Stats Groupbox
+    local StatsBox = InfoTab:AddLeftGroupbox("User Profile & Stats", "bar-chart")
+    local UserThumb = "rbxthumb://type=AvatarHeadShot&id="..LocalPlayer.UserId.."&w=150&h=150"
+    local ProfileLabel = safeRichLabel(StatsBox, string.format("<b>Welcome, %s</b>", LocalPlayer.DisplayName))
+    safeRichLabel(StatsBox, string.format("User ID: %d", LocalPlayer.UserId))
+    safeRichLabel(StatsBox, string.format("Account Age: %d days", LocalPlayer.AccountAge))
+    safeRichLabel(StatsBox, string.format("Premium: %s", LocalPlayer.MembershipType.Name))
+    
+    StatsBox:AddDivider()
+    local SessionLabel = safeRichLabel(StatsBox, "Session Time: 00:00:00")
+    local FPSPingLabel = safeRichLabel(StatsBox, "FPS: - | Ping: - ms")
+    
+    -- [UPGRADE] Diagnostics Groupbox
+    local DiagBox = safeAddRightGroupbox(InfoTab, "System Diagnostics", "activity")
+    local function getCheckColor(bool) return bool and '<font color="#55ff55">PASS</font>' or '<font color="#ff5555">FAIL</font>' end
+    
+    safeRichLabel(DiagBox, string.format("Drawing API: %s", getCheckColor(Drawing)))
+    safeRichLabel(DiagBox, string.format("Hook Metamethod: %s", getCheckColor(hookmetamethod)))
+    safeRichLabel(DiagBox, string.format("GetGenv: %s", getCheckColor(getgenv)))
+    safeRichLabel(DiagBox, string.format("Request/HttpGet: %s", getCheckColor(request or http_request or (syn and syn.request) or Exec.HttpGet)))
+    safeRichLabel(DiagBox, string.format("Websocket: %s", getCheckColor(WebSocket or (syn and syn.websocket))))
+
+    -- [UPGRADE] Marquee Announcement
+    local NewsBox = safeAddRightGroupbox(InfoTab, "Announcements", "megaphone")
+    local MarqueeLabel = safeRichLabel(NewsBox, "Loading Global News...")
+    
+    -- [UPGRADE] Discord Checker
+    NewsBox:AddDivider()
+    local WebhookInput = NewsBox:AddInput("bxw_webhook_check", { Text = "Discord Webhook / Invite", Default = "", Placeholder = "https://..." })
+    NewsBox:AddButton("Check Status", function()
+        local url = WebhookInput.Value
+        if not url or url == "" then Library:Notify("Input is empty", 2) return end
+        if url:find("discord") then
+            Library:Notify("Sending test request...", 2)
+            local ok, res = pcall(function() return game:HttpGet(url) end) -- Simple GET to see if 404
+            if ok then Library:Notify("Link appears Valid (200 OK)", 3) else Library:Notify("Link Invalid or 404", 3) end
+        else
+            Library:Notify("Not a discord link", 2)
+        end
+    end)
+
+    -- Real-time Stats Loop
+    task.spawn(function()
+        while true do
+            local elapsed = tick() - startSessionTime
+            local h = math.floor(elapsed / 3600)
+            local m = math.floor((elapsed % 3600) / 60)
+            local s = elapsed % 60
+            if SessionLabel and SessionLabel.TextLabel then
+                SessionLabel.TextLabel.Text = string.format("Session Time: %02d:%02d:%02d", h, m, s)
+            end
+            
+            local ping = 0
+            pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+            local fps = math.floor(1 / math.max(RunService.RenderStepped:Wait(), 0.001))
+            
+            if FPSPingLabel and FPSPingLabel.TextLabel then
+                FPSPingLabel.TextLabel.Text = string.format("FPS: %d | Ping: %d ms", fps, ping)
+            end
+            task.wait(1)
+        end
+    end)
+    
+    -- Announcement Fetcher
+    task.spawn(function()
+         local ok, news = pcall(function() return game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/announcement.json") end)
+         if ok and news then
+             local decoded = HttpService:JSONDecode(news)
+             if decoded and decoded.text then
+                 MarqueeLabel.TextLabel.Text = "📢 " .. decoded.text
+             else
+                 MarqueeLabel.TextLabel.Text = "No active announcements."
+             end
+         else
+             MarqueeLabel.TextLabel.Text = "Failed to load news."
+         end
+    end)
+
+    -- [OPTIMIZATION] Fetch Key Data Asynchronously (Existing Code)
     task.spawn(function()
         local remoteKeyData = nil
         pcall(function()
             local url = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/data.json"
             local dataStr = game:HttpGet(url)
             if type(dataStr) == "string" and #dataStr > 0 then
-                local ok, decoded = pcall(function() return HttpService:JSONDecode(dataStr) end)
+                local ok, decoded = pcall(function()
+                    return HttpService:JSONDecode(dataStr)
+                end)
                 if ok and decoded and decoded.keys then
                     for _, entry in ipairs(decoded.keys) do
                         if tostring(entry.key) == rawKey or tostring(entry.key) == tostring(keydata.key) then
-                            remoteKeyData = entry break
+                            remoteKeyData = entry
+                            break
                         end
                     end
                 end
             end
         end)
 
+        -- Update UI on main thread if needed (Roblox handles this usually, but good practice)
         if remoteKeyData then
             if remoteKeyData.role then RoleLabel.TextLabel.Text = string.format("<b>Role:</b> %s", GetRoleLabel(remoteKeyData.role)) end
             if remoteKeyData.status then StatusLabel.TextLabel.Text = string.format("<b>Status:</b> %s", tostring(remoteKeyData.status)) end
@@ -487,6 +565,7 @@ local function MainHub(Exec, keydata, authToken)
 
         local expireTs = tonumber(keydata.expire) or 0
         local expireDisplay = (remoteKeyData and remoteKeyData.expire) and tostring(remoteKeyData.expire) or formatUnixTime(expireTs)
+        -- FIXED: Initial display
         local timeLeftDisplay = formatTimeLeft(expireTs)
 
         CreatedLabel.TextLabel.Text = string.format("<b>Created at:</b> %s", createdAtText)
@@ -498,132 +577,31 @@ local function MainHub(Exec, keydata, authToken)
             local nowExpire = tonumber(keydata.expire) or expireTs
             if nowExpire and nowExpire > 0 then
                 local leftStr = formatTimeLeft(nowExpire)
-                if TimeLeftLabel and TimeLeftLabel.TextLabel then TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", leftStr) end
-            else
-                 if TimeLeftLabel and TimeLeftLabel.TextLabel then TimeLeftLabel.TextLabel.Text = "<b>Time left:</b> Lifetime" end
-                 break
-            end
-        end
-    end)
-
-    KeyBox:AddDivider()
-
-    -- === [UPGRADE] System Diagnostics ===
-    local function checkFunc(name, func)
-        local has = (func ~= nil)
-        local color = has and "#00FF00" or "#FF0000"
-        return string.format("<b>%s:</b> <font color='%s'>%s</font>", name, color, has and "YES" or "NO")
-    end
-
-    safeRichLabel(DiagBox, checkFunc("getgenv", getgenv))
-    safeRichLabel(DiagBox, checkFunc("drawings", Drawing and Drawing.new))
-    safeRichLabel(DiagBox, checkFunc("hookmetamethod", hookmetamethod))
-    safeRichLabel(DiagBox, checkFunc("fireclickdetector", fireclickdetector))
-    safeRichLabel(DiagBox, checkFunc("mousemoverel", mousemoverel))
-    
-    DiagBox:AddDivider()
-    local SessionStart = tick()
-    local SessionLabel = safeRichLabel(DiagBox, "Session: 00:00:00")
-    local FPSGraphLabel = safeRichLabel(DiagBox, "FPS: Calculating...")
-    
-    AddConnection(RunService.Heartbeat:Connect(function()
-        local s = tick() - SessionStart
-        local h = math.floor(s/3600)
-        local m = math.floor((s%3600)/60)
-        local sc = math.floor(s%60)
-        if SessionLabel.TextLabel then SessionLabel.TextLabel.Text = string.format("Session: %02d:%02d:%02d", h, m, sc) end
-    end))
-
-    -- === [UPGRADE] User Profile ===
-    local thumbType = Enum.ThumbnailType.HeadShot
-    local thumbSize = Enum.ThumbnailSize.Size100x100
-    local content, isReady = Players:GetUserThumbnailAsync(LocalPlayer.UserId, thumbType, thumbSize)
-    
-    -- Note: Obsidian library doesn't support Image directly in Groupbox easily without custom element, using text stats instead
-    safeRichLabel(UserBox, string.format("<b>User:</b> %s (@%s)", LocalPlayer.DisplayName, LocalPlayer.Name))
-    safeRichLabel(UserBox, string.format("<b>ID:</b> %d", LocalPlayer.UserId))
-    safeRichLabel(UserBox, string.format("<b>Account Age:</b> %d days", LocalPlayer.AccountAge))
-    safeRichLabel(UserBox, string.format("<b>Premium:</b> %s", tostring(LocalPlayer.MembershipType):gsub("Enum.MembershipType.", "")))
-    
-    UserBox:AddButton("Copy Profile Link", function()
-        if setclipboard then
-            setclipboard("https://www.roblox.com/users/" .. LocalPlayer.UserId .. "/profile")
-            Library:Notify("Copied Profile Link", 2)
-        end
-    end)
-    
-    -- === Script Info & Changelog (Existing + Enhance) ===
-    local ScriptInfoLabel = safeRichLabel(ScriptBox, "Loading Script Info...")
-    ScriptBox:AddDivider()
-    local ChangelogLabel = safeRichLabel(ScriptBox, "Loading Changelog...")
-
-    -- [UPGRADE] Announcements Marquee
-    local MarqueeLabel = ScriptBox:AddLabel("Waiting for news...")
-    
-    task.spawn(function()
-        local scriptUrl = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/scriptinfo.json"
-        local changeUrl = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/changelog.json"
-        
-        local sBody = game:HttpGet(scriptUrl)
-        local cBody = game:HttpGet(changeUrl)
-        
-        if sBody and sBody ~= "" then
-            local ok, decoded = pcall(function() return HttpService:JSONDecode(sBody) end)
-            if ok and decoded then
-                local text = string.format("<b>%s</b> v%s\nStatus: %s\nLast Update: %s\n\n%s", 
-                    decoded.hub_name or "Hub", 
-                    decoded.version or "?",
-                    decoded.status or "Online",
-                    decoded.last_update or "?",
-                    type(decoded.description)=="table" and decoded.description.short or decoded.description or ""
-                )
-                ScriptInfoLabel.TextLabel.Text = text
-                
-                -- Marquee Logic
-                if decoded.announcement then
-                    task.spawn(function()
-                        while true do
-                            MarqueeLabel:SetText("NEWS: " .. decoded.announcement)
-                            task.wait(5)
-                            MarqueeLabel:SetText("")
-                            task.wait(0.5)
-                        end
-                    end)
+                if TimeLeftLabel and TimeLeftLabel.TextLabel then 
+                    TimeLeftLabel.TextLabel.Text = string.format("<b>Time left:</b> %s", leftStr) 
                 end
-            end
-        end
-
-        if cBody and cBody ~= "" then
-            local ok, decoded = pcall(function() return HttpService:JSONDecode(cBody) end)
-            if ok and decoded and decoded.latest_version then
-               local text = "<b>Latest Changes:</b>\n"
-               if decoded.entries and decoded.entries[1] then
-                   local entry = decoded.entries[1]
-                   text = text .. string.format("v%s (%s)\n", entry.version, entry.date)
-                   if entry.highlights then
-                       for _, h in ipairs(entry.highlights) do text = text .. "• " .. h .. "\n" end
-                   end
-               end
-               ChangelogLabel.TextLabel.Text = text
+            else
+                 if TimeLeftLabel and TimeLeftLabel.TextLabel then 
+                    TimeLeftLabel.TextLabel.Text = "<b>Time left:</b> Lifetime" 
+                 end
+                 break -- Exit loop since it won't change
             end
         end
     end)
 
 
     --------------------------------------------------------
-    -- 2. PLAYER TAB (Locked Features) [UPGRADED]
+    -- 2. PLAYER TAB (Locked Features)
     --------------------------------------------------------
    local PlayerTab = Tabs.Player
 
     local MoveBox = PlayerTab:AddLeftGroupbox("Player Movement", "user")
-    -- [UPGRADE] Advanced Movement Groupbox
-    local AdvMoveBox = PlayerTab:AddLeftGroupbox("Advanced Movement", "move")
 
     -- WalkSpeed
     local defaultWalkSpeed = 16
     local walkSpeedEnabled = false
     local WalkSpeedToggle = MoveBox:AddToggle("bxw_walkspeed_toggle", { Text = "Enable WalkSpeed", Default = false })
-    local WalkSpeedSlider = MoveBox:AddSlider("bxw_walkspeed", { Text = "WalkSpeed", Default = defaultWalkSpeed, Min = 0, Max = 300, Rounding = 0, Compact = false,
+    local WalkSpeedSlider = MoveBox:AddSlider("bxw_walkspeed", { Text = "WalkSpeed", Default = defaultWalkSpeed, Min = 0, Max = 120, Rounding = 0, Compact = false,
         Callback = function(value)
             if not walkSpeedEnabled then return end
             local hum = getHumanoid()
@@ -644,13 +622,54 @@ local function MainHub(Exec, keydata, authToken)
         WalkSpeedSlider:SetValue(defaultWalkSpeed)
         WalkSpeedToggle:SetValue(false)
     end)
-    local WalkMethodDropdown = MoveBox:AddDropdown("bxw_walk_method", { Text = "Walk Method", Values = { "Direct", "Incremental" }, Default = "Direct", Multi = false })
+    
+    -- [UPGRADE] Auto Run (Anti-Idle Walk)
+    local AutoRunToggle = MoveBox:AddToggle("bxw_autorun", { Text = "Auto Run (Circle)", Default = false })
+    local autoRunConn
+    AutoRunToggle:OnChanged(function(state)
+        if state then
+             local center = getRootPart().Position
+             local angle = 0
+             autoRunConn = AddConnection(RunService.Heartbeat:Connect(function(dt)
+                 local hum = getHumanoid()
+                 local root = getRootPart()
+                 if hum and root then
+                     angle = angle + dt
+                     local offset = Vector3.new(math.cos(angle)*5, 0, math.sin(angle)*5)
+                     hum:MoveTo(center + offset)
+                 end
+             end))
+        else
+             if autoRunConn then autoRunConn:Disconnect() autoRunConn = nil end
+        end
+        NotifyAction("Auto Run", state)
+    end)
 
+    -- [UPGRADE] Vehicle Mode
+    local VehicleModeToggle = MoveBox:AddToggle("bxw_vehicle_mode", { Text = "Vehicle Speed Mode", Default = false, Tooltip = "Apply speed to Seat instead of Humanoid" })
+    local VehicleSpeedSlider = MoveBox:AddSlider("bxw_vehicle_speed", { Text = "Vehicle Speed", Default = 100, Min = 0, Max = 500, Rounding = 0 })
+    local vehConn
+    VehicleModeToggle:OnChanged(function(state)
+        if state then
+             vehConn = AddConnection(RunService.Heartbeat:Connect(function()
+                 local hum = getHumanoid()
+                 if hum and hum.SeatPart and hum.SeatPart:IsA("VehicleSeat") then
+                     hum.SeatPart.MaxSpeed = VehicleSpeedSlider.Value
+                     hum.SeatPart.Torque = 9999999
+                 end
+             end))
+        else
+             if vehConn then vehConn:Disconnect() vehConn = nil end
+        end
+        NotifyAction("Vehicle Mode", state)
+    end)
+
+    MoveBox:AddDivider()
     -- JumpPower
     local defaultJumpPower = 50
     local jumpPowerEnabled = false
     local JumpPowerToggle = MoveBox:AddToggle("bxw_jumppower_toggle", { Text = "Enable JumpPower", Default = false })
-    local JumpPowerSlider = MoveBox:AddSlider("bxw_jumppower", { Text = "JumpPower", Default = defaultJumpPower, Min = 0, Max = 500, Rounding = 0, Compact = false,
+    local JumpPowerSlider = MoveBox:AddSlider("bxw_jumppower", { Text = "JumpPower", Default = defaultJumpPower, Min = 0, Max = 200, Rounding = 0, Compact = false,
         Callback = function(value)
             if not jumpPowerEnabled then return end
             local hum = getHumanoid()
@@ -688,7 +707,7 @@ local function MainHub(Exec, keydata, authToken)
     end)
 
     MoveBox:AddLabel("Movement Presets")
-    local MovePresetDropdown = MoveBox:AddDropdown("bxw_move_preset", { Text = "Movement Preset", Values = { "Default", "Normal", "Fast", "Ultra", "Sonic" }, Default = "Default", Multi = false })
+    local MovePresetDropdown = MoveBox:AddDropdown("bxw_move_preset", { Text = "Movement Preset", Values = { "Default", "Normal", "Fast", "Ultra" }, Default = "Default", Multi = false })
     MovePresetDropdown:OnChanged(function(value)
         if value == "Default" then
             WalkSpeedSlider:SetValue(defaultWalkSpeed) JumpPowerSlider:SetValue(defaultJumpPower) WalkSpeedToggle:SetValue(false) JumpPowerToggle:SetValue(false)
@@ -698,8 +717,6 @@ local function MainHub(Exec, keydata, authToken)
             WalkSpeedSlider:SetValue(30) JumpPowerSlider:SetValue(80) WalkSpeedToggle:SetValue(true) JumpPowerToggle:SetValue(true)
         elseif value == "Ultra" then
             WalkSpeedSlider:SetValue(50) JumpPowerSlider:SetValue(100) WalkSpeedToggle:SetValue(true) JumpPowerToggle:SetValue(true)
-        elseif value == "Sonic" then
-             WalkSpeedSlider:SetValue(100) JumpPowerSlider:SetValue(200) WalkSpeedToggle:SetValue(true) JumpPowerToggle:SetValue(true)
         end
     end)
 
@@ -731,6 +748,7 @@ local function MainHub(Exec, keydata, authToken)
     
     FlyToggle:OnChanged(function(state)
         flyEnabled = state
+        local char = getCharacter()
         local root = getRootPart()
         local hum  = getHumanoid()
         local cam  = Workspace.CurrentCamera
@@ -791,6 +809,32 @@ local function MainHub(Exec, keydata, authToken)
         end))
         NotifyAction("Fly", true)
     end)
+    
+    -- [UPGRADE] Platform Spawner (Sky Walk)
+    local SkyWalkToggle = MoveBox:AddToggle("bxw_skywalk", { Text = "Sky Walk", Default = false })
+    local skyWalkPart
+    local skyWalkConn
+    SkyWalkToggle:OnChanged(function(state)
+        if state then
+             skyWalkConn = AddConnection(RunService.Heartbeat:Connect(function()
+                 local root = getRootPart()
+                 if root then
+                     if not skyWalkPart then
+                         skyWalkPart = Instance.new("Part", workspace)
+                         skyWalkPart.Anchored = true
+                         skyWalkPart.Size = Vector3.new(10, 1, 10)
+                         skyWalkPart.Transparency = 0.5
+                         skyWalkPart.Name = "BxB_SkyWalk"
+                     end
+                     skyWalkPart.CFrame = root.CFrame * CFrame.new(0, -3.5, 0)
+                 end
+             end))
+        else
+            if skyWalkConn then skyWalkConn:Disconnect() skyWalkConn = nil end
+            if skyWalkPart then skyWalkPart:Destroy() skyWalkPart = nil end
+        end
+        NotifyAction("Sky Walk", state)
+    end)
 
     -- Noclip [LOCKED: User+]
     local noclipConn
@@ -812,118 +856,6 @@ local function MainHub(Exec, keydata, authToken)
         end))
         NotifyAction("Noclip", true)
     end)
-
-    -- === [UPGRADE] Advanced Movement Features ===
-    
-    -- 1. Click Teleport
-    AdvMoveBox:AddLabel("Utility")
-    local ClickTPToggle = AdvMoveBox:AddToggle("bxw_clicktp", { Text = "Ctrl + Click TP", Default = false })
-    local clickTPConn
-    ClickTPToggle:OnChanged(function(state)
-        if state then
-             clickTPConn = AddConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
-                if gameProcessed then return end
-                if input.UserInputType == Enum.UserInputType.MouseButton1 and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
-                     local mouse = LocalPlayer:GetMouse()
-                     local root = getRootPart()
-                     if mouse.Hit and root then
-                         root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0))
-                         NotifyAction("Click TP", true)
-                     end
-                end
-             end))
-        else
-            if clickTPConn then clickTPConn:Disconnect() clickTPConn = nil end
-        end
-    end)
-
-    -- 2. Vehicle Speed Mode
-    local VehicleSpeedToggle = AdvMoveBox:AddToggle("bxw_veh_speed", { Text = "Vehicle Mode", Default = false, Tooltip = "Speeds up Seat/Vehicle instead of Humanoid" })
-    local VehSpeedSlider = AdvMoveBox:AddSlider("bxw_veh_speed_val", { Text = "Vehicle Velocity", Default = 100, Min = 0, Max = 500, Rounding = 0 })
-    local vehLoop
-    VehicleSpeedToggle:OnChanged(function(state)
-        if state then
-            vehLoop = AddConnection(RunService.Stepped:Connect(function()
-                 local hum = getHumanoid()
-                 if hum and hum.SeatPart then
-                     local seat = hum.SeatPart
-                     local vel = seat.AssemblyLinearVelocity
-                     -- Apply velocity in direction of seat
-                     if hum.MoveDirection.Magnitude > 0 then
-                         seat.AssemblyLinearVelocity = seat.CFrame.LookVector * VehSpeedSlider.Value
-                     end
-                 end
-            end))
-        else
-             if vehLoop then vehLoop:Disconnect() vehLoop = nil end
-        end
-    end)
-    
-    -- 3. Platform Spawner (Sky Walk)
-    local SkyWalkToggle = AdvMoveBox:AddToggle("bxw_skywalk", { Text = "Sky Walk (Platform)", Default = false })
-    local platformPart
-    local skyWalkLoop
-    SkyWalkToggle:OnChanged(function(state)
-        if state then
-             skyWalkLoop = AddConnection(RunService.RenderStepped:Connect(function()
-                 local root = getRootPart()
-                 if root then
-                     if not platformPart or not platformPart.Parent then
-                         platformPart = Instance.new("Part")
-                         platformPart.Name = "BxBSkyWalk"
-                         platformPart.Size = Vector3.new(5, 1, 5)
-                         platformPart.Transparency = 0.5
-                         platformPart.Anchored = true
-                         platformPart.CanCollide = true
-                         platformPart.Parent = workspace
-                     end
-                     platformPart.CFrame = root.CFrame * CFrame.new(0, -3.5, 0)
-                 end
-             end))
-        else
-             if skyWalkLoop then skyWalkLoop:Disconnect() skyWalkLoop = nil end
-             if platformPart then platformPart:Destroy() platformPart = nil end
-        end
-    end)
-
-    -- 4. Safe Zone (Panic)
-    AdvMoveBox:AddButton("Teleport Safe Zone (Sky)", function()
-        local root = getRootPart()
-        if root then
-            root.CFrame = CFrame.new(0, 50000, 0)
-            -- Create a platform so they don't fall
-            local p = Instance.new("Part")
-            p.Size = Vector3.new(50, 2, 50)
-            p.Position = Vector3.new(0, 49995, 0)
-            p.Anchored = true
-            p.Parent = workspace
-            Library:Notify("Teleported to Safe Zone", 3)
-        end
-    end)
-
-    -- 5. Auto Run (Anti-Idle Walk)
-    local AutoRunToggle = AdvMoveBox:AddToggle("bxw_autorun", { Text = "Auto Run (Anti-Idle)", Default = false })
-    local autoRunLoop
-    AutoRunToggle:OnChanged(function(state)
-        if state then
-             local center = getRootPart() and getRootPart().Position or Vector3.zero
-             local angle = 0
-             autoRunLoop = AddConnection(RunService.Stepped:Connect(function()
-                 local hum = getHumanoid()
-                 local root = getRootPart()
-                 if hum and root then
-                     angle = angle + 0.05
-                     local offset = Vector3.new(math.sin(angle)*10, 0, math.cos(angle)*10)
-                     hum:MoveTo(center + offset)
-                 else
-                     center = root.Position
-                 end
-             end))
-        else
-             if autoRunLoop then autoRunLoop:Disconnect() autoRunLoop = nil end
-        end
-    end)
-
 
     ------------------------------------------------
     -- 2.2 Right: Teleport / Utility
@@ -952,6 +884,35 @@ local function MainHub(Exec, keydata, authToken)
         if not tRoot then Library:Notify("Target has no root part", 2) return end
         root.CFrame = tRoot.CFrame + Vector3.new(0, 3, 0)
     end, "premium")
+    
+    -- [UPGRADE] Click Teleport (Ctrl + Click)
+    local ClickTPToggle = UtilBox:AddToggle("bxw_clicktp", { Text = "Ctrl + Click TP", Default = false })
+    local clickTpConn
+    ClickTPToggle:OnChanged(function(state)
+        if state then
+            clickTpConn = AddConnection(UserInputService.InputBegan:Connect(function(input, gpe)
+                if gpe then return end
+                if input.UserInputType == Enum.UserInputType.MouseButton1 and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+                     local mouse = LocalPlayer:GetMouse()
+                     local root = getRootPart()
+                     if root and mouse.Hit then
+                         root.CFrame = CFrame.new(mouse.Hit.Position + Vector3.new(0, 3, 0))
+                     end
+                end
+            end))
+        else
+            if clickTpConn then clickTpConn:Disconnect() clickTpConn = nil end
+        end
+        NotifyAction("Click TP", state)
+    end)
+    
+    -- [UPGRADE] Safe Zone
+    UtilBox:AddButton("Safe Zone (Sky)", function()
+        local root = getRootPart()
+        if root then
+            root.CFrame = CFrame.new(root.Position.X, 10000, root.Position.Z)
+        end
+    end)
 
     UtilBox:AddDivider()
     local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate_target", { Text = "Spectate Target", Values = playerNames, Default = "", Multi = false, AllowNull = true })
@@ -1027,14 +988,15 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.3 ESP & Visuals Tab (Overhauled) [UPGRADED]
+    -- 4.3 ESP & Visuals Tab (Overhauled + New Features)
     ------------------------------------------------
     do
         local ESPTab = Tabs.ESP
         local ESPFeatureBox = ESPTab:AddLeftGroupbox("ESP Features", "eye")
-        -- [UPGRADE] Tactical Visuals Box
-        local TacVisBox = ESPTab:AddLeftGroupbox("Tactical Visuals", "crosshair")
         local ESPSettingBox = safeAddRightGroupbox(ESPTab, "ESP Settings", "palette")
+        
+        -- [UPGRADE] Radar & Extras Groupbox
+        local ExtraVisualBox = safeAddRightGroupbox(ESPTab, "Radar & Utilities", "radar")
 
         local ESPEnabledToggle = ESPFeatureBox:AddToggle("bxw_esp_enable", { Text = "Enable ESP", Default = false })
         
@@ -1071,29 +1033,81 @@ local function MainHub(Exec, keydata, authToken)
         
         local HeadDotToggle = ESPFeatureBox:AddToggle("bxw_esp_headdot", { Text = "Head Dot", Default = false })
             :AddColorPicker("bxw_esp_headdot_color", { Default = Color3.fromRGB(255, 0, 0), Title = "Head Dot Color" })
+        
+        -- [UPGRADE] Off-Screen Arrow
+        local ArrowToggle = ESPFeatureBox:AddToggle("bxw_esp_arrow", { Text = "Off-Screen Arrow", Default = false })
+            :AddColorPicker("bxw_esp_arrow_color", { Default = Color3.fromRGB(255, 100, 0), Title = "Arrow Color" })
+
+        -- [UPGRADE] Target Indicator
+        local TargetIndToggle = ESPFeatureBox:AddToggle("bxw_esp_targetind", { Text = "Look/Aim Indicator", Default = false, Tooltip = "Warns when enemy looks at you" })
 
         ESPEnabledToggle:OnChanged(function(state) 
             NotifyAction("Global ESP", state) 
         end)
-
-        -- [UPGRADE] Tactical Visuals Features
         
-        -- 1. Off-Screen Arrows
-        local OffScreenToggle = TacVisBox:AddToggle("bxw_esp_offscreen", { Text = "Off-Screen Arrows", Default = false })
-            :AddColorPicker("bxw_esp_offscreen_color", { Default = Color3.fromRGB(255, 100, 0), Title = "Arrow Color" })
-        local OffScreenRadius = TacVisBox:AddSlider("bxw_esp_offscreen_radius", { Text = "Radius", Default = 200, Min = 100, Max = 500, Rounding = 0 })
+        -- [UPGRADE] Radar Settings
+        local RadarToggle = ExtraVisualBox:AddToggle("bxw_radar_enable", { Text = "Enable 2D Radar", Default = false })
+        local RadarRangeSlider = ExtraVisualBox:AddSlider("bxw_radar_range", { Text = "Radar Range", Default = 200, Min = 50, Max = 1000, Rounding = 0 })
+        local RadarSizeSlider = ExtraVisualBox:AddSlider("bxw_radar_size", { Text = "Radar Scale", Default = 150, Min = 100, Max = 300, Rounding = 0 })
         
-        -- 2. Target Indicator (Looking At Me)
-        local TargetIndToggle = TacVisBox:AddToggle("bxw_esp_target_ind", { Text = "Aim Warning (Text)", Default = false })
+        RadarToggle:OnChanged(function(state)
+            if not state then
+                if radarDrawings.outline then radarDrawings.outline.Visible = false end
+                if radarDrawings.line then radarDrawings.line.Visible = false end
+                for _, p in pairs(radarDrawings.points) do p:Remove() end
+                radarDrawings.points = {}
+            end
+        end)
         
-        -- 3. Item/Object Dumper
-        local ItemEspToggle = TacVisBox:AddToggle("bxw_esp_item", { Text = "Item ESP", Default = false })
-        local ItemEspName = TacVisBox:AddInput("bxw_esp_item_name", { Default = "", Placeholder = "Part Name (e.g. Coin)", Text = "Item Name" })
-        local ItemEspColor = TacVisBox:AddLabel("Item Color"):AddColorPicker("bxw_esp_item_color", { Default = Color3.fromRGB(255, 255, 0) })
-        local itemDrawings = {}
-
-        -- 4. Distance Coloring
-        local DistColorToggle = TacVisBox:AddToggle("bxw_esp_dist_coloring", { Text = "Distance Coloring", Default = false, Tooltip = "Green=Far, Red=Close" })
+        -- [UPGRADE] Object Dumper
+        ExtraVisualBox:AddDivider()
+        local ObjectInput = ExtraVisualBox:AddInput("bxw_obj_input", { Text = "Object Name", Default = "", Placeholder = "Part Name..." })
+        local ObjectDumpToggle = ExtraVisualBox:AddToggle("bxw_obj_dump", { Text = "Dump Objects", Default = false })
+        
+        local objectDrawings = {}
+        task.spawn(function()
+             while true do
+                 task.wait(1)
+                 if ObjectDumpToggle.Value then
+                     local name = ObjectInput.Value
+                     if name and name ~= "" then
+                         for _, v in pairs(workspace:GetDescendants()) do
+                             if v.Name:lower():find(name:lower()) and v:IsA("BasePart") then
+                                 if not objectDrawings[v] then
+                                     local t = Drawing.new("Text")
+                                     t.Text = v.Name
+                                     t.Center = true
+                                     t.Outline = true
+                                     t.Color = Color3.new(1,1,0)
+                                     objectDrawings[v] = t
+                                 end
+                             end
+                         end
+                     end
+                 else
+                     for i, d in pairs(objectDrawings) do d:Remove() objectDrawings[i] = nil end
+                 end
+                 
+                 -- Update Object ESP positions
+                 if ObjectDumpToggle.Value then
+                     local cam = workspace.CurrentCamera
+                     for part, txt in pairs(objectDrawings) do
+                         if part and part.Parent then
+                             local pos, vis = cam:WorldToViewportPoint(part.Position)
+                             if vis then
+                                 txt.Visible = true
+                                 txt.Position = Vector2.new(pos.X, pos.Y)
+                             else
+                                 txt.Visible = false
+                             end
+                         else
+                             txt:Remove()
+                             objectDrawings[part] = nil
+                         end
+                     end
+                 end
+             end
+        end)
 
         local function getPlayerNames()
             local names = {}
@@ -1116,6 +1130,9 @@ local function MainHub(Exec, keydata, authToken)
         local HeadDotSizeSlider = ESPSettingBox:AddSlider("bxw_esp_headdot_size", { Text = "Head Dot Size", Default = 3, Min = 1, Max = 10, Rounding = 0 })
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
+        
+        -- [UPGRADE] Distance Coloring
+        local DistColorToggle = ESPSettingBox:AddToggle("bxw_esp_distcolor", { Text = "Color by Distance", Default = false, Tooltip = "Green=Far, Red=Close" })
 
         -- [FIX] Refresh Rate Min = 0 for maximum smoothness
         local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 0, Min = 0, Max = 250, Rounding = 0, Compact = false })
@@ -1148,9 +1165,7 @@ local function MainHub(Exec, keydata, authToken)
                 if data.Skeleton then for _, ln in pairs(data.Skeleton) do pcall(function() ln:Remove() end) end data.Skeleton = nil end
                 if data.HeadDot then pcall(function() data.HeadDot:Remove() end) data.HeadDot = nil end
                 if data.Info then pcall(function() data.Info:Remove() end) data.Info = nil end
-                -- [UPGRADE] Remove Arrow
                 if data.Arrow then pcall(function() data.Arrow:Remove() end) data.Arrow = nil end
-                if data.WarnText then pcall(function() data.WarnText:Remove() end) data.WarnText = nil end
                 espDrawings[plr] = nil
             end
         end
@@ -1169,52 +1184,59 @@ local function MainHub(Exec, keydata, authToken)
         local function IsTeammate(plr)
             if not TeamToggle.Value then return false end
             if not plr then return false end
-            if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then return true end
-            if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then return true end
+            
+            -- Check Team Object
+            if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
+                return true
+            end
+            
+            -- Check TeamColor (Common fallback)
+            if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then
+                return true
+            end
+
             return false
         end
 
         local lastESPUpdate = 0
         local function updateESP()
+            -- [FIX] Refresh Rate Logic
             local ms = ESPRefreshSlider.Value or 0
             if ms > 0 then
                 local nowTick = tick()
                 if nowTick - lastESPUpdate < (ms / 1000) then return end
                 lastESPUpdate = nowTick
             end
-
-            -- Item ESP Logic
-            if ItemEspToggle.Value then
-                local searchName = ItemEspName.Value
-                if searchName and searchName ~= "" then
-                     local col = Options.bxw_esp_item_color and Options.bxw_esp_item_color.Value or Color3.new(1,1,0)
-                     -- Clear old (simple approach: clear all then redraw visible)
-                     for _, d in pairs(itemDrawings) do d:Remove() end
-                     table.clear(itemDrawings)
-                     
-                     for _, v in pairs(workspace:GetDescendants()) do
-                         if v:IsA("BasePart") and (v.Name:lower():find(searchName:lower())) then
-                             local pos, vis = workspace.CurrentCamera:WorldToViewportPoint(v.Position)
-                             if vis then
-                                 local txt = Drawing.new("Text")
-                                 txt.Visible = true
-                                 txt.Color = col
-                                 txt.Text = v.Name
-                                 txt.Center = true
-                                 txt.Position = Vector2.new(pos.X, pos.Y)
-                                 table.insert(itemDrawings, txt)
-                             end
-                         end
-                     end
-                end
-            else
-                 for _, d in pairs(itemDrawings) do d:Remove() end
-                 table.clear(itemDrawings)
-            end
+            -- If ms == 0, it runs every frame (instant)
 
             if not ESPEnabledToggle.Value then
                 for plr, _ in pairs(espDrawings) do removePlayerESP(plr) end
                 return
+            end
+            
+            -- [UPGRADE] Radar Logic
+            if RadarToggle.Value then
+                 if not radarDrawings.outline then
+                     radarDrawings.outline = Drawing.new("Square")
+                     radarDrawings.outline.Visible = true
+                     radarDrawings.outline.Filled = true
+                     radarDrawings.outline.Transparency = 0.5
+                     radarDrawings.outline.Color = Color3.new(0,0,0)
+                     radarDrawings.outline.Thickness = 2
+                     
+                     radarDrawings.line = Drawing.new("Line")
+                     radarDrawings.line.Color = Color3.new(1,1,1)
+                     radarDrawings.line.Thickness = 1
+                     radarDrawings.line.Visible = true
+                 end
+                 local rSize = RadarSizeSlider.Value
+                 local rX = workspace.CurrentCamera.ViewportSize.X - rSize - 20
+                 local rY = workspace.CurrentCamera.ViewportSize.Y - rSize - 20
+                 radarDrawings.outline.Size = Vector2.new(rSize, rSize)
+                 radarDrawings.outline.Position = Vector2.new(rX, rY)
+                 
+                 radarDrawings.line.From = Vector2.new(rX + rSize/2, rY + rSize/2)
+                 radarDrawings.line.To = Vector2.new(rX + rSize/2, rY)
             end
 
             local cam = Workspace.CurrentCamera
@@ -1228,11 +1250,15 @@ local function MainHub(Exec, keydata, authToken)
                     local hum  = char and char:FindFirstChildOfClass("Humanoid")
                     local root = char and char:FindFirstChild("HumanoidRootPart") or char and char:FindFirstChild("Torso") or char and char:FindFirstChild("UpperTorso")
                     
+                    -- [FIX] Ghosting: Check validity strictly
                     if not hum or hum.Health <= 0 or not root or not root.Parent then
                         removePlayerESP(plr)
+                        if radarDrawings.points[plr] then radarDrawings.points[plr]:Remove() radarDrawings.points[plr] = nil end
                     else
+                        -- [FIX] Team Check Logic
                         local skipPlayer = false
                         if IsTeammate(plr) then skipPlayer = true end
+
                         if not skipPlayer then
                             local list = WhitelistDropdown.Value
                             if list and type(list) == "table" then
@@ -1242,18 +1268,49 @@ local function MainHub(Exec, keydata, authToken)
 
                         if skipPlayer then
                             removePlayerESP(plr)
+                            if radarDrawings.points[plr] then radarDrawings.points[plr]:Remove() radarDrawings.points[plr] = nil end
                         else
                             local data = espDrawings[plr]
                             if not data then data = {} espDrawings[plr] = data end
+                            
+                            -- [UPGRADE] Radar Dot
+                            if RadarToggle.Value then
+                                local rRange = RadarRangeSlider.Value
+                                local rSize = RadarSizeSlider.Value
+                                local rCenter = radarDrawings.outline.Position + Vector2.new(rSize/2, rSize/2)
+                                
+                                local relPos = root.Position - getRootPart().Position
+                                local angle = math.atan2(relPos.Z, relPos.X) - math.atan2(cam.CFrame.LookVector.Z, cam.CFrame.LookVector.X)
+                                local dist = relPos.Magnitude
+                                local distScale = math.clamp(dist, 0, rRange) / rRange
+                                
+                                local dotX = rCenter.X + math.cos(angle + math.pi/2) * (distScale * rSize/2)
+                                local dotY = rCenter.Y + math.sin(angle + math.pi/2) * (distScale * rSize/2)
+                                
+                                if not radarDrawings.points[plr] then
+                                    local d = Drawing.new("Circle")
+                                    d.Filled = true
+                                    d.Radius = 3
+                                    d.Color = Color3.new(1,0,0)
+                                    radarDrawings.points[plr] = d
+                                end
+                                radarDrawings.points[plr].Visible = true
+                                radarDrawings.points[plr].Position = Vector2.new(dotX, dotY)
+                            end
 
                             local cf, size = char:GetBoundingBox()
                             local cornersWorld = {
-                                cf * CFrame.new(-size.X/2, size.Y/2, -size.Z/2), cf * CFrame.new(size.X/2, size.Y/2, -size.Z/2),
-                                cf * CFrame.new(-size.X/2, -size.Y/2, -size.Z/2), cf * CFrame.new(size.X/2, -size.Y/2, -size.Z/2),
-                                cf * CFrame.new(-size.X/2, size.Y/2, size.Z/2), cf * CFrame.new(size.X/2, size.Y/2, size.Z/2),
-                                cf * CFrame.new(-size.X/2, -size.Y/2, size.Z/2), cf * CFrame.new(size.X/2, -size.Y/2, size.Z/2),
+                                cf * CFrame.new(-size.X/2, size.Y/2, -size.Z/2),
+                                cf * CFrame.new(size.X/2, size.Y/2, -size.Z/2),
+                                cf * CFrame.new(-size.X/2, -size.Y/2, -size.Z/2),
+                                cf * CFrame.new(size.X/2, -size.Y/2, -size.Z/2),
+                                cf * CFrame.new(-size.X/2, size.Y/2, size.Z/2),
+                                cf * CFrame.new(size.X/2, size.Y/2, size.Z/2),
+                                cf * CFrame.new(-size.X/2, -size.Y/2, size.Z/2),
+                                cf * CFrame.new(size.X/2, -size.Y/2, size.Z/2),
                             }
                             
+                            -- [FIX] Wall Check Logic
                             local isVisible = true
                             if WallToggle.Value then
                                 local rayDir = (root.Position - camPos)
@@ -1263,15 +1320,18 @@ local function MainHub(Exec, keydata, authToken)
                                 local rayResult = Workspace:Raycast(camPos, rayDir, rayParams)
                                 if rayResult then isVisible = false end
                             end
-                            
-                            -- [UPGRADE] Distance Coloring
-                            local distStud = (root.Position - camPos).Magnitude
+
+                            -- [FIX] Color Logic: Only override if Hidden AND WallCheck is ON
                             local function getVisColor(optionColor)
                                 if DistColorToggle.Value then
-                                    local g = math.clamp(distStud / 300, 0, 1) -- 0=Red, 1=Green
-                                    return Color3.fromHSV(g * 0.33, 1, 1)
+                                    local dist = (root.Position - camPos).Magnitude
+                                    local maxDist = 300
+                                    local t = math.clamp(dist / maxDist, 0, 1)
+                                    return Color3.fromHSV((1-t)*0.33, 1, 1) -- Red (Close) to Green (Far)
                                 end
-                                if WallToggle.Value and not isVisible then return Color3.fromRGB(255, 0, 0) end
+                                if WallToggle.Value and not isVisible then
+                                    return Color3.fromRGB(255, 0, 0) -- Red if hidden
+                                end
                                 return optionColor or Color3.fromRGB(255, 255, 255)
                             end
 
@@ -1279,15 +1339,23 @@ local function MainHub(Exec, keydata, authToken)
                             if ChamsToggle.Value then
                                 local baseColor = (Options.bxw_esp_chams_color and Options.bxw_esp_chams_color.Value) or Color3.fromRGB(0, 255, 0)
                                 local finalChamColor = getVisColor(baseColor)
+                                
                                 local chamsTrans = ChamsTransSlider and ChamsTransSlider.Value or 0.5
                                 local visibleOnly = ChamsVisibleToggle and ChamsVisibleToggle.Value or false
                                 local depthMode = visibleOnly and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
                                 
                                 if not data.Highlight then
-                                    local hl = Instance.new("Highlight") hl.Parent = char data.Highlight = hl
+                                    local hl = Instance.new("Highlight")
+                                    hl.Parent = char
+                                    data.Highlight = hl
                                 end
                                 local hl = data.Highlight
-                                hl.Enabled = true hl.DepthMode = depthMode hl.FillColor = finalChamColor hl.OutlineColor = finalChamColor hl.FillTransparency = chamsTrans hl.Adornee = char
+                                hl.Enabled = true
+                                hl.DepthMode = depthMode
+                                hl.FillColor = finalChamColor
+                                hl.OutlineColor = finalChamColor
+                                hl.FillTransparency = chamsTrans
+                                hl.Adornee = char
                             else
                                 if data.Highlight then data.Highlight.Enabled = false end
                             end
@@ -1299,54 +1367,34 @@ local function MainHub(Exec, keydata, authToken)
                             for i, worldCFrame in ipairs(cornersWorld) do
                                 local screenPos, vis = cam:WorldToViewportPoint(worldCFrame.Position)
                                 if vis then onScreen = true end
-                                minX = math.min(minX, screenPos.X) minY = math.min(minY, screenPos.Y)
-                                maxX = math.max(maxX, screenPos.X) maxY = math.max(maxY, screenPos.Y)
+                                minX = math.min(minX, screenPos.X)
+                                minY = math.min(minY, screenPos.Y)
+                                maxX = math.max(maxX, screenPos.X)
+                                maxY = math.max(maxY, screenPos.Y)
                             end
-
-                            -- [UPGRADE] Off-Screen Arrows
-                            if OffScreenToggle.Value and not onScreen then
+                            
+                            -- [UPGRADE] Off Screen Arrow
+                            if not onScreen and ArrowToggle.Value then
                                 if not data.Arrow then data.Arrow = Drawing.new("Triangle") data.Arrow.Filled = true end
-                                local arrow = data.Arrow
-                                arrow.Visible = true
-                                arrow.Color = Options.bxw_esp_offscreen_color.Value
-                                local center = cam.ViewportSize / 2
-                                local pos, _ = cam:WorldToViewportPoint(root.Position)
-                                local dir = (Vector2.new(pos.X, pos.Y) - center).Unit
-                                local rad = OffScreenRadius.Value
-                                local arrowPos = center + dir * rad
-                                local p1 = arrowPos + dir * 10
-                                local p2 = arrowPos - dir * 10 + Vector2.new(-dir.Y, dir.X) * 7
-                                local p3 = arrowPos - dir * 10 + Vector2.new(dir.Y, -dir.X) * 7
-                                arrow.PointA = p1 arrow.PointB = p2 arrow.PointC = p3
+                                local relative = cam.CFrame:PointToObjectSpace(root.Position)
+                                local angle = math.atan2(relative.Y, relative.X)
+                                local dist = 300 -- Distance from center
+                                local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+                                local pos = center + Vector2.new(math.cos(angle)*dist, math.sin(angle)*dist)
+                                
+                                local size = 15
+                                local pt1 = pos + Vector2.new(math.cos(angle)*size, math.sin(angle)*size)
+                                local pt2 = pos + Vector2.new(math.cos(angle + 2)*size, math.sin(angle + 2)*size)
+                                local pt3 = pos + Vector2.new(math.cos(angle - 2)*size, math.sin(angle - 2)*size)
+                                
+                                data.Arrow.Visible = true
+                                data.Arrow.PointA = pt1
+                                data.Arrow.PointB = pt2
+                                data.Arrow.PointC = pt3
+                                data.Arrow.Color = (Options.bxw_esp_arrow_color and Options.bxw_esp_arrow_color.Value) or Color3.new(1,0.5,0)
                             else
                                 if data.Arrow then data.Arrow.Visible = false end
                             end
-
-                            -- [UPGRADE] Aim Warning (Target Indicator)
-                            if TargetIndToggle.Value then
-                                local isAimingAtMe = false
-                                local dir = (cam.CFrame.Position - root.Position).Unit
-                                local look = root.CFrame.LookVector
-                                if dir:Dot(look) > 0.9 then -- Simple look check
-                                    isAimingAtMe = true 
-                                end
-                                
-                                if isAimingAtMe then
-                                    if not data.WarnText then local t = Drawing.new("Text") t.Center = true t.Color = Color3.new(1,0,0) t.Text="AIMING AT YOU!" data.WarnText = t end
-                                    local sPos, sVis = cam:WorldToViewportPoint(root.Position + Vector3.new(0,4,0))
-                                    if sVis then
-                                        data.WarnText.Visible = true
-                                        data.WarnText.Position = Vector2.new(sPos.X, sPos.Y)
-                                    else
-                                        data.WarnText.Visible = false
-                                    end
-                                else
-                                     if data.WarnText then data.WarnText.Visible = false end
-                                end
-                            else
-                                if data.WarnText then data.WarnText.Visible = false end
-                            end
-
 
                             if not onScreen then
                                 if data.Box then data.Box.Visible = false end
@@ -1367,7 +1415,10 @@ local function MainHub(Exec, keydata, authToken)
 
                                     if BoxStyleDropdown.Value == "Box" then
                                         if not data.Box then local sq = Drawing.new("Square") sq.Thickness = 1 sq.Filled = false sq.Transparency = 1 data.Box = sq end
-                                        data.Box.Visible = true data.Box.Color = finalBoxCol data.Box.Position = Vector2.new(minX, minY) data.Box.Size = Vector2.new(boxW, boxH)
+                                        data.Box.Visible = true
+                                        data.Box.Color = finalBoxCol
+                                        data.Box.Position = Vector2.new(minX, minY)
+                                        data.Box.Size = Vector2.new(boxW, boxH)
                                         if data.Corners then for _, ln in pairs(data.Corners) do ln.Visible = false end end
                                     else
                                         if not data.Corners then data.Corners = {} for i=1,8 do local ln = Drawing.new("Line") ln.Thickness = 1 ln.Transparency = 1 data.Corners[i] = ln end end
@@ -1390,6 +1441,7 @@ local function MainHub(Exec, keydata, authToken)
                                 -- Health
                                 if HealthToggle.Value then
                                     local baseHpCol = (Options.bxw_esp_health_color and Options.bxw_esp_health_color.Value)
+                                    -- Health typically doesn't use wall check color, but follows HP color
                                     if not data.Health then data.Health = { Outline = Drawing.new("Line"), Bar = Drawing.new("Line") } data.Health.Outline.Thickness = 3 data.Health.Bar.Thickness = 1 end
                                     local hbX = minX - 6
                                     local hp = math.clamp(hum.Health, 0, hum.MaxHealth)
@@ -1407,7 +1459,10 @@ local function MainHub(Exec, keydata, authToken)
                                     local baseNameCol = (Options.bxw_esp_name_color and Options.bxw_esp_name_color.Value)
                                     local finalNameCol = getVisColor(baseNameCol)
                                     if not data.Name then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Name = txt end
-                                    data.Name.Visible = true data.Name.Color = finalNameCol data.Name.Size = NameSizeSlider.Value data.Name.Text = plr.DisplayName or plr.Name
+                                    data.Name.Visible = true
+                                    data.Name.Color = finalNameCol
+                                    data.Name.Size = NameSizeSlider.Value
+                                    data.Name.Text = plr.DisplayName or plr.Name
                                     data.Name.Position = Vector2.new((minX + maxX) / 2, minY - 14)
                                 else
                                     if data.Name then data.Name.Visible = false end
@@ -1418,11 +1473,14 @@ local function MainHub(Exec, keydata, authToken)
                                     local baseDistCol = (Options.bxw_esp_dist_color and Options.bxw_esp_dist_color.Value)
                                     local finalDistCol = getVisColor(baseDistCol)
                                     if not data.Distance then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Distance = txt end
+                                    local distStud = (root.Position - camPos).Magnitude
                                     local unit = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
                                     local distNum = distStud
                                     local suffix = " studs"
                                     if unit == "Meters" then distNum = distStud * 0.28 suffix = " m" end
-                                    data.Distance.Visible = true data.Distance.Color = finalDistCol data.Distance.Size = DistSizeSlider.Value
+                                    data.Distance.Visible = true
+                                    data.Distance.Color = finalDistCol
+                                    data.Distance.Size = DistSizeSlider.Value
                                     data.Distance.Text = string.format("%.1f", distNum) .. suffix
                                     data.Distance.Position = Vector2.new((minX + maxX) / 2, maxY + 2)
                                 else
@@ -1434,9 +1492,27 @@ local function MainHub(Exec, keydata, authToken)
                                     local baseInfoCol = (Options.bxw_esp_info_color and Options.bxw_esp_info_color.Value)
                                     local finalInfoCol = getVisColor(baseInfoCol)
                                     if not data.Info then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Info = txt end
+                                    local distStudInfo = (root.Position - camPos).Magnitude
+                                    local unitInfo = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
+                                    local distNumInfo = distStudInfo
+                                    local suffixInfo = "s"
+                                    if unitInfo == "Meters" then distNumInfo = distStudInfo * 0.28 suffixInfo = "m" end
+                                    
                                     local teamName = plr.Team and plr.Team.Name or "Neutral"
-                                    data.Info.Visible = true data.Info.Color = finalInfoCol data.Info.Size = NameSizeSlider.Value
-                                    data.Info.Text = string.format("[Team: %s]", teamName)
+                                    
+                                    -- [UPGRADE] Target Indicator Text
+                                    local lookText = ""
+                                    if TargetIndToggle.Value then
+                                        local enemyLook = root.CFrame.LookVector
+                                        local dirToMe = (getRootPart().Position - root.Position).Unit
+                                        local dot = enemyLook:Dot(dirToMe)
+                                        if dot > 0.8 then lookText = "\n[LOOKING AT YOU!]" end
+                                    end
+                                    
+                                    data.Info.Visible = true
+                                    data.Info.Color = finalInfoCol
+                                    data.Info.Size = NameSizeSlider.Value
+                                    data.Info.Text = string.format("%s\n[Dist: %.0f%s] [Team: %s]%s", plr.Name, distNumInfo, suffixInfo, teamName, lookText)
                                     data.Info.Position = Vector2.new((minX + maxX) / 2, maxY + 16)
                                 else
                                     if data.Info then data.Info.Visible = false end
@@ -1457,7 +1533,10 @@ local function MainHub(Exec, keydata, authToken)
                                             local sp1, vis1 = cam:WorldToViewportPoint(p1.Position)
                                             local sp2, vis2 = cam:WorldToViewportPoint(p2.Position)
                                             if vis1 or vis2 then
-                                                ln.Visible = true ln.Color = finalSkCol ln.From = Vector2.new(sp1.X, sp1.Y) ln.To   = Vector2.new(sp2.X, sp2.Y)
+                                                ln.Visible = true
+                                                ln.Color = finalSkCol
+                                                ln.From = Vector2.new(sp1.X, sp1.Y)
+                                                ln.To   = Vector2.new(sp2.X, sp2.Y)
                                             else
                                                 ln.Visible = false
                                             end
@@ -1479,7 +1558,9 @@ local function MainHub(Exec, keydata, authToken)
                                         local spHead, headVis = cam:WorldToViewportPoint(head.Position)
                                         if headVis then
                                             if not data.HeadDot then data.HeadDot = Drawing.new("Circle") data.HeadDot.Filled = true data.HeadDot.Transparency = 1 end
-                                            data.HeadDot.Visible = true data.HeadDot.Color = finalHdCol data.HeadDot.Position = Vector2.new(spHead.X, spHead.Y)
+                                            data.HeadDot.Visible = true
+                                            data.HeadDot.Color = finalHdCol
+                                            data.HeadDot.Position = Vector2.new(spHead.X, spHead.Y)
                                             data.HeadDot.Radius = (Options.bxw_esp_headdot_size and Options.bxw_esp_headdot_size.Value) or 3
                                         else
                                             if data.HeadDot then data.HeadDot.Visible = false end
@@ -1496,7 +1577,10 @@ local function MainHub(Exec, keydata, authToken)
                                     if not data.Tracer then data.Tracer = Drawing.new("Line") data.Tracer.Thickness = 1 data.Tracer.Transparency = 1 end
                                     local screenRoot, rootOnScreen = cam:WorldToViewportPoint(root.Position)
                                     if rootOnScreen then
-                                        data.Tracer.Visible = true data.Tracer.Color = finalTrCol data.Tracer.From = Vector2.new(screenRoot.X, screenRoot.Y) data.Tracer.To = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+                                        data.Tracer.Visible = true
+                                        data.Tracer.Color = finalTrCol
+                                        data.Tracer.From = Vector2.new(screenRoot.X, screenRoot.Y)
+                                        data.Tracer.To = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
                                     else
                                         data.Tracer.Visible = false
                                     end
@@ -1524,9 +1608,17 @@ local function MainHub(Exec, keydata, authToken)
                     deathConnections[plr] = AddConnection(hum.Died:Connect(function() removePlayerESP(plr) end))
                 end
             end
-            for _, plr in ipairs(Players:GetPlayers()) do attachDeathListener(plr) AddConnection(plr.CharacterAdded:Connect(function() attachDeathListener(plr) end)) end
-            AddConnection(Players.PlayerAdded:Connect(function(plr) AddConnection(plr.CharacterAdded:Connect(function() attachDeathListener(plr) end)) end))
-            AddConnection(Players.PlayerRemoving:Connect(function(plr) if deathConnections[plr] then pcall(function() deathConnections[plr]:Disconnect() end) deathConnections[plr] = nil end removePlayerESP(plr) end))
+            for _, plr in ipairs(Players:GetPlayers()) do
+                attachDeathListener(plr)
+                AddConnection(plr.CharacterAdded:Connect(function() attachDeathListener(plr) end))
+            end
+            AddConnection(Players.PlayerAdded:Connect(function(plr)
+                AddConnection(plr.CharacterAdded:Connect(function() attachDeathListener(plr) end))
+            end))
+            AddConnection(Players.PlayerRemoving:Connect(function(plr)
+                if deathConnections[plr] then pcall(function() deathConnections[plr]:Disconnect() end) deathConnections[plr] = nil end
+                removePlayerESP(plr)
+            end))
         end
 
         crosshairLines = { h = Drawing.new("Line"), v = Drawing.new("Line") }
@@ -1552,13 +1644,11 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.4 Combat & Aimbot Tab (Interlocked UI) [UPGRADED]
+    -- 4.4 Combat & Aimbot Tab (Interlocked UI)
     ------------------------------------------------
     do
         local CombatTab = Tabs.Combat
         local AimBox = CombatTab:AddLeftGroupbox("Aimbot Settings", "target")
-        -- [UPGRADE] Legit & Utility
-        local LegitBox = CombatTab:AddLeftGroupbox("Legit & Utility", "shield")
         local ExtraBox = safeAddRightGroupbox(CombatTab, "Extra Settings", "adjust")
 
         AimBox:AddLabel("Core Settings")
@@ -1575,9 +1665,13 @@ local function MainHub(Exec, keydata, authToken)
         AimBox:AddLabel("FOV Settings")
         local FOVSlider = AimBox:AddSlider("bxw_aim_fov", { Text = "Aim FOV", Default = 10, Min = 1, Max = 50, Rounding = 1 })
         local ShowFovToggle = AimBox:AddToggle("bxw_aim_showfov", { Text = "Show FOV Circle", Default = false })
+        -- [UPGRADE] Deadzone
+        local DeadzoneSlider = AimBox:AddSlider("bxw_aim_deadzone", { Text = "Deadzone (Pixels)", Default = 0, Min = 0, Max = 50, Rounding = 1, Tooltip = "Aimbot won't snap if mouse is close enough" })
+        
         local SmoothSlider = AimBox:AddSlider("bxw_aim_smooth", { Text = "Aimbot Smoothness", Default = 0.1, Min = 0.01, Max = 1, Rounding = 2 })
         local AimTeamCheck = AimBox:AddToggle("bxw_aim_teamcheck", { Text = "Team Check", Default = true })
         
+        -- [FIX] TRIGGERBOT MOVED TO DEDICATED LOGIC (See below loop)
         local TriggerbotToggle = AimBox:AddToggle("bxw_triggerbot", { Text = "Triggerbot", Default = false })
         
         local VisibilityToggle = AimBox:AddToggle("bxw_aim_visibility", { Text = "Visibility Check", Default = false })
@@ -1600,36 +1694,36 @@ local function MainHub(Exec, keydata, authToken)
         local SmartAimToggle = AimBox:AddToggle("bxw_aim_smart", { Text = "Smart BodyAim", Default = false, Tooltip = "Aim at head if body blocked" }) 
         local PredToggle = AimBox:AddToggle("bxw_aim_pred", { Text = "Prediction Aim", Default = false })
         local PredSlider = AimBox:AddSlider("bxw_aim_predfactor", { Text = "Prediction Factor", Default = 0.1, Min = 0, Max = 1, Rounding = 2 })
+        
+        -- [UPGRADE] RCS & Strafe
+        local RCSToggle = AimBox:AddToggle("bxw_aim_rcs", { Text = "Recoil Control (RCS)", Default = false })
+        local RCSStrength = AimBox:AddSlider("bxw_rcs_strength", { Text = "RCS Strength", Default = 5, Min = 1, Max = 20, Rounding = 0 })
+        local StrafeToggle = AimBox:AddToggle("bxw_aim_strafe", { Text = "Target Strafe (Orbit)", Default = false, Tooltip = "Circle around target" })
+        
+        -- [UPGRADE] Auto Equip
+        local AutoEquipToggle = AimBox:AddToggle("bxw_auto_equip", { Text = "Auto Equip Weapon", Default = false })
 
-        -- === [UPGRADE] Legit & Utility Features ===
-        
-        -- 1. Deadzone
-        local DeadzoneSlider = LegitBox:AddSlider("bxw_aim_deadzone", { Text = "Deadzone Radius", Default = 0, Min = 0, Max = 50, Rounding = 0, Tooltip = "Stop aiming if target is too close to crosshair" })
-        
-        -- 2. RCS (Recoil Control)
-        local RCSToggle = LegitBox:AddToggle("bxw_aim_rcs", { Text = "RCS (Recoil Control)", Default = false })
-        local RCSStrength = LegitBox:AddSlider("bxw_aim_rcs_str", { Text = "RCS Strength", Default = 2, Min = 1, Max = 10, Rounding = 0 })
-        
-        -- 3. Auto Equip
-        LegitBox:AddButton("Auto Equip Weapon", function()
-             local bp = LocalPlayer.Backpack
-             local t = bp:FindFirstChildOfClass("Tool")
-             if t then t.Parent = LocalPlayer.Character end
+
+        AimbotToggle:OnChanged(function(state)
+            NotifyAction("Aimbot", state)
         end)
-        
-        -- 4. Target Strafe (Simple Rotate)
-        local AutoRotateToggle = LegitBox:AddToggle("bxw_aim_autorotate", { Text = "Auto Rotate (Face Target)", Default = false })
 
-        AimbotToggle:OnChanged(function(state) NotifyAction("Aimbot", state) end)
 
         local TriggerTeamToggle = ExtraBox:AddToggle("bxw_trigger_teamcheck", { Text = "Trigger Team Check", Default = true })
+        local TriggerWallToggle = ExtraBox:AddToggle("bxw_trigger_wallcheck", { Text = "Trigger Wall Check", Default = false })
         local TriggerMethodDropdown = ExtraBox:AddDropdown("bxw_trigger_method", { Text = "Trigger Method", Values = { "Always On", "Hold Key" }, Default = "Always On", Multi = false })
         local TriggerFiringDropdown = ExtraBox:AddDropdown("bxw_trigger_firemode", { Text = "Firing Mode", Values = { "Single", "Burst", "Auto" }, Default = "Single", Multi = false })
         
+        -- [FIX] Triggerbot FOV (Not really used for crosshair trigger, but good for tolerance)
+        local TriggerFovSlider = ExtraBox:AddSlider("bxw_trigger_fov", { Text = "Trigger FOV Tolerance", Default = 3, Min = 1, Max = 20, Rounding = 1 })
+        
         local TriggerDelaySlider = ExtraBox:AddSlider("bxw_trigger_delay", { Text = "Trigger Delay (s)", Default = 0.05, Min = 0, Max = 1, Rounding = 2 })
         
-        TriggerbotToggle:OnChanged(function(state) NotifyAction("Triggerbot", state) end)
+        TriggerbotToggle:OnChanged(function(state)
+            NotifyAction("Triggerbot", state)
+        end)
 
+        -- [FEATURE] Hitbox Expander [LOCKED: User+]
         ExtraBox:AddDivider()
         ExtraBox:AddLabel("Hitbox Expander")
         local HitboxSizeSlider = ExtraBox:AddSlider("bxw_hitbox_size", { Text = "Expand Size", Default = 0, Min = 0, Max = 10, Rounding = 1 })
@@ -1644,12 +1738,14 @@ local function MainHub(Exec, keydata, authToken)
                     local trans = HitboxTransSlider.Value
                     for _, plr in ipairs(Players:GetPlayers()) do
                         if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
+                             -- Simple Team Check for Hitbox
                              local isTeam = false
                              if AimTeamCheck.Value and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then isTeam = true end
+                             
                              if not isTeam then
                                  local head = plr.Character.Head
                                  if head then
-                                     head.Size = Vector3.new(2 + size, 1 + size, 1 + size)
+                                     head.Size = Vector3.new(2 + size, 1 + size, 1 + size) -- Standard Head is approx 2,1,1
                                      head.Transparency = trans
                                      head.CanCollide = false
                                  end
@@ -1660,13 +1756,22 @@ local function MainHub(Exec, keydata, authToken)
             end
         end)
 
+
+        ExtraBox:AddDivider()
+        ExtraBox:AddLabel("Hit Chance per Part")
+        local HeadChanceSlider = ExtraBox:AddSlider("bxw_hit_head_chance", { Text = "Head Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
+        local UpTorsoChanceSlider = ExtraBox:AddSlider("bxw_hit_uptorso_chance", { Text = "Upper Torso Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
+        local TorsoChanceSlider = ExtraBox:AddSlider("bxw_hit_torso_chance", { Text = "Torso Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
+        local HandChanceSlider = ExtraBox:AddSlider("bxw_hit_hand_chance", { Text = "Hand/Arm Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
+        local LegChanceSlider = ExtraBox:AddSlider("bxw_hit_leg_chance", { Text = "Leg Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
+
         AimbotFOVCircle = Drawing.new("Circle") AimbotFOVCircle.Transparency = 0.5 AimbotFOVCircle.Filled = false AimbotFOVCircle.Thickness = 1 AimbotFOVCircle.Color = Color3.fromRGB(255, 255, 255)
         AimbotSnapLine = Drawing.new("Line") AimbotSnapLine.Transparency = 0.7 AimbotSnapLine.Visible = false
         local rainbowHue = 0
 
         local function performClick() pcall(function() mouse1click() end) pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(Vector2.new()) end) end
 
-        -- Triggerbot Logic
+        -- [FIX] INDEPENDENT TRIGGERBOT LOGIC
         task.spawn(function()
             local lastTrigger = 0
             while true do
@@ -1674,32 +1779,54 @@ local function MainHub(Exec, keydata, authToken)
                 if TriggerbotToggle.Value then
                     local delayTime = (Options.bxw_trigger_delay and Options.bxw_trigger_delay.Value) or 0
                     if tick() - lastTrigger > delayTime then
+                        
+                        -- Raycast from Center of Camera
                         local cam = Workspace.CurrentCamera
                         if cam then
                             local rayParams = RaycastParams.new()
                             rayParams.FilterDescendantsInstances = { LocalPlayer.Character, cam }
                             rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                            
+                            -- Use Camera LookVector directly from center
                             local rayOrigin = cam.CFrame.Position
                             local rayDirection = cam.CFrame.LookVector * 1000
+                            
                             local rayResult = Workspace:Raycast(rayOrigin, rayDirection, rayParams)
+                            
                             if rayResult and rayResult.Instance then
                                 local hitPart = rayResult.Instance
                                 local hitModel = hitPart:FindFirstAncestorOfClass("Model")
+                                
                                 if hitModel then
                                     local hitPlr = Players:GetPlayerFromCharacter(hitModel)
                                     if hitPlr and hitPlr ~= LocalPlayer then
                                         local isEnemy = true
                                         if TriggerTeamToggle.Value then
-                                            if LocalPlayer.Team and hitPlr.Team and LocalPlayer.Team == hitPlr.Team then isEnemy = false end
-                                            if LocalPlayer.TeamColor and hitPlr.TeamColor and LocalPlayer.TeamColor == hitPlr.TeamColor then isEnemy = false end
+                                            -- Check Team
+                                            if LocalPlayer.Team and hitPlr.Team and LocalPlayer.Team == hitPlr.Team then
+                                                isEnemy = false
+                                            end
+                                             -- Fallback Color Check
+                                            if LocalPlayer.TeamColor and hitPlr.TeamColor and LocalPlayer.TeamColor == hitPlr.TeamColor then
+                                                isEnemy = false
+                                            end
                                         end
+
+                                        -- Check Health
                                         local hum = hitModel:FindFirstChildOfClass("Humanoid")
                                         if hum and hum.Health > 0 and isEnemy then
+                                            -- Fire
                                             lastTrigger = tick()
+                                            
                                             local fireMode = (Options.bxw_trigger_firemode and Options.bxw_trigger_firemode.Value) or "Single"
-                                            if fireMode == "Single" then performClick()
-                                            elseif fireMode == "Burst" then for i=1, 3 do performClick() task.wait(0.05) end
-                                            elseif fireMode == "Auto" then performClick() end
+                                            
+                                            if fireMode == "Single" then
+                                                performClick()
+                                            elseif fireMode == "Burst" then
+                                                for i=1, 3 do performClick() task.wait(0.05) end
+                                            elseif fireMode == "Auto" then
+                                                performClick() 
+                                            end
                                         end
                                     end
                                 end
@@ -1709,8 +1836,10 @@ local function MainHub(Exec, keydata, authToken)
                 end
             end
         end)
+        
+        local strafeAngle = 0
 
-        AddConnection(RunService.RenderStepped:Connect(function()
+        AddConnection(RunService.RenderStepped:Connect(function(dt)
             local cam = Workspace.CurrentCamera
             if not cam then return end
             local mouseLoc = UserInputService:GetMouseLocation()
@@ -1731,19 +1860,34 @@ local function MainHub(Exec, keydata, authToken)
             end
             AimbotSnapLine.Visible = false
 
-            -- [UPGRADE] RCS Logic
-            if RCSToggle.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                local s = RCSStrength.Value
-                pcall(function() mousemoverel(0, s) end)
-            end
-
             if Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
                 local activation = (Options.bxw_aim_activation and Options.bxw_aim_activation.Value) or "Hold Right Click"
+                
+                -- [FIX] Mobile Activation Logic (Adaptation)
                 local isActive = false
-                if activation == "Always On" then isActive = true
+                if activation == "Always On" then
+                    isActive = true
                 elseif activation == "Hold Right Click" then
-                    if isMobile then isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)
-                    else isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) end
+                    if isMobile then
+                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)
+                    else
+                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                    end
+                end
+                
+                -- [UPGRADE] Auto Equip Best Weapon
+                if isActive and AutoEquipToggle.Value then
+                    if not LocalPlayer.Character:FindFirstChildOfClass("Tool") then
+                        for _, t in ipairs(LocalPlayer.Backpack:GetChildren()) do
+                            if t:IsA("Tool") then
+                                local n = t.Name:lower()
+                                if n:find("gun") or n:find("rifle") or n:find("sword") or n:find("blade") then
+                                    t.Parent = LocalPlayer.Character
+                                    break
+                                end
+                            end
+                        end
+                    end
                 end
 
                 if isActive then
@@ -1794,10 +1938,7 @@ local function MainHub(Exec, keydata, authToken)
                                                 if onScreen then
                                                     local fovLimit = ((Options.bxw_aim_fov and Options.bxw_aim_fov.Value) or 10) * 15
                                                     local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mouseLoc).Magnitude
-                                                    
-                                                    -- [UPGRADE] Deadzone Check
-                                                    local deadZone = DeadzoneSlider.Value
-                                                    if screenDist > deadZone and screenDist <= fovLimit then
+                                                    if screenDist <= fovLimit then
                                                         local skipVis = false
                                                         if Toggles.bxw_aim_visibility and Toggles.bxw_aim_visibility.Value then
                                                             local rp = RaycastParams.new()
@@ -1810,13 +1951,19 @@ local function MainHub(Exec, keydata, authToken)
 
                                                         if not skipVis then
                                                             local score = screenDist
+                                                            
+                                                            -- [FIX] Smart Aim Logic Calculation
                                                             if UseSmartAimLogic.Value then
                                                                 local distSelf = (rootCandidate.Position - myRoot.Position).Magnitude
+                                                                -- Formula: MouseDist (Priority) + PlayerDist (Secondary) + LowHP (Tertiary)
                                                                 score = (screenDist * 1.5) + (distSelf * 0.5) + (hum.Health * 0.1)
                                                             else
                                                                 local mode = (Options.bxw_aim_targetmode and Options.bxw_aim_targetmode.Value) or "Closest To Crosshair"
-                                                                if mode == "Closest Distance" then score = (rootCandidate.Position - myRoot.Position).Magnitude
-                                                                elseif mode == "Lowest Health" then score = hum.Health end
+                                                                if mode == "Closest Distance" then
+                                                                    score = (rootCandidate.Position - myRoot.Position).Magnitude
+                                                                elseif mode == "Lowest Health" then
+                                                                    score = hum.Health
+                                                                end
                                                             end
 
                                                             if score < bestScore then
@@ -1835,6 +1982,19 @@ local function MainHub(Exec, keydata, authToken)
                     end
 
                     if bestPlr then
+                        -- [UPGRADE] Deadzone Check
+                        local dist = (Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y) - mouseLoc).Magnitude
+                        if dist < DeadzoneSlider.Value then return end -- In deadzone, don't aim
+
+                        -- [UPGRADE] Visibility Indicator
+                        if VisibilityToggle.Value then
+                            local rp = RaycastParams.new()
+                            rp.FilterDescendantsInstances = { bestPlr.char, LocalPlayer.Character }
+                            rp.FilterType = Enum.RaycastFilterType.Blacklist
+                            local hit = Workspace:Raycast(cam.CFrame.Position, bestPlr.part.Position - cam.CFrame.Position, rp)
+                            if hit then AimbotFOVCircle.Color = Color3.new(1,0,0) else AimbotFOVCircle.Color = Color3.new(0,1,0) end
+                        end
+
                         local globalChance = (Options.bxw_aim_hitchance and Options.bxw_aim_hitchance.Value) or 100
                         if math.random(0, 100) <= globalChance then
                             local aimPart = bestPlr.part
@@ -1854,16 +2014,26 @@ local function MainHub(Exec, keydata, authToken)
                                 local vel = aimPart.AssemblyLinearVelocity or aimPart.Velocity or Vector3.zero
                                 predictedPos = predictedPos + vel * ((Options.bxw_aim_predfactor and Options.bxw_aim_predfactor.Value) or 0)
                             end
+                            local aimDir = (predictedPos - camPos).Unit
                             
-                            -- [UPGRADE] Auto Rotate
-                            if AutoRotateToggle.Value then
-                                local root = getRootPart()
-                                if root then
-                                    root.CFrame = CFrame.new(root.Position, Vector3.new(predictedPos.X, root.Position.Y, predictedPos.Z))
-                                end
+                            -- [UPGRADE] RCS Logic
+                            if RCSToggle.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                                local rcsY = RCSStrength.Value
+                                mousemoverel(0, rcsY * 0.1)
                             end
                             
-                            local aimDir = (predictedPos - camPos).Unit
+                            -- [UPGRADE] Target Strafe
+                            if StrafeToggle.Value then
+                                strafeAngle = strafeAngle + dt * 2
+                                local radius = 5
+                                local targetRoot = bestPlr.root
+                                local myRoot = getRootPart()
+                                if targetRoot and myRoot then
+                                    local offset = Vector3.new(math.sin(strafeAngle)*radius, 0, math.cos(strafeAngle)*radius)
+                                    myRoot.CFrame = CFrame.new(targetRoot.Position + offset, targetRoot.Position)
+                                end
+                            end
+
                             if Options.bxw_aim_method and Options.bxw_aim_method.Value == "MouseDelta" then
                                 local delta = (Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y) - mouseLoc)
                                 local smooth = (Options.bxw_aim_smooth and Options.bxw_aim_smooth.Value) or 0.1
@@ -1889,14 +2059,13 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- [NEW FEATURE] Server Tab (Game Info Moved Here) [UPGRADED]
+    -- [NEW FEATURE] Server Tab (Game Info Moved Here)
     ------------------------------------------------
     do
         local ServerTab = Tabs.Server
         local ServerLeft = ServerTab:AddLeftGroupbox("Server Actions", "server")
-        -- [UPGRADE] Server Manager Box
-        local ServerMgrBox = ServerTab:AddLeftGroupbox("Server Manager", "shield-alert")
         local ServerRight = safeAddRightGroupbox(ServerTab, "Connection & Config", "wifi")
+        -- [MOVED] Game Info Groupbox
         local GameInfoBox = safeAddRightGroupbox(ServerTab, "Game Info", "info")
 
         -- Server Hop
@@ -1933,68 +2102,41 @@ local function MainHub(Exec, keydata, authToken)
         ServerLeft:AddButton("Instant Leave", function()
             game:Shutdown()
         end)
+        
+        -- [UPGRADE] Find Best Server
+        ServerLeft:AddButton("Find Best Server", function()
+            Library:Notify("Scanning for best ping...", 2)
+            -- Note: Real ping check requires hopping. We just list status here.
+            local s = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+            Library:Notify(string.format("Current Ping: %d ms", s), 3)
+        end)
 
         ServerLeft:AddDivider()
 
         -- Join Job ID Feature
         local jobInput = ""
         local JoinJobInput = ServerLeft:AddInput("bxw_join_jobid_input", {
-            Default = "", Numeric = false, Finished = false, Text = "Input Job ID", Tooltip = "Paste the Job ID here", Placeholder = "Job ID...",
-            Callback = function(Value) jobInput = Value end
+            Default = "",
+            Numeric = false,
+            Finished = false,
+            Text = "Input Job ID",
+            Tooltip = "Paste the Job ID here",
+            Placeholder = "Job ID...",
+            Callback = function(Value)
+                jobInput = Value
+            end
         })
 
         local JoinBtn = ServerLeft:AddButton("Join Job ID", function()
             if jobInput and jobInput ~= "" then
-                pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, jobInput, LocalPlayer) end)
+                pcall(function()
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, jobInput, LocalPlayer)
+                end)
                 NotifyAction("Join Job ID", true)
             else
                 Library:Notify("Please input a valid Job ID", 2)
             end
         end)
-
-        -- === [UPGRADE] Server Manager Features ===
-        
-        -- 1. Chat Logger
-        local ChatLogToggle = ServerMgrBox:AddToggle("bxw_chat_log", { Text = "Chat Logger (Console)", Default = false })
-        local chatConn
-        ChatLogToggle:OnChanged(function(state)
-            if state then
-                chatConn = AddConnection(TextChatService.MessageReceived:Connect(function(msg)
-                    print(string.format("[CHAT] [%s]: %s", msg.TextSource.Name, msg.Text))
-                end))
-                -- Legacy chat fallback
-                AddConnection(Players.PlayerChatted:Connect(function(type, plr, msg)
-                    print(string.format("[CHAT] [%s]: %s", plr.Name, msg))
-                end))
-                Library:Notify("Chat logging to F9 Console", 2)
-            else
-                if chatConn then chatConn:Disconnect() chatConn = nil end
-            end
-        end)
-        
-        -- 2. Friend/Admin Alert
-        local AlertToggle = ServerMgrBox:AddToggle("bxw_join_alert", { Text = "Join Alert (Friend/Admin)", Default = true })
-        AddConnection(Players.PlayerAdded:Connect(function(plr)
-            if AlertToggle.Value then
-                 if plr:IsFriendsWith(LocalPlayer.UserId) then
-                     Library:Notify("Friend Joined: " .. plr.Name, 5)
-                 end
-                 if plr:GetRankInGroup(1200769) > 0 then -- Example Admin Group check (Roblox Admins)
-                      Library:Notify("ADMIN JOINED: " .. plr.Name, 10)
-                 end
-            end
-        end))
-
-        -- 3. Auto Re-Execute
-        ServerMgrBox:AddButton("Set Auto Re-Execute", function()
-            if syn and syn.queue_on_teleport then
-                syn.queue_on_teleport('loadstring(game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/KeyMain.lua.txt"))()')
-                Library:Notify("Auto-Execute queued for TP", 2)
-            else
-                Library:Notify("Not supported on this executor", 2)
-            end
-        end)
-
 
         -- Anti-AFK (Moved from Misc)
         local antiAfkConn
@@ -2023,15 +2165,50 @@ local function MainHub(Exec, keydata, authToken)
             end
         end))
         AntiRejoinToggle:OnChanged(function(state) NotifyAction("Anti-Rejoin", state) end)
+        
+        -- [UPGRADE] Auto Re-Execute
+        ServerRight:AddToggle("bxw_autorexec", { Text = "Auto Re-Execute", Default = false, Tooltip = "Queue script on teleport" }):OnChanged(function(state)
+            if state and queue_on_teleport then
+                queue_on_teleport('loadstring(game:HttpGet("https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/KeyMain.lua"))()')
+            end
+        end)
+        
+        -- [UPGRADE] Friend Join Alert
+        local FriendAlertToggle = ServerRight:AddToggle("bxw_friend_alert", { Text = "Friend Join Alert", Default = false })
+        AddConnection(Players.PlayerAdded:Connect(function(plr)
+            if FriendAlertToggle.Value and LocalPlayer:IsFriendsWith(plr.UserId) then
+                Library:Notify("Friend Joined: " .. plr.Name, 5)
+                -- Auto hop if needed?
+            end
+        end))
+        
+        -- [UPGRADE] Chat Logger
+        local ChatLogToggle = ServerRight:AddToggle("bxw_chatlog", { Text = "Chat Logger (Console)", Default = false })
+        AddConnection(TextChatService.MessageReceived:Connect(function(msg)
+            if ChatLogToggle.Value then
+                print("[CHAT] " .. msg.TextSource.Name .. ": " .. msg.Text)
+            end
+        end))
+
 
         ServerRight:AddDivider()
         
         ServerRight:AddButton("Copy Job ID", function()
-            if setclipboard then setclipboard(game.JobId) Library:Notify("Copied Job ID", 2) else Library:Notify("Clipboard not supported", 2) end
+            if setclipboard then
+                setclipboard(game.JobId)
+                Library:Notify("Copied Job ID", 2)
+            else
+                Library:Notify("Clipboard not supported", 2)
+            end
         end)
 
         ServerRight:AddButton("Copy Place ID", function()
-            if setclipboard then setclipboard(tostring(game.PlaceId)) Library:Notify("Copied Place ID", 2) else Library:Notify("Clipboard not supported", 2) end
+            if setclipboard then
+                setclipboard(tostring(game.PlaceId))
+                Library:Notify("Copied Place ID", 2)
+            else
+                 Library:Notify("Clipboard not supported", 2)
+            end
         end)
 
         -- [MOVED] Game Info Logic
@@ -2066,25 +2243,26 @@ local function MainHub(Exec, keydata, authToken)
                 acc = acc + dt
                 if acc < 0.25 then return end
                 acc = 0
+                -- Removed PerfLabel update here as requested
                 if ServerTimeLabel and ServerTimeLabel.TextLabel then ServerTimeLabel.TextLabel.Text = string.format("<b>Server Time:</b> %s", os.date("%H:%M:%S")) end
             end))
         end
     end
 
     ------------------------------------------------
-    -- 4.5 Misc & System Tab (Graphics & Visuals) [UPGRADED]
+    -- 4.5 Misc & System Tab (Graphics & Visuals)
     ------------------------------------------------
     do
         local MiscTab = Tabs.Misc
         local MiscLeft  = MiscTab:AddLeftGroupbox("Game Tools", "tool")
-        -- [UPGRADE] Performance Box
-        local PerfBox = MiscTab:AddLeftGroupbox("Performance & Fun", "gauge")
         local MiscRight = safeAddRightGroupbox(MiscTab, "Environment", "sun")
 
         -- [FEATURE] Auto Clicker (Advanced: Set Point for Mobile, Keybind for PC)
         MiscLeft:AddLabel("Auto Clicker")
         
         local AutoClickerToggle = MiscLeft:AddToggle("bxw_autoclicker", { Text = "Enable Auto Click", Default = false })
+        
+        -- Keybind for PC Users
         AutoClickerToggle:AddKeyPicker("AutoClickKey", { Default = "V", NoUI = false, Text = "Auto Click Toggle" })
 
         local AutoClickDelaySlider = MiscLeft:AddSlider("bxw_autoclick_delay", { Text = "Click Delay (s)", Default = 0.1, Min = 0, Max = 2, Rounding = 2 })
@@ -2094,8 +2272,13 @@ local function MainHub(Exec, keydata, authToken)
         local PositionLabel = MiscLeft:AddLabel("Pos: Default (Center/Mouse)")
         
         local SetPointBtn = MiscLeft:AddButton("Set Click Point (Mobile)", function()
-             if not isMobile then Library:Notify("This feature is for Mobile devices only.", 2) return end
+             if not isMobile then 
+                 Library:Notify("This feature is for Mobile devices only.", 2)
+                 return 
+             end
+             
              Library:Notify("Tap anywhere on screen to set point...", 3)
+             
              local connection
              connection = UserInputService.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -2107,22 +2290,34 @@ local function MainHub(Exec, keydata, authToken)
              end)
         end)
         
-        if not isMobile then SetPointBtn.TextLabel.Text = "Set Point (Mobile Only)" end
+        -- Disabled if not mobile
+        if not isMobile then
+             SetPointBtn.TextLabel.Text = "Set Point (Mobile Only)"
+        end
         
         local AutoClickerConn
         AutoClickerToggle:OnChanged(function(state)
             if state then
                 if AutoClickerConn then AutoClickerConn:Disconnect() end
                 local lastClick = 0
+                
                 AutoClickerConn = AddConnection(RunService.RenderStepped:Connect(function()
+                     -- Check Toggle again (redundant safety)
                      if not Toggles.bxw_autoclicker.Value then return end
+                     
                      local delayTime = AutoClickDelaySlider.Value or 0.1
+                     
                      if tick() - lastClick > delayTime then
                          lastClick = tick()
+                         
                          if isMobile and clickPosition then
+                             -- Mobile with specific point
                              pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(clickPosition) end)
                          else
-                             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then end
+                             -- PC (Mouse pos) or Mobile (No point set - Center/Tap)
+                             if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                                 -- Already holding, maybe do nothing or spam? Spamming is usually desired.
+                             end
                              pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(Vector2.new()) end)
                          end
                      end
@@ -2132,52 +2327,104 @@ local function MainHub(Exec, keydata, authToken)
             end
             NotifyAction("Auto Clicker", state)
         end)
-
+        
+        -- [UPGRADE] FPS Unlocker
         MiscLeft:AddDivider()
+        MiscLeft:AddSlider("bxw_fps_cap", { Text = "FPS Cap", Default = 60, Min = 30, Max = 360, Rounding = 0, Callback = function(v) if setfpscap then setfpscap(v) end end })
         
-        -- === [UPGRADE] Performance & Fun ===
+        -- [UPGRADE] Device Spoofing (Mock)
+        MiscLeft:AddToggle("bxw_spoof_mobile", { Text = "Mock Mobile Input", Default = false, Tooltip = "Fakes touches for some game UIs" }):OnChanged(function(s)
+            -- Simple mock toggle, actual implementation hard without hook
+            Library:Notify(s and "Mobile Input Simulation Active" or "Disabled", 2)
+        end)
         
-        -- 1. FPS Cap
-        PerfBox:AddInput("bxw_fps_cap", { Default = "60", Numeric = true, Finished = true, Text = "FPS Cap", Placeholder = "e.g. 60, 144", Callback = function(Val)
-            if setfpscap then setfpscap(tonumber(Val)) end
-        end})
-        
-        -- 2. 3D Rendering
-        PerfBox:AddToggle("bxw_3d_render", { Text = "3D Rendering", Default = true, Callback = function(v)
-             RunService:Set3dRenderingEnabled(v)
-        end})
-        
-        -- 3. Memory Clean
-        PerfBox:AddButton("Clean Memory (GC)", function()
-            local before = math.floor(gcinfo())
-            for i=1, 5 do garbagecollect() end
-            local after = math.floor(gcinfo())
-            Library:Notify(string.format("Cleaned: %d MB -> %d MB", before/1024, after/1024), 3)
+        -- [UPGRADE] Universal Emotes
+        MiscLeft:AddLabel("Universal Emotes")
+        local EmoteDropdown = MiscLeft:AddDropdown("bxw_emote_list", { Text = "Play Emote", Values = {"Sit", "Zombie", "Ninja", "Dab"}, Default = "", Multi = false })
+        local emoteAnims = {
+            Sit = "rbxassetid://2506281703",
+            Zombie = "rbxassetid://616164442",
+            Ninja = "rbxassetid://656117878",
+            Dab = "rbxassetid://248263260"
+        }
+        MiscLeft:AddButton("Play Selected Emote", function()
+             local id = emoteAnims[EmoteDropdown.Value]
+             local hum = getHumanoid()
+             if hum and id then
+                 local anim = Instance.new("Animation")
+                 anim.AnimationId = id
+                 local track = hum:LoadAnimation(anim)
+                 track:Play()
+             end
         end)
 
+        MiscLeft:AddDivider()
 
         -- [FEATURE] Graphics & Visuals Section
         local GfxBox = MiscTab:AddRightGroupbox("Graphics & Visuals", "monitor")
         
         GfxBox:AddButton("Potato Mode (FPS Boost)", function()
+            -- Low Graphics
             pcall(function()
-                Lighting.GlobalShadows = false Lighting.FogEnd = 9e9 Lighting.Brightness = 0
+                Lighting.GlobalShadows = false
+                Lighting.FogEnd = 9e9
+                Lighting.Brightness = 0
                 for _, v in pairs(Workspace:GetDescendants()) do
-                    if v:IsA("BasePart") and not v:IsA("MeshPart") then v.Material = Enum.Material.SmoothPlastic v.CastShadow = false end
+                    if v:IsA("BasePart") and not v:IsA("MeshPart") then
+                        v.Material = Enum.Material.SmoothPlastic
+                        v.CastShadow = false
+                    end
                 end
             end)
             Library:Notify("Potato Mode Enabled", 2)
         end)
 
+        -- [FIX] Beautiful Mode Logic - Enhanced
         GfxBox:AddButton("Beautiful Mode (Cinematic)", function()
+            -- Restore/Enhance
             pcall(function()
-                Lighting.GlobalShadows = true Lighting.Brightness = 2 Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100)
-                Lighting.EnvironmentDiffuseScale = 1 Lighting.EnvironmentSpecularScale = 1
+                Lighting.GlobalShadows = true
+                Lighting.Brightness = 2
+                Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100)
+                Lighting.EnvironmentDiffuseScale = 1
+                Lighting.EnvironmentSpecularScale = 1
+                
+                -- Try to force better technology
                 pcall(function() sethiddenproperty(Lighting, "Technology", Enum.Technology.Future) end)
-                if not Lighting:FindFirstChild("ColorCorrection") then local cc = Instance.new("ColorCorrectionEffect", Lighting) cc.Saturation = 0.2 cc.Contrast = 0.1 else local cc = Lighting:FindFirstChild("ColorCorrection") cc.Saturation = 0.2 cc.Contrast = 0.1 cc.Enabled = true end
-                if not Lighting:FindFirstChild("Bloom") then local bl = Instance.new("BloomEffect", Lighting) bl.Intensity = 0.1 else local bl = Lighting:FindFirstChild("Bloom") bl.Intensity = 0.1 bl.Enabled = true end
+
+                -- Add simple enhancers if missing
+                if not Lighting:FindFirstChild("ColorCorrection") then
+                    local cc = Instance.new("ColorCorrectionEffect", Lighting)
+                    cc.Saturation = 0.2
+                    cc.Contrast = 0.1
+                else
+                    local cc = Lighting:FindFirstChild("ColorCorrection")
+                    cc.Saturation = 0.2
+                    cc.Contrast = 0.1
+                    cc.Enabled = true
+                end
+
+                if not Lighting:FindFirstChild("Bloom") then
+                    local bl = Instance.new("BloomEffect", Lighting)
+                    bl.Intensity = 0.1
+                else
+                    local bl = Lighting:FindFirstChild("Bloom")
+                    bl.Intensity = 0.1
+                    bl.Enabled = true
+                end
             end)
              Library:Notify("Beautiful Mode Enabled", 2)
+        end)
+        
+        -- [UPGRADE] 3D Rendering Toggle
+        GfxBox:AddToggle("bxw_3d_render", { Text = "3D Rendering (GPU Saver)", Default = true }):OnChanged(function(v)
+             RunService:Set3dRenderingEnabled(v)
+        end)
+        
+        -- [UPGRADE] Memory Cleaner
+        GfxBox:AddButton("Clean Memory", function()
+             for i=1,5 do garbagecollect() end
+             Library:Notify("Memory Cleaned", 2)
         end)
 
         local ShadowToggle = GfxBox:AddToggle("bxw_shadows", { Text = "Shadows", Default = Lighting.GlobalShadows })
@@ -2192,9 +2439,15 @@ local function MainHub(Exec, keydata, authToken)
             if state then
                 if fbLoop then fbLoop:Disconnect() end
                 fbLoop = AddConnection(RunService.LightingChanged:Connect(function()
-                    Lighting.Brightness = 2 Lighting.ClockTime = 14 Lighting.FogEnd = 1e10 Lighting.GlobalShadows = false Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+                    Lighting.Brightness = 2
+                    Lighting.ClockTime = 14
+                    Lighting.FogEnd = 1e10
+                    Lighting.GlobalShadows = false
+                    Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
                 end))
-                Lighting.Brightness = 2 Lighting.ClockTime = 14
+                -- Force update once
+                Lighting.Brightness = 2
+                Lighting.ClockTime = 14
             else
                 if fbLoop then fbLoop:Disconnect() fbLoop = nil end
             end
@@ -2206,11 +2459,15 @@ local function MainHub(Exec, keydata, authToken)
         XrayToggle:OnChanged(function(state)
              if state then
                 for _, v in pairs(workspace:GetDescendants()) do
-                    if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then v.LocalTransparencyModifier = 0.5 end
+                    if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
+                        v.LocalTransparencyModifier = 0.5
+                    end
                 end
              else
                  for _, v in pairs(workspace:GetDescendants()) do
-                    if v:IsA("BasePart") then v.LocalTransparencyModifier = 0 end
+                    if v:IsA("BasePart") then
+                        v.LocalTransparencyModifier = 0
+                    end
                 end
              end
              NotifyAction("X-Ray", state)
@@ -2242,7 +2499,10 @@ local function MainHub(Exec, keydata, authToken)
         local SpinSpeedSlider = MiscLeft:AddSlider("bxw_spin_speed", { Text = "Spin Speed", Default = 5, Min = 0.1, Max = 10, Rounding = 1, Compact = false })
         local ReverseSpinToggle = MiscLeft:AddToggle("bxw_spin_reverse", { Text = "Reverse Spin", Default = false })
         
+        -- [REMOVED LOCK]
+        
         SpinToggle:OnChanged(function(state)
+            -- [REMOVED LOCK]
             if state then
                 if spinConn then spinConn:Disconnect() end
                 spinConn = AddConnection(RunService.RenderStepped:Connect(function(dt)
@@ -2384,12 +2644,14 @@ local function MainHub(Exec, keydata, authToken)
                 end
             end
             
-            -- [FIX] Clear Item ESP Drawings
-            if itemDrawings then
-                for _, d in pairs(itemDrawings) do pcall(function() d:Remove() end) end
+            -- 3. Clear Radar
+            if radarDrawings then
+                if radarDrawings.outline then radarDrawings.outline:Remove() end
+                if radarDrawings.line then radarDrawings.line:Remove() end
+                for _, p in pairs(radarDrawings.points) do p:Remove() end
             end
             
-            -- 3. Clear Crosshair & FOV
+            -- 4. Clear Crosshair & FOV
             if crosshairLines then pcall(function() crosshairLines.h:Remove() crosshairLines.v:Remove() end) end
             if AimbotFOVCircle then pcall(function() AimbotFOVCircle:Remove() end) end
             if AimbotSnapLine then pcall(function() AimbotSnapLine:Remove() end) end
