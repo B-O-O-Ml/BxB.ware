@@ -952,24 +952,59 @@ local function MainHub(Exec, keydata, authToken)
     end)
 
     UtilBox:AddDivider()
+    -- [FIXED] Spectate Feature
     local SpectateDropdown = UtilBox:AddDropdown("bxw_spectate_target", { Text = "Spectate Target", Values = playerNames, Default = "", Multi = false, AllowNull = true })
+    
+    -- Update list constantly for dropdown
+    task.spawn(function()
+        while true do
+            task.wait(5)
+            pcall(function()
+                refreshPlayerList()
+                SpectateDropdown:SetValues(playerNames)
+            end)
+        end
+    end)
+
     local SpectateToggle = UtilBox:AddToggle("bxw_spectate_toggle", { Text = "Spectate Player", Default = false })
+    local spectateLoop
     SpectateToggle:OnChanged(function(state)
         local cam = Workspace.CurrentCamera
         if not cam then return end
+        
         if state then
             local name = SpectateDropdown.Value
-            if not name or name == "" then Library:Notify("Select player to spectate", 2) SpectateToggle:SetValue(false) return end
+            if not name or name == "" then 
+                Library:Notify("Select player to spectate", 2) 
+                SpectateToggle:SetValue(false) 
+                return 
+            end
+            
             local target = Players:FindFirstChild(name)
-            if not target or not target.Character then Library:Notify("Target not found", 2) SpectateToggle:SetValue(false) return end
-            local hum = target.Character:FindFirstChildOfClass("Humanoid")
-            if not hum then Library:Notify("Target humanoid not found", 2) SpectateToggle:SetValue(false) return end
-            cam.CameraSubject = hum
+            if not target then
+                Library:Notify("Target player not found", 2)
+                SpectateToggle:SetValue(false)
+                return
+            end
+
+            -- Loop to ensure camera stays on target if they respawn
+            spectateLoop = AddConnection(RunService.RenderStepped:Connect(function()
+                if target and target.Character then
+                    local hum = target.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then
+                        cam.CameraSubject = hum
+                    end
+                end
+            end))
+            NotifyAction("Spectate", true)
         else
+            if spectateLoop then spectateLoop:Disconnect() spectateLoop = nil end
             local hum = getHumanoid()
-            if hum then cam.CameraSubject = hum end
+            if hum then 
+                cam.CameraSubject = hum 
+            end
+            NotifyAction("Spectate", false)
         end
-        NotifyAction("Spectate", state)
     end)
 
     -- Sit Button
@@ -1096,6 +1131,10 @@ local function MainHub(Exec, keydata, authToken)
             :AddColorPicker("bxw_esp_arrow_color", { Default = Color3.fromRGB(255, 100, 0), Title = "Arrow Color" })
 
         local TargetIndToggle = ESPFeatureBox:AddToggle("bxw_esp_targetind", { Text = "Look/Aim Indicator", Default = false, Tooltip = "Warns when enemy looks at you" })
+        
+        -- [NEW FEATURE] View Direction Line
+        local ViewDirToggle = ESPFeatureBox:AddToggle("bxw_esp_viewdir", { Text = "View Direction", Default = false, Tooltip = "Line showing where enemy is looking" })
+             :AddColorPicker("bxw_esp_viewdir_color", { Default = Color3.fromRGB(255, 255, 0), Title = "View Dir Color" })
 
         ESPEnabledToggle:OnChanged(function(state) 
             NotifyAction("Global ESP", state) 
@@ -1115,8 +1154,6 @@ local function MainHub(Exec, keydata, authToken)
                 radarDrawings.points = {}
             end
         end)
-        
-        -- [REMOVED] Object Dumper
 
         local function getPlayerNames()
             local names = {}
@@ -1140,7 +1177,7 @@ local function MainHub(Exec, keydata, authToken)
         local ChamsTransSlider = ESPSettingBox:AddSlider("bxw_esp_chams_trans", { Text = "Chams Transparency", Default = 0.5, Min = 0, Max = 1, Rounding = 2, Compact = false })
         local ChamsVisibleToggle = ESPSettingBox:AddToggle("bxw_esp_visibleonly", { Text = "Visible Only", Default = false })
         
-        local DistColorToggle = ESPSettingBox:AddToggle("bxw_esp_distcolor", { Text = "Color by Distance", Default = false, Tooltip = "Green=Far, Red=Close" })
+        local DistColorToggle = ESPSettingBox:AddToggle("bxw_esp_distcolor", { Text = "Color by Distance", Default = false, Tooltip = "Red=Close, Green=Far" })
 
         local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 0, Min = 0, Max = 250, Rounding = 0, Compact = false })
 
@@ -1172,6 +1209,7 @@ local function MainHub(Exec, keydata, authToken)
                 if data.HeadDot then pcall(function() data.HeadDot:Remove() end) data.HeadDot = nil end
                 if data.Info then pcall(function() data.Info:Remove() end) data.Info = nil end
                 if data.Arrow then pcall(function() data.Arrow:Remove() end) data.Arrow = nil end
+                if data.ViewDir then pcall(function() data.ViewDir:Remove() end) data.ViewDir = nil end
                 espDrawings[plr] = nil
             end
         end
@@ -1342,26 +1380,39 @@ local function MainHub(Exec, keydata, authToken)
                                 boxCFrame * CFrame.new(2, -3, 0),
                             }
                             
+                            -- [FIXED] Wall Check Logic
                             local isVisible = true
                             if WallToggle.Value then
                                 local rayDir = (root.Position - camPos)
                                 local rayParams = RaycastParams.new()
+                                -- Exclude both Self and Target Character to prevent self-collision or accessory blocking
                                 rayParams.FilterDescendantsInstances = { char, LocalPlayer.Character }
                                 rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                                rayParams.IgnoreWater = true
                                 local rayResult = Workspace:Raycast(camPos, rayDir, rayParams)
-                                if rayResult then isVisible = false end
+                                
+                                if rayResult then
+                                    isVisible = false 
+                                end
                             end
 
+                            -- [FIXED] Color Logic
                             local function getVisColor(optionColor)
+                                -- 1. Wall Check Priority (Hidden = Red/Fixed Color)
+                                if WallToggle.Value and not isVisible then
+                                    return Color3.fromRGB(255, 0, 0)
+                                end
+
+                                -- 2. Distance Color (Gradient: Red -> Green)
                                 if DistColorToggle.Value then
                                     local dist = (root.Position - camPos).Magnitude
                                     local maxDist = 300
+                                    -- Invert Logic: Close(0) = Red(0), Far(300) = Green(0.33)
                                     local t = math.clamp(dist / maxDist, 0, 1)
-                                    return Color3.fromHSV((1-t)*0.33, 1, 1) -- Red (Close) to Green (Far)
+                                    return Color3.fromHSV(t * 0.33, 1, 1) 
                                 end
-                                if WallToggle.Value and not isVisible then
-                                    return Color3.fromRGB(255, 0, 0) -- Red if hidden
-                                end
+
+                                -- 3. Default Config Color
                                 return optionColor or Color3.fromRGB(255, 255, 255)
                             end
 
@@ -1436,6 +1487,7 @@ local function MainHub(Exec, keydata, authToken)
                                 if data.Tracer then data.Tracer.Visible = false end
                                 if data.HeadDot then data.HeadDot.Visible = false end
                                 if data.Info then data.Info.Visible = false end
+                                if data.ViewDir then data.ViewDir.Visible = false end
                             else
                                 local boxW, boxH = maxX - minX, maxY - minY
                                 
@@ -1445,7 +1497,13 @@ local function MainHub(Exec, keydata, authToken)
                                     local finalBoxCol = getVisColor(baseBoxCol)
 
                                     if BoxStyleDropdown.Value == "Box" then
-                                        if not data.Box then local sq = Drawing.new("Square") sq.Thickness = 1 sq.Filled = false sq.Transparency = 1 data.Box = sq end
+                                        if not data.Box then 
+                                            local sq = Drawing.new("Square") 
+                                            sq.Thickness = 1 
+                                            sq.Filled = false 
+                                            sq.Transparency = 1 
+                                            data.Box = sq 
+                                        end
                                         data.Box.Visible = true
                                         data.Box.Color = finalBoxCol
                                         data.Box.Position = Vector2.new(minX, minY)
@@ -1559,6 +1617,35 @@ local function MainHub(Exec, keydata, authToken)
                                     data.Info.Position = Vector2.new((minX + maxX) / 2, maxY + 16)
                                 else
                                     if data.Info then data.Info.Visible = false end
+                                end
+                                
+                                -- [NEW] View Direction (Head Line)
+                                if ViewDirToggle and ViewDirToggle.Value then
+                                     local baseViewCol = (Options.bxw_esp_viewdir_color and Options.bxw_esp_viewdir_color.Value) or Color3.fromRGB(255, 255, 0)
+                                     local head = char:FindFirstChild("Head")
+                                     if head then
+                                         if not data.ViewDir then data.ViewDir = Drawing.new("Line") data.ViewDir.Thickness = 1 data.ViewDir.Transparency = 1 end
+                                         
+                                         local lookVec = head.CFrame.LookVector
+                                         local startPos = head.Position
+                                         local endPos = startPos + (lookVec * 8) -- Length of line
+                                         
+                                         local startScr, vis1 = cam:WorldToViewportPoint(startPos)
+                                         local endScr, vis2 = cam:WorldToViewportPoint(endPos)
+                                         
+                                         if vis1 or vis2 then
+                                             data.ViewDir.Visible = true
+                                             data.ViewDir.Color = baseViewCol
+                                             data.ViewDir.From = Vector2.new(startScr.X, startScr.Y)
+                                             data.ViewDir.To = Vector2.new(endScr.X, endScr.Y)
+                                         else
+                                             data.ViewDir.Visible = false
+                                         end
+                                     else
+                                          if data.ViewDir then data.ViewDir.Visible = false end
+                                     end
+                                else
+                                     if data.ViewDir then data.ViewDir.Visible = false end
                                 end
 
                                 -- Skeleton
