@@ -205,8 +205,48 @@ local function safeRichLabel(groupbox, text)
         lbl.TextLabel.AutomaticSize = Enum.AutomaticSize.Y
         lbl.TextLabel.Size = UDim2.new(1, 0, 0, 0)
         lbl.TextLabel.TextYAlignment = Enum.TextYAlignment.Top
+        lbl.TextLabel.TextXAlignment = Enum.TextXAlignment.Left
     end
     return lbl
+end
+
+-- Helper Parsers for Updates Tab (Copied from KeyMain for independence)
+local function parseChangelogBody(body, HttpService)
+    if type(body) ~= "string" or body == "" then return "unknown", "No changelog data." end
+    local ok, decoded = pcall(function() return HttpService:JSONDecode(body) end)
+    if not ok or type(decoded) ~= "table" then return "online", body end
+    
+    local function esc(s) return tostring(s or ""):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;") end
+    local status = decoded.status or "online"
+    local lines = {}
+    local function add(s) table.insert(lines, s) end
+
+    if decoded.project then add(string.format("<b>%s Changelog</b>", esc(decoded.project))) end
+    if decoded.latest_version then add(string.format("Latest: <font color='#55ff55'>%s</font>", esc(decoded.latest_version))) end
+    
+    if type(decoded.entries) == "table" then
+        for _, entry in ipairs(decoded.entries) do
+            add("")
+            local verHeader = string.format("<b>v%s</b> <font color='#aaaaaa'>(%s)</font>", esc(entry.version), esc(entry.date))
+            add(verHeader)
+            if entry.title then add("<i>" .. esc(entry.title) .. "</i>") end
+            if type(entry.highlights) == "table" then for _, h in ipairs(entry.highlights) do add("• " .. esc(h)) end end
+            if type(entry.changes) == "table" then
+                local function addChangeGroup(label, color, items)
+                    if type(items) == "table" and #items > 0 then
+                        add(string.format("<font color='%s'>%s</font>", color, label))
+                        for _, item in ipairs(items) do add(" - " .. esc(item)) end
+                    end
+                end
+                addChangeGroup("[+] Added", "#55ff55", entry.changes.added)
+                addChangeGroup("[*] Changed", "#55aaff", entry.changes.changed)
+                addChangeGroup("[!] Fixed", "#ffcc66", entry.changes.fixed)
+                addChangeGroup("[-] Removed", "#ff5555", entry.changes.removed)
+            end
+            add("________________________")
+        end
+    end
+    return status, table.concat(lines, "\n")
 end
 
 --====================================================
@@ -367,6 +407,12 @@ local function MainHub(Exec, keydata, authToken)
             Icon        = "info",
             Description = "Key / Script / System info",
         }),
+        -- [NEW TAB] Updates
+        Updates = Window:AddTab({
+            Name        = "Updates",
+            Icon        = "rss",
+            Description = "Changelogs & News",
+        }),
 
         Player = Window:AddTab({
             Name        = "Player",
@@ -470,12 +516,10 @@ local function MainHub(Exec, keydata, authToken)
     safeRichLabel(DiagBox, string.format("Request/HttpGet: %s", getCheckColor(request or http_request or (syn and syn.request) or Exec.HttpGet)))
     safeRichLabel(DiagBox, string.format("Websocket: %s", getCheckColor(WebSocket or (syn and syn.websocket))))
 
-    -- [UPGRADE] Marquee Announcement
+    -- [UPGRADE] Marquee Announcement (Fixed)
     local NewsBox = safeAddRightGroupbox(InfoTab, "Announcements", "megaphone")
     local MarqueeLabel = safeRichLabel(NewsBox, "Loading Global News...")
     
-    -- [REMOVED Discord Webhook Checker]
-
     -- Real-time Stats Loop
     task.spawn(function()
         while true do
@@ -506,7 +550,7 @@ local function MainHub(Exec, keydata, authToken)
         end
     end)
     
-    -- Server Region Mockup (Roblox doesn't give precise region easily)
+    -- Server Region Mockup
     task.spawn(function()
         pcall(function()
             local region = game:GetService("LocalizationService").RobloxLocaleId
@@ -516,10 +560,47 @@ local function MainHub(Exec, keydata, authToken)
         end)
     end)
     
-    -- [FIXED] Announcement Fetcher
+    -- [FIXED] Announcement Fetcher & Updates Tab Logic
     task.spawn(function()
+         -- 1. Updates Tab Content
+         local UpdatesTab = Tabs.Updates
+         local ChangelogBox = UpdatesTab:AddLeftGroupbox("Latest Changes", "rss")
+         local ScriptInfoBox = UpdatesTab:AddRightGroupbox("Script Information", "file-text")
+         
+         local ChangeLogUrl = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json"
+         local ScriptInfoUrl = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json"
+         
+         -- Fetch Changelog
+         local okCL, bodyCL = pcall(function() return Exec.HttpGet(ChangeLogUrl) end)
+         if okCL then
+             local _, txt = parseChangelogBody(bodyCL, HttpService)
+             for line in string.gmatch(txt, "[^\r\n]+") do
+                 safeRichLabel(ChangelogBox, line)
+             end
+         else
+             safeRichLabel(ChangelogBox, "<font color='#ff5555'>Failed to fetch changelog</font>")
+         end
+         
+         -- Fetch Script Info (Reuse Logic simplified)
+         local okSI, bodySI = pcall(function() return Exec.HttpGet(ScriptInfoUrl) end)
+         if okSI and bodySI then
+            local decoded = HttpService:JSONDecode(bodySI)
+            if decoded then
+                safeRichLabel(ScriptInfoBox, "<b>Hub Name:</b> " .. tostring(decoded.hub_name))
+                safeRichLabel(ScriptInfoBox, "<b>Version:</b> " .. tostring(decoded.version))
+                safeRichLabel(ScriptInfoBox, "<b>Last Update:</b> " .. tostring(decoded.last_update))
+                if decoded.description then
+                    safeRichLabel(ScriptInfoBox, "<b>Description:</b>")
+                    safeRichLabel(ScriptInfoBox, tostring(decoded.description.long or decoded.description))
+                end
+            end
+         else
+             safeRichLabel(ScriptInfoBox, "<font color='#ff5555'>Failed to fetch script info</font>")
+         end
+
+         -- 2. Announcement (Info Tab) - Use announcement.json
          local url = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/announcement.json"
-         local ok, news = pcall(function() return game:HttpGet(url) end)
+         local ok, news = pcall(function() return Exec.HttpGet(url) end) -- Use Exec.HttpGet for safety
          
          if ok and news and news ~= "" then
              local okJson, decoded = pcall(function() return HttpService:JSONDecode(news) end)
@@ -533,7 +614,7 @@ local function MainHub(Exec, keydata, authToken)
                  MarqueeLabel.TextLabel.Text = "Failed to parse news."
              end
          else
-             MarqueeLabel.TextLabel.Text = "Failed to load news (Network Error)."
+             MarqueeLabel.TextLabel.Text = "Failed to load news."
          end
     end)
 
@@ -542,7 +623,7 @@ local function MainHub(Exec, keydata, authToken)
         local remoteKeyData = nil
         pcall(function()
             local url = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/main/Key_System/data.json"
-            local dataStr = game:HttpGet(url)
+            local dataStr = Exec.HttpGet(url)
             if type(dataStr) == "string" and #dataStr > 0 then
                 local ok, decoded = pcall(function()
                     return HttpService:JSONDecode(dataStr)
@@ -1132,7 +1213,6 @@ local function MainHub(Exec, keydata, authToken)
 
         local TargetIndToggle = ESPFeatureBox:AddToggle("bxw_esp_targetind", { Text = "Look/Aim Indicator", Default = false, Tooltip = "Warns when enemy looks at you" })
         
-        -- [NEW FEATURE] View Direction Line
         local ViewDirToggle = ESPFeatureBox:AddToggle("bxw_esp_viewdir", { Text = "View Direction", Default = false, Tooltip = "Line showing where enemy is looking" })
              :AddColorPicker("bxw_esp_viewdir_color", { Default = Color3.fromRGB(255, 255, 0), Title = "View Dir Color" })
 
@@ -1179,8 +1259,8 @@ local function MainHub(Exec, keydata, authToken)
         
         local DistColorToggle = ESPSettingBox:AddToggle("bxw_esp_distcolor", { Text = "Color by Distance", Default = false, Tooltip = "Red=Close, Green=Far" })
 
-        local ESPRefreshSlider = ESPSettingBox:AddSlider("bxw_esp_refresh", { Text = "ESP Refresh (ms)", Default = 0, Min = 0, Max = 250, Rounding = 0, Compact = false })
-
+        -- Removed ESP Refresh Slider (Using Realtime RenderStepped for smoothness)
+        
         local CrosshairToggle = ESPSettingBox:AddToggle("bxw_crosshair_enable", { Text = "Crosshair", Default = false })
             :AddColorPicker("bxw_crosshair_color", { Default = Color3.fromRGB(255, 255, 255), Title = "Crosshair Color" })
 
@@ -1227,33 +1307,19 @@ local function MainHub(Exec, keydata, authToken)
         local function IsTeammate(plr)
             if not TeamToggle.Value then return false end
             if not plr then return false end
-            
-            if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then
-                return true
-            end
-            
-            if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then
-                return true
-            end
-
+            if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then return true end
+            if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then return true end
             return false
         end
 
-        local lastESPUpdate = 0
+        -- [FIXED] Optimized ESP Loop for Smoothness & Cleanup
         local function updateESP()
-            local ms = ESPRefreshSlider.Value or 0
-            if ms > 0 then
-                local nowTick = tick()
-                if nowTick - lastESPUpdate < (ms / 1000) then return end
-                lastESPUpdate = nowTick
-            end
-
             if not ESPEnabledToggle.Value then
                 for plr, _ in pairs(espDrawings) do removePlayerESP(plr) end
                 return
             end
             
-            -- [FIXED] Radar Logic (Background + Clearer)
+            -- Radar Background
             if RadarToggle.Value then
                  local rSize = RadarSizeSlider.Value
                  local rX = workspace.CurrentCamera.ViewportSize.X - rSize - 20
@@ -1294,11 +1360,16 @@ local function MainHub(Exec, keydata, authToken)
 
             local cam = Workspace.CurrentCamera
             if not cam then return end
-            local camCFrame = cam.CFrame
-            local camPos = camCFrame.Position
+            local camPos = cam.CFrame.Position
 
             for _, plr in ipairs(Players:GetPlayers()) do
-                -- Radar: Draw self as Green Dot
+                -- Ghost/Leave Check
+                if not plr or not plr.Parent then
+                     removePlayerESP(plr)
+                     if radarDrawings.points[plr] then radarDrawings.points[plr]:Remove() radarDrawings.points[plr] = nil end
+                     continue
+                end
+
                 if plr == LocalPlayer and RadarToggle.Value and SelfToggle.Value then
                      local rSize = RadarSizeSlider.Value
                      local rX = workspace.CurrentCamera.ViewportSize.X - rSize - 20
@@ -1309,7 +1380,7 @@ local function MainHub(Exec, keydata, authToken)
                          local d = Drawing.new("Circle")
                          d.Filled = true
                          d.Radius = 3
-                         d.Color = Color3.new(0, 1, 0) -- Green for self
+                         d.Color = Color3.new(0, 1, 0)
                          radarDrawings.points[plr] = d
                      end
                      radarDrawings.points[plr].Visible = true
@@ -1318,12 +1389,18 @@ local function MainHub(Exec, keydata, authToken)
 
                 if plr ~= LocalPlayer or (SelfToggle and SelfToggle.Value) then
                     local char = plr.Character
-                    local hum  = char and char:FindFirstChildOfClass("Humanoid")
-                    local root = char and char:FindFirstChild("HumanoidRootPart") or char and char:FindFirstChild("Torso") or char and char:FindFirstChild("UpperTorso")
+                    if not char or not char.Parent then
+                         removePlayerESP(plr)
+                         if plr ~= LocalPlayer and radarDrawings.points[plr] then radarDrawings.points[plr].Visible = false end
+                         continue
+                    end
+
+                    local hum  = char:FindFirstChildOfClass("Humanoid")
+                    local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
                     
-                    if not hum or hum.Health <= 0 or not root or not root.Parent then
+                    if not hum or hum.Health <= 0 or not root then
                         removePlayerESP(plr)
-                        if plr ~= LocalPlayer and radarDrawings.points[plr] then radarDrawings.points[plr]:Remove() radarDrawings.points[plr] = nil end
+                        if plr ~= LocalPlayer and radarDrawings.points[plr] then radarDrawings.points[plr].Visible = false end
                     else
                         local skipPlayer = false
                         if plr ~= LocalPlayer and IsTeammate(plr) then skipPlayer = true end
@@ -1337,7 +1414,7 @@ local function MainHub(Exec, keydata, authToken)
 
                         if skipPlayer then
                             removePlayerESP(plr)
-                            if plr ~= LocalPlayer and radarDrawings.points[plr] then radarDrawings.points[plr]:Remove() radarDrawings.points[plr] = nil end
+                            if plr ~= LocalPlayer and radarDrawings.points[plr] then radarDrawings.points[plr].Visible = false end
                         else
                             local data = espDrawings[plr]
                             if not data then data = {} espDrawings[plr] = data end
@@ -1350,7 +1427,7 @@ local function MainHub(Exec, keydata, authToken)
                                 local rY = workspace.CurrentCamera.ViewportSize.Y - rSize - 20
                                 local rCenter = Vector2.new(rX + rSize/2, rY + rSize/2)
                                 
-                                local relPos = root.Position - getRootPart().Position
+                                local relPos = root.Position - (getRootPart() and getRootPart().Position or Vector3.zero)
                                 local angle = math.atan2(relPos.Z, relPos.X) - math.atan2(cam.CFrame.LookVector.Z, cam.CFrame.LookVector.X)
                                 local dist = relPos.Magnitude
                                 local distScale = math.clamp(dist, 0, rRange) / rRange
@@ -1369,10 +1446,7 @@ local function MainHub(Exec, keydata, authToken)
                                 radarDrawings.points[plr].Position = Vector2.new(dotX, dotY)
                             end
 
-                            -- [FIXED] Box Size Calculation (Compact)
                             local boxCFrame = root.CFrame
-                            local boxSize = Vector3.new(4, 6, 0) -- Standard size, ignoring huge accessories
-                            
                             local cornersWorld = {
                                 boxCFrame * CFrame.new(-2, 3, 0),
                                 boxCFrame * CFrame.new(2, 3, 0),
@@ -1380,63 +1454,47 @@ local function MainHub(Exec, keydata, authToken)
                                 boxCFrame * CFrame.new(2, -3, 0),
                             }
                             
-                            -- [FIXED] Wall Check Logic
                             local isVisible = true
                             if WallToggle.Value then
                                 local rayDir = (root.Position - camPos)
                                 local rayParams = RaycastParams.new()
-                                -- Exclude both Self and Target Character to prevent self-collision or accessory blocking
                                 rayParams.FilterDescendantsInstances = { char, LocalPlayer.Character }
                                 rayParams.FilterType = Enum.RaycastFilterType.Blacklist
                                 rayParams.IgnoreWater = true
                                 local rayResult = Workspace:Raycast(camPos, rayDir, rayParams)
-                                
-                                if rayResult then
-                                    isVisible = false 
-                                end
+                                if rayResult then isVisible = false end
                             end
 
-                            -- [FIXED] Color Logic
                             local function getVisColor(optionColor)
-                                -- 1. Wall Check Priority (Hidden = Red/Fixed Color)
-                                if WallToggle.Value and not isVisible then
-                                    return Color3.fromRGB(255, 0, 0)
-                                end
-
-                                -- 2. Distance Color (Gradient: Red -> Green)
+                                if WallToggle.Value and not isVisible then return Color3.fromRGB(255, 0, 0) end
                                 if DistColorToggle.Value then
                                     local dist = (root.Position - camPos).Magnitude
-                                    local maxDist = 300
-                                    -- Invert Logic: Close(0) = Red(0), Far(300) = Green(0.33)
-                                    local t = math.clamp(dist / maxDist, 0, 1)
+                                    local t = math.clamp(dist / 300, 0, 1)
                                     return Color3.fromHSV(t * 0.33, 1, 1) 
                                 end
-
-                                -- 3. Default Config Color
                                 return optionColor or Color3.fromRGB(255, 255, 255)
                             end
 
-                            -- Chams Logic
+                            -- [FIXED] Chams Logic for Range/Visibility
                             if ChamsToggle.Value then
                                 local baseColor = (Options.bxw_esp_chams_color and Options.bxw_esp_chams_color.Value) or Color3.fromRGB(0, 255, 0)
                                 local finalChamColor = getVisColor(baseColor)
-                                
                                 local chamsTrans = ChamsTransSlider and ChamsTransSlider.Value or 0.5
                                 local visibleOnly = ChamsVisibleToggle and ChamsVisibleToggle.Value or false
-                                local depthMode = visibleOnly and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
                                 
                                 if not data.Highlight then
                                     local hl = Instance.new("Highlight")
-                                    hl.Parent = char
+                                    hl.Parent = CoreGui -- Try parent to CoreGui for better persistence
+                                    if not hl.Parent then hl.Parent = char end -- Fallback
                                     data.Highlight = hl
                                 end
                                 local hl = data.Highlight
+                                hl.Adornee = char -- Ensure Adornee is set every frame to prevent ghosting
                                 hl.Enabled = true
-                                hl.DepthMode = depthMode
+                                hl.DepthMode = visibleOnly and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
                                 hl.FillColor = finalChamColor
                                 hl.OutlineColor = finalChamColor
                                 hl.FillTransparency = chamsTrans
-                                hl.Adornee = char
                             else
                                 if data.Highlight then data.Highlight.Enabled = false end
                             end
@@ -1445,7 +1503,6 @@ local function MainHub(Exec, keydata, authToken)
                             local maxX, maxY = -math.huge, -math.huge
                             local onScreen = false
 
-                            -- Calculate screen box from 4 main corners of the standard box
                             for i, worldPos in ipairs(cornersWorld) do
                                 local screenPos, vis = cam:WorldToViewportPoint(worldPos.Position)
                                 if vis then onScreen = true end
@@ -1455,7 +1512,6 @@ local function MainHub(Exec, keydata, authToken)
                                 maxY = math.max(maxY, screenPos.Y)
                             end
                             
-                            -- [FIXED] Off Screen Arrow (Mobile Center Fix)
                             if not onScreen and ArrowToggle.Value then
                                 if not data.Arrow then data.Arrow = Drawing.new("Triangle") data.Arrow.Filled = true end
                                 local relative = cam.CFrame:PointToObjectSpace(root.Position)
@@ -1463,16 +1519,11 @@ local function MainHub(Exec, keydata, authToken)
                                 local dist = 300 
                                 local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
                                 local pos = center + Vector2.new(math.cos(angle)*dist, math.sin(angle)*dist)
-                                
                                 local size = 15
-                                local pt1 = pos + Vector2.new(math.cos(angle)*size, math.sin(angle)*size)
-                                local pt2 = pos + Vector2.new(math.cos(angle + 2)*size, math.sin(angle + 2)*size)
-                                local pt3 = pos + Vector2.new(math.cos(angle - 2)*size, math.sin(angle - 2)*size)
-                                
                                 data.Arrow.Visible = true
-                                data.Arrow.PointA = pt1
-                                data.Arrow.PointB = pt2
-                                data.Arrow.PointC = pt3
+                                data.Arrow.PointA = pos + Vector2.new(math.cos(angle)*size, math.sin(angle)*size)
+                                data.Arrow.PointB = pos + Vector2.new(math.cos(angle + 2)*size, math.sin(angle + 2)*size)
+                                data.Arrow.PointC = pos + Vector2.new(math.cos(angle - 2)*size, math.sin(angle - 2)*size)
                                 data.Arrow.Color = (Options.bxw_esp_arrow_color and Options.bxw_esp_arrow_color.Value) or Color3.new(1,0.5,0)
                             else
                                 if data.Arrow then data.Arrow.Visible = false end
@@ -1491,7 +1542,7 @@ local function MainHub(Exec, keydata, authToken)
                             else
                                 local boxW, boxH = maxX - minX, maxY - minY
                                 
-                                -- Box
+                                -- [FIXED] Box Style Visibility
                                 if BoxToggle.Value then
                                     local baseBoxCol = (Options.bxw_esp_box_color and Options.bxw_esp_box_color.Value)
                                     local finalBoxCol = getVisColor(baseBoxCol)
@@ -1501,10 +1552,10 @@ local function MainHub(Exec, keydata, authToken)
                                             local sq = Drawing.new("Square") 
                                             sq.Thickness = 1 
                                             sq.Filled = false 
-                                            sq.Transparency = 1 
                                             data.Box = sq 
                                         end
                                         data.Box.Visible = true
+                                        data.Box.Transparency = 1 -- Usually 1 is visible for Outline
                                         data.Box.Color = finalBoxCol
                                         data.Box.Position = Vector2.new(minX, minY)
                                         data.Box.Size = Vector2.new(boxW, boxH)
@@ -1527,7 +1578,6 @@ local function MainHub(Exec, keydata, authToken)
                                     if data.Corners then for _, ln in pairs(data.Corners) do ln.Visible = false end end
                                 end
 
-                                -- [FIXED] Health Bar (Visibility & Z-Index)
                                 if HealthToggle.Value then
                                     local baseHpCol = (Options.bxw_esp_health_color and Options.bxw_esp_health_color.Value)
                                     if not data.Health then 
@@ -1541,27 +1591,23 @@ local function MainHub(Exec, keydata, authToken)
                                     local hp = math.clamp(hum.Health, 0, hum.MaxHealth)
                                     local maxHp = math.max(hum.MaxHealth, 1)
                                     local barY2 = minY + (maxY - minY) * (1 - (hp / maxHp))
-                                    
                                     data.Health.Outline.Visible = true 
                                     data.Health.Outline.Color = Color3.new(0,0,0) 
                                     data.Health.Outline.From = Vector2.new(hbX, minY) 
                                     data.Health.Outline.To = Vector2.new(hbX, maxY)
-                                    
                                     data.Health.Bar.Visible = true 
                                     data.Health.Bar.Color = baseHpCol or Color3.fromRGB(0, 255, 0)
-                                    data.Health.Bar.From = Vector2.new(hbX, maxY) -- Draw from bottom up
+                                    data.Health.Bar.From = Vector2.new(hbX, maxY)
                                     data.Health.Bar.To = Vector2.new(hbX, barY2)
                                 else
                                     if data.Health then data.Health.Outline.Visible = false data.Health.Bar.Visible = false end
                                 end
 
-                                -- Name
                                 if NameToggle.Value then
                                     local baseNameCol = (Options.bxw_esp_name_color and Options.bxw_esp_name_color.Value)
-                                    local finalNameCol = getVisColor(baseNameCol)
                                     if not data.Name then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Name = txt end
                                     data.Name.Visible = true
-                                    data.Name.Color = finalNameCol
+                                    data.Name.Color = getVisColor(baseNameCol)
                                     data.Name.Size = NameSizeSlider.Value
                                     data.Name.Text = plr.DisplayName or plr.Name
                                     data.Name.Position = Vector2.new((minX + maxX) / 2, minY - 14)
@@ -1569,10 +1615,8 @@ local function MainHub(Exec, keydata, authToken)
                                     if data.Name then data.Name.Visible = false end
                                 end
 
-                                -- Distance
                                 if DistToggle.Value then
                                     local baseDistCol = (Options.bxw_esp_dist_color and Options.bxw_esp_dist_color.Value)
-                                    local finalDistCol = getVisColor(baseDistCol)
                                     if not data.Distance then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Distance = txt end
                                     local distStud = (root.Position - camPos).Magnitude
                                     local unit = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
@@ -1580,142 +1624,12 @@ local function MainHub(Exec, keydata, authToken)
                                     local suffix = " studs"
                                     if unit == "Meters" then distNum = distStud * 0.28 suffix = " m" end
                                     data.Distance.Visible = true
-                                    data.Distance.Color = finalDistCol
+                                    data.Distance.Color = getVisColor(baseDistCol)
                                     data.Distance.Size = DistSizeSlider.Value
                                     data.Distance.Text = string.format("%.1f", distNum) .. suffix
                                     data.Distance.Position = Vector2.new((minX + maxX) / 2, maxY + 2)
                                 else
                                     if data.Distance then data.Distance.Visible = false end
-                                end
-
-                                -- Info
-                                if InfoToggle and InfoToggle.Value then
-                                    local baseInfoCol = (Options.bxw_esp_info_color and Options.bxw_esp_info_color.Value)
-                                    local finalInfoCol = getVisColor(baseInfoCol)
-                                    if not data.Info then local txt = Drawing.new("Text") txt.Center = true txt.Outline = true data.Info = txt end
-                                    local distStudInfo = (root.Position - camPos).Magnitude
-                                    local unitInfo = DistUnitDropdown and DistUnitDropdown.Value or "Studs"
-                                    local distNumInfo = distStudInfo
-                                    local suffixInfo = "s"
-                                    if unitInfo == "Meters" then distNumInfo = distStudInfo * 0.28 suffixInfo = "m" end
-                                    
-                                    local teamName = plr.Team and plr.Team.Name or "Neutral"
-                                    
-                                    -- [FIXED] Indicator Text Logic
-                                    local lookText = ""
-                                    if TargetIndToggle.Value then
-                                        local enemyLook = root.CFrame.LookVector
-                                        local dirToMe = (getRootPart().Position - root.Position).Unit
-                                        local dot = enemyLook:Dot(dirToMe)
-                                        if dot > 0.8 then lookText = "\n[LOOKING AT YOU!]" end
-                                    end
-                                    
-                                    data.Info.Visible = true
-                                    data.Info.Color = finalInfoCol
-                                    data.Info.Size = NameSizeSlider.Value
-                                    data.Info.Text = string.format("%s\n[HP: %.0f] [Team: %s]%s", plr.Name, hum.Health, teamName, lookText)
-                                    data.Info.Position = Vector2.new((minX + maxX) / 2, maxY + 16)
-                                else
-                                    if data.Info then data.Info.Visible = false end
-                                end
-                                
-                                -- [NEW] View Direction (Head Line)
-                                if ViewDirToggle and ViewDirToggle.Value then
-                                     local baseViewCol = (Options.bxw_esp_viewdir_color and Options.bxw_esp_viewdir_color.Value) or Color3.fromRGB(255, 255, 0)
-                                     local head = char:FindFirstChild("Head")
-                                     if head then
-                                         if not data.ViewDir then data.ViewDir = Drawing.new("Line") data.ViewDir.Thickness = 1 data.ViewDir.Transparency = 1 end
-                                         
-                                         local lookVec = head.CFrame.LookVector
-                                         local startPos = head.Position
-                                         local endPos = startPos + (lookVec * 8) -- Length of line
-                                         
-                                         local startScr, vis1 = cam:WorldToViewportPoint(startPos)
-                                         local endScr, vis2 = cam:WorldToViewportPoint(endPos)
-                                         
-                                         if vis1 or vis2 then
-                                             data.ViewDir.Visible = true
-                                             data.ViewDir.Color = baseViewCol
-                                             data.ViewDir.From = Vector2.new(startScr.X, startScr.Y)
-                                             data.ViewDir.To = Vector2.new(endScr.X, endScr.Y)
-                                         else
-                                             data.ViewDir.Visible = false
-                                         end
-                                     else
-                                          if data.ViewDir then data.ViewDir.Visible = false end
-                                     end
-                                else
-                                     if data.ViewDir then data.ViewDir.Visible = false end
-                                end
-
-                                -- Skeleton
-                                if SkeletonToggle and SkeletonToggle.Value then
-                                    if not data.Skeleton then data.Skeleton = {} end
-                                    local idx = 1
-                                    local baseSkCol = (Options.bxw_esp_skeleton_color and Options.bxw_esp_skeleton_color.Value)
-                                    local finalSkCol = getVisColor(baseSkCol)
-                                    for joint, parentName in pairs(skeletonJoints) do
-                                        local p1 = char:FindFirstChild(joint)
-                                        local p2 = char:FindFirstChild(parentName)
-                                        local ln = data.Skeleton[idx]
-                                        if not ln then ln = Drawing.new("Line") ln.Thickness = 1 ln.Transparency = 1 data.Skeleton[idx] = ln end
-                                        if p1 and p2 then
-                                            local sp1, vis1 = cam:WorldToViewportPoint(p1.Position)
-                                            local sp2, vis2 = cam:WorldToViewportPoint(p2.Position)
-                                            if vis1 or vis2 then
-                                                ln.Visible = true
-                                                ln.Color = finalSkCol
-                                                ln.From = Vector2.new(sp1.X, sp1.Y)
-                                                ln.To   = Vector2.new(sp2.X, sp2.Y)
-                                            else
-                                                ln.Visible = false
-                                            end
-                                        else
-                                            ln.Visible = false
-                                        end
-                                        idx = idx + 1
-                                    end
-                                else
-                                    if data.Skeleton then for _, ln in pairs(data.Skeleton) do ln.Visible = false end end
-                                end
-
-                                -- Head Dot
-                                if HeadDotToggle and HeadDotToggle.Value then
-                                    local baseHdCol = (Options.bxw_esp_headdot_color and Options.bxw_esp_headdot_color.Value)
-                                    local finalHdCol = getVisColor(baseHdCol)
-                                    local head = char:FindFirstChild("Head")
-                                    if head then
-                                        local spHead, headVis = cam:WorldToViewportPoint(head.Position)
-                                        if headVis then
-                                            if not data.HeadDot then data.HeadDot = Drawing.new("Circle") data.HeadDot.Filled = true data.HeadDot.Transparency = 1 end
-                                            data.HeadDot.Visible = true
-                                            data.HeadDot.Color = finalHdCol
-                                            data.HeadDot.Position = Vector2.new(spHead.X, spHead.Y)
-                                            data.HeadDot.Radius = (Options.bxw_esp_headdot_size and Options.bxw_esp_headdot_size.Value) or 3
-                                        else
-                                            if data.HeadDot then data.HeadDot.Visible = false end
-                                        end
-                                    end
-                                else
-                                    if data.HeadDot then data.HeadDot.Visible = false end
-                                end
-
-                                -- Tracer
-                                if TracerToggle.Value then
-                                    local baseTrCol = (Options.bxw_esp_tracer_color and Options.bxw_esp_tracer_color.Value)
-                                    local finalTrCol = getVisColor(baseTrCol)
-                                    if not data.Tracer then data.Tracer = Drawing.new("Line") data.Tracer.Thickness = 1 data.Tracer.Transparency = 1 end
-                                    local screenRoot, rootOnScreen = cam:WorldToViewportPoint(root.Position)
-                                    if rootOnScreen then
-                                        data.Tracer.Visible = true
-                                        data.Tracer.Color = finalTrCol
-                                        data.Tracer.From = Vector2.new(screenRoot.X, screenRoot.Y)
-                                        data.Tracer.To = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-                                    else
-                                        data.Tracer.Visible = false
-                                    end
-                                else
-                                    if data.Tracer then data.Tracer.Visible = false end
                                 end
                             end
                         end
@@ -1726,6 +1640,7 @@ local function MainHub(Exec, keydata, authToken)
             end
         end
 
+        -- [OPTIMIZED] Use RenderStepped without interval check for smoothest movement
         AddConnection(RunService.RenderStepped:Connect(updateESP))
 
         do
@@ -2492,17 +2407,32 @@ local function MainHub(Exec, keydata, authToken)
             Library:Notify("Potato Mode Enabled", 2)
         end)
 
-        -- [UPGRADE] Beautiful Mode Slider Group
-        GfxBox:AddButton("Enable Beautiful Mode", function()
-            pcall(function()
+        -- [FIXED] Beautiful Mode Toggle
+        local OriginalLighting = {}
+        local BeautifulToggle = GfxBox:AddToggle("bxw_beautiful_mode", { Text = "Beautiful Mode", Default = false })
+        
+        BeautifulToggle:OnChanged(function(state)
+            if state then
+                -- Save current
+                OriginalLighting.Technology = Lighting.Technology
+                OriginalLighting.Shadows = Lighting.GlobalShadows
+                OriginalLighting.Ambient = Lighting.OutdoorAmbient
+                
+                -- Apply Beautiful
                 Lighting.GlobalShadows = true
                 Lighting.OutdoorAmbient = Color3.fromRGB(100, 100, 100)
                 pcall(function() sethiddenproperty(Lighting, "Technology", Enum.Technology.Future) end)
                 
                 if not Lighting:FindFirstChild("ColorCorrection") then Instance.new("ColorCorrectionEffect", Lighting) end
                 if not Lighting:FindFirstChild("Bloom") then Instance.new("BloomEffect", Lighting) end
-            end)
-            Library:Notify("Beautiful Mode Enabled (Adjust below)", 2)
+                NotifyAction("Beautiful Mode", true)
+            else
+                -- Restore
+                Lighting.GlobalShadows = OriginalLighting.Shadows or false
+                Lighting.OutdoorAmbient = OriginalLighting.Ambient or Color3.fromRGB(128,128,128)
+                pcall(function() sethiddenproperty(Lighting, "Technology", OriginalLighting.Technology or Enum.Technology.ShadowMap) end)
+                NotifyAction("Beautiful Mode", false)
+            end
         end)
         
         GfxBox:AddSlider("bxw_gfx_bright", { Text = "Brightness", Default = 2, Min = 0, Max = 10, Rounding = 1, Callback = function(v) Lighting.Brightness = v end })
