@@ -51,15 +51,13 @@ local function getRootPart()
 end
 
 --====================================================
--- 1. Secret + Token Verify (SECURITY UPGRADED)
+-- 1. Secret + Token Verify (SECURITY UPGRADED V2)
 --====================================================
 
--- Obfuscated Secret Construction (ตรงกับ KeyMain)
-local _s1 = "BxB.ware"
-local _s2 = "-Universal"
-local _s3 = "@#$)_%@#^"
-local _s4 = "()$@%_)+%(@"
-local SECRET_PEPPER = _s1 .. _s2 .. _s3 .. _s4
+local Security = {}
+-- [UPDATED] ต้องตรงกับ KeyMain.lua
+Security.PREFIX = "BxB.Ware"
+Security.SECRET = "BxB.Ware"
 
 local bit = bit32 or bit
 
@@ -74,29 +72,37 @@ local function fnv1a32(str)
     return hash
 end
 
+-- [UPDATED] Token Builder Logic (Synced with KeyMain)
 local function buildExpectedToken(keydata)
+    -- ดึง timestamp จากการ handshake ที่ KeyMain ส่งมา (แก้ปัญหานาทีที่ 59)
+    -- ถ้าไม่มี (ซึ่งไม่ควรเกิดขึ้น) ให้ใช้ os.time() เป็น fallback
+    local ts = keydata._handshake_ts or os.time()
+    local d = os.date("*t", ts)
+
+    local prefix = Security.PREFIX
+    local secret = Security.SECRET
+
+    -- จัดรูปแบบเวลา: วัน:วันที่:ชั่วโมง:นาที (เช่น 1:05:14:59)
+    -- d.wday = 1-7, d.day = 1-31
+    local timeStr = string.format("%d:%02d:%02d:%02d", d.wday, d.day, d.hour, d.min)
+    
+    -- สูตร: Prefix + TimeStr + Day + WDay + Year + Secret
+    local rawTimePart = prefix .. timeStr .. d.day .. d.wday .. d.year .. secret
+
     local k    = tostring(keydata.key or keydata.Key or "")
     local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
     local role = tostring(keydata.role or "user")
-    local datePart = os.date("%Y%m%d") -- ต้องใช้ format เดียวกับฝั่ง KeyUI
 
-    local raw = table.concat({
-        SECRET_PEPPER,
-        k,
-        hw,
-        role,
-        datePart,
-        tostring(#k),
-    }, "|")
+    local finalRaw = rawTimePart .. "|" .. k .. "|" .. hw .. "|" .. role
 
-    local h = fnv1a32(raw)
+    local h = fnv1a32(finalRaw)
     return ("%08X"):format(h)
 end
 
 -- Anti-Tamper: Basic Integrity Check
 local function IntegrityCheck()
     if iscclosure and not iscclosure(game.HttpGet) then
-        return false -- HttpGet was hooked
+        return false -- HttpGet was hooked improperly
     end
     return true
 end
@@ -275,10 +281,13 @@ local function MainHub(Exec, keydata, authToken)
         return
     end
 
-    -- 2. Token Check
+    -- 2. Token Check (Using Time-Synced Logic)
     local expected = buildExpectedToken(keydata)
     if authToken ~= expected then
-        warn("[MainHub] Invalid auth token, abort")
+        warn("[MainHub] Invalid auth token. Handshake failed.")
+        -- Debug (Optional: remove in production)
+        -- print("Expected:", expected)
+        -- print("Received:", authToken)
         LocalPlayer:Kick("Security Error: Invalid Handshake.")
         return
     end
