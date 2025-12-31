@@ -51,13 +51,12 @@ local function getRootPart()
 end
 
 --====================================================
--- 1. Secret + Token Verify (SECURITY UPGRADED V2)
+-- 1. Secret + Token Verify (SECURITY UPGRADED - BxB V2)
 --====================================================
 
-local Security = {}
--- [UPDATED] ต้องตรงกับ KeyMain.lua
-Security.PREFIX = "BxB.Ware"
-Security.SECRET = "BxB.Ware"
+-- [UPDATED] ใช้ Prefix และ Secret ใหม่ตาม KeyMain
+local SEC_PREFIX = "BxB.Ware"
+local SEC_SECRET = "BxB.Ware"
 
 local bit = bit32 or bit
 
@@ -72,27 +71,26 @@ local function fnv1a32(str)
     return hash
 end
 
--- [UPDATED] Token Builder Logic (Synced with KeyMain)
+-- [UPDATED] buildExpectedToken แบบ Time-Synced
 local function buildExpectedToken(keydata)
-    -- ดึง timestamp จากการ handshake ที่ KeyMain ส่งมา (แก้ปัญหานาทีที่ 59)
-    -- ถ้าไม่มี (ซึ่งไม่ควรเกิดขึ้น) ให้ใช้ os.time() เป็น fallback
+    -- ดึง timestamp ที่ KeyMain บันทึกไว้ตอนสร้าง Token (แก้ปัญหา Time Drift นาทีที่ 59)
+    -- ถ้าไม่มี (กรณีข้ามขั้นตอน) ให้ใช้เวลาเครื่องซึ่งอาจจะ Fail ได้
     local ts = keydata._handshake_ts or os.time()
-    local d = os.date("*t", ts)
-
-    local prefix = Security.PREFIX
-    local secret = Security.SECRET
-
-    -- จัดรูปแบบเวลา: วัน:วันที่:ชั่วโมง:นาที (เช่น 1:05:14:59)
-    -- d.wday = 1-7, d.day = 1-31
+    local d = os.date("*t", ts) 
+    
+    -- สูตร: Prefix + เวลา(วัน:วันที่:ชัวโมง:นาที) + วันที่ + วัน + ปี + Secret
+    -- Format เวลา: wday:day:hour:min
     local timeStr = string.format("%d:%02d:%02d:%02d", d.wday, d.day, d.hour, d.min)
     
-    -- สูตร: Prefix + TimeStr + Day + WDay + Year + Secret
-    local rawTimePart = prefix .. timeStr .. d.day .. d.wday .. d.year .. secret
+    -- ประกอบส่วน Salt
+    local rawTimePart = SEC_PREFIX .. timeStr .. d.day .. d.wday .. d.year .. SEC_SECRET
 
+    -- ข้อมูล Key
     local k    = tostring(keydata.key or keydata.Key or "")
     local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
     local role = tostring(keydata.role or "user")
 
+    -- รวมร่าง
     local finalRaw = rawTimePart .. "|" .. k .. "|" .. hw .. "|" .. role
 
     local h = fnv1a32(finalRaw)
@@ -102,7 +100,7 @@ end
 -- Anti-Tamper: Basic Integrity Check
 local function IntegrityCheck()
     if iscclosure and not iscclosure(game.HttpGet) then
-        return false -- HttpGet was hooked improperly
+        return false -- HttpGet was hooked
     end
     return true
 end
@@ -281,13 +279,10 @@ local function MainHub(Exec, keydata, authToken)
         return
     end
 
-    -- 2. Token Check (Using Time-Synced Logic)
+    -- 2. Token Check
     local expected = buildExpectedToken(keydata)
     if authToken ~= expected then
-        warn("[MainHub] Invalid auth token. Handshake failed.")
-        -- Debug (Optional: remove in production)
-        -- print("Expected:", expected)
-        -- print("Received:", authToken)
+        warn("[MainHub] Invalid auth token, abort")
         LocalPlayer:Kick("Security Error: Invalid Handshake.")
         return
     end
