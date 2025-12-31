@@ -16,11 +16,15 @@ do
     local LocalPlayer = Players.LocalPlayer
 
     ----------------------------------------------------------------
-    -- Security Module (NEW)
+    -- Security Module (NEW & UPGRADED)
     ----------------------------------------------------------------
     local Security = {}
     
-    -- สร้าง Secret แบบแตก String เพื่อป้องกันการค้นหา (String Obfuscation)
+    -- [UPDATED] Prefix และ Secret สำหรับ Token
+    Security.PREFIX = "BxB.Ware"
+    Security.SECRET = "BxB.Ware" 
+    
+    -- Obfuscated Pepper (คงเดิมไว้เพื่อความปลอดภัยของ Hash Function)
     local _s1 = "BxB.ware"
     local _s2 = "-Universal"
     local _s3 = "@#$)_%@#^"
@@ -50,23 +54,15 @@ do
         end
     end
 
-    -- Generate Strong HWID
+    -- [UPDATED] Generate High Security HWID (Client ID based)
     function Security.GetStrongHWID()
         local clientId = "unknown"
+        -- ใช้ ClientId เป็นแกนหลักเพราะเปลี่ยนยากกว่า
         pcall(function() clientId = AnalyticsService:GetClientId() end)
         
-        local platform = "PC"
-        if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
-            platform = "Mobile"
-        end
-        
-        -- ผสมข้อมูลหลายอย่างเพื่อให้ Spoof ยากขึ้น
-        local raw = table.concat({
-            clientId,
-            tostring(LocalPlayer.UserId),
-            platform,
-            tostring(game.PlaceId) -- ผูกกับแมพด้วยก็ได้ถ้าต้องการ แต่เอาออกได้ถ้าอยากได้ Global HWID
-        }, "||")
+        -- ตามสูตร: Client ID / BxB.ware(prefix)
+        -- เรา concat กันก่อนแล้วค่อยส่งไป Hash เพื่อความปลอดภัยสูงสุด
+        local raw = tostring(clientId) .. "/" .. Security.PREFIX
         
         return raw -- จะถูก Hash ต่อในฟังก์ชัน secureHWIDHash
     end
@@ -215,7 +211,7 @@ do
         KEYDATA_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/data.json",
         SCRIPTINFO_URL  = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json",
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
-        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", -- แก้ชื่อไฟล์ให้ตรงกับที่อัพโหลด
+        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", 
 
         KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json"
     }
@@ -236,7 +232,7 @@ do
     end
 
     local function secureHWIDHash(str)
-        local salt = Security.PEPPER -- Use Obfuscated Pepper
+        local salt = Security.PEPPER -- Use Obfuscated Pepper for Encryption
         local s = salt .. "\0" .. str .. "\0" .. tostring(#str)
 
         local h1 = 0x6A09E667
@@ -277,6 +273,7 @@ do
     end
 
     local function getHWIDHash()
+        -- เรียกใช้ GetStrongHWID แบบใหม่ (Client ID/Prefix) แล้ว Hash เพื่อความปลอดภัยสูงสุด
         return secureHWIDHash(Security.GetStrongHWID())
     end
 
@@ -755,7 +752,7 @@ do
     end
 
 
- ----------------------------------------------------------------
+    ----------------------------------------------------------------
     -- Main Hub Loader (Updated with Dynamic Token & Handshake)
     ----------------------------------------------------------------
     local function fnv1a32(str)
@@ -767,15 +764,34 @@ do
         return hash
     end
 
-    local function buildExpectedToken(keydata)
-        -- ใช้ Obfuscated Pepper จาก Security table
-        local SECRET_PEPPER = Security.PEPPER
+    -- [UPDATED] ฟังก์ชันสร้าง Token แบบ Dynamic Time-based
+    -- รองรับการรับ timestamp เข้ามาเพื่อแก้ปัญหา 59-minute drift
+    local function buildExpectedToken(keydata, timestamp)
+        -- ใช้เวลาที่ส่งเข้ามา หรือถ้าไม่มีให้ใช้เวลาปัจจุบัน
+        local ts = timestamp or os.time()
+        local d = os.date("*t", ts) -- แปลงเป็น Table วันเวลา
+        
+        -- สูตร: BxB.Ware(Prefix) + เวลา(วัน:วันที่:ชัวโมง:นาที) + วันที่ + วัน + ปี + BxB.Ware(Secret)
+        -- หมายเหตุ: d.wday คือวันในสัปดาห์ (1-7), d.day คือวันที่ (1-31)
+        
+        local prefix = Security.PREFIX
+        local secret = Security.SECRET
+        
+        -- จัดรูปแบบเวลา: วัน:วันที่:ชั่วโมง:นาที (เช่น 1:05:14:59)
+        local timeStr = string.format("%d:%02d:%02d:%02d", d.wday, d.day, d.hour, d.min)
+        
+        -- ประกอบร่าง String ตามสูตร
+        local rawTimePart = prefix .. timeStr .. d.day .. d.wday .. d.year .. secret
+        
+        -- รวมกับข้อมูล Key เพื่อความเป็นเอกลักษณ์
         local k    = tostring(keydata.key or keydata.Key or "")
         local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
         local role = tostring(keydata.role or "user")
-        local datePart = os.date("%Y%m%d")
-        local raw = table.concat({ SECRET_PEPPER, k, hw, role, datePart, tostring(#k) }, "|")
-        local h = fnv1a32(raw)
+        
+        local finalRaw = rawTimePart .. "|" .. k .. "|" .. hw .. "|" .. role
+        
+        -- Hash ด้วย fnv1a32 และแปลงเป็น HEX
+        local h = fnv1a32(finalRaw)
         return ("%08X"):format(h)
     end
 
@@ -787,6 +803,12 @@ do
             -- Pass this flag name to main hub via keydata structure extension
             keydata._auth_flag = secretFlagName
         end
+        
+        -- [CRITICAL FIX] Capture Timestamp for Sync
+        -- บันทึกเวลาที่ใช้สร้าง Token เพื่อส่งไปให้ MainHub
+        -- MainHub จะใช้เวลานี้ในการ Validate ทำให้ไม่เกิดปัญหาเมื่อข้ามนาที (59->00)
+        local handshakeTime = os.time()
+        keydata._handshake_ts = handshakeTime
 
         local src = Exec.HttpGet(Config.MAINHUB_URL)
         local chunk, err = loadstring(src)
@@ -800,7 +822,9 @@ do
             return
         end
         
-        local token = buildExpectedToken(keydata)
+        -- สร้าง Token โดยใช้ handshakeTime ที่บันทึกไว้
+        local token = buildExpectedToken(keydata, handshakeTime)
+        
         local success, err2 = pcall(startFn, Exec, keydata, token)
         if not success then
             warn("[Obsidian] Runtime error: " .. tostring(err2))
