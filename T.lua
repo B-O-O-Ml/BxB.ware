@@ -2508,11 +2508,14 @@ local function MainHub(Exec, keydata, authToken)
         
         -- [FIXED] Error handling for Button Text
         if not isMobile then
-             if SetPointBtn.TextLabel then
-                 SetPointBtn.TextLabel.Text = "Set Point (Mobile Only)"
-             elseif SetPointBtn.SetText then
-                 SetPointBtn:SetText("Set Point (Mobile Only)")
-             end
+             -- Try safe set text
+             pcall(function()
+                 if SetPointBtn.TextLabel then
+                     SetPointBtn.TextLabel.Text = "Set Point (Mobile Only)"
+                 elseif SetPointBtn.SetText then
+                     SetPointBtn:SetText("Set Point (Mobile Only)")
+                 end
+             end)
         end
         
         local AutoClickerConn
