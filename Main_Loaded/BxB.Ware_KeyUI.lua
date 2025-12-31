@@ -10,8 +10,62 @@ do
     local HttpService = game:GetService("HttpService")
     local Players = game:GetService("Players")
     local AnalyticsService = game:GetService("RbxAnalyticsService")
+    local UserInputService = game:GetService("UserInputService") -- Added for platform check
+    local RunService = game:GetService("RunService")
 
     local LocalPlayer = Players.LocalPlayer
+
+    ----------------------------------------------------------------
+    -- Security Module (NEW & UPGRADED)
+    ----------------------------------------------------------------
+    local Security = {}
+    
+    -- [UPDATED] Prefix และ Secret สำหรับ Token
+    Security.PREFIX = "BxB.Ware"
+    Security.SECRET = "BxB.Ware" 
+    
+    -- Obfuscated Pepper (คงเดิมไว้เพื่อความปลอดภัยของ Hash Function)
+    local _s1 = "BxB.ware"
+    local _s2 = "-Universal"
+    local _s3 = "@#$)_%@#^"
+    local _s4 = "()$@%_)+%(@"
+    Security.PEPPER = _s1 .. _s2 .. _s3 .. _s4
+
+    -- Anti-Tamper: ตรวจสอบว่าฟังก์ชันถูก Hook หรือไม่
+    function Security.AntiTamper()
+        local function isCClosure(func)
+            if iscclosure and not iscclosure(func) then return false end
+            return true
+        end
+        
+        -- ตรวจสอบฟังก์ชันสำคัญว่าเป็น Native C Closure หรือไม่
+        local checks = {
+            game.HttpGet,
+            HttpService.JSONDecode,
+            getgenv
+        }
+        
+        for _, f in pairs(checks) do
+            if not isCClosure(f) then
+                -- ถ้าเจอฟังก์ชันปลอม ให้ทำลาย script หรือเตะ
+                LocalPlayer:Kick("Security Violation: Integrity Check Failed.")
+                while true do end
+            end
+        end
+    end
+
+    -- [UPDATED] Generate High Security HWID (Client ID based)
+    function Security.GetStrongHWID()
+        local clientId = "unknown"
+        -- ใช้ ClientId เป็นแกนหลักเพราะเปลี่ยนยากกว่า
+        pcall(function() clientId = AnalyticsService:GetClientId() end)
+        
+        -- ตามสูตร: Client ID / BxB.ware(prefix)
+        -- เรา concat กันก่อนแล้วค่อยส่งไป Hash เพื่อความปลอดภัยสูงสุด
+        local raw = tostring(clientId) .. "/" .. Security.PREFIX
+        
+        return raw -- จะถูก Hash ต่อในฟังก์ชัน secureHWIDHash
+    end
 
     ----------------------------------------------------------------
     -- Exec Abstraction (multi-executor)
@@ -45,6 +99,9 @@ do
 
         function Exec.HttpGet(url)
             assert(type(url) == "string", "[Exec.HttpGet] url must be string")
+            
+            -- Security Check before request
+            Security.AntiTamper()
 
             if httpRequest then
                 local ok, response = pcall(httpRequest, {
@@ -154,34 +211,13 @@ do
         KEYDATA_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/data.json",
         SCRIPTINFO_URL  = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json",
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
-        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Main_Loaded/BxB.Ware_MainHub.lua",
+        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", 
 
         KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json"
     }
     ----------------------------------------------------------------
-    -- HWID + Secure Hash (128-bit)
+    -- HWID + Secure Hash (128-bit) - UPDATED
     ----------------------------------------------------------------
-    local function getHWID()
-        local hwid
-
-        do
-            local ok, clientId = pcall(AnalyticsService.GetClientId, AnalyticsService)
-            if ok and type(clientId) == "string" and clientId ~= "" then
-                hwid = clientId
-            end
-        end
-
-        if not hwid and LocalPlayer then
-            hwid = tostring(LocalPlayer.UserId) .. "_" .. (LocalPlayer.Name or "")
-        end
-
-        if not hwid then
-            hwid = "unknown_hwid"
-        end
-
-        return hwid
-    end
-
     local bit = bit32
     if not bit then
         error("[HWID] bit32 library is required for secure HWID hash")
@@ -196,7 +232,7 @@ do
     end
 
     local function secureHWIDHash(str)
-        local salt = "BxB.ware-Universal@#$)_%@#^()$@%_)+%(@"
+        local salt = Security.PEPPER -- Use Obfuscated Pepper for Encryption
         local s = salt .. "\0" .. str .. "\0" .. tostring(#str)
 
         local h1 = 0x6A09E667
@@ -237,7 +273,8 @@ do
     end
 
     local function getHWIDHash()
-        return secureHWIDHash(getHWID())
+        -- เรียกใช้ GetStrongHWID แบบใหม่ (Client ID/Prefix) แล้ว Hash เพื่อความปลอดภัยสูงสุด
+        return secureHWIDHash(Security.GetStrongHWID())
     end
 
     ----------------------------------------------------------------
@@ -715,12 +752,10 @@ do
     end
 
 
- ----------------------------------------------------------------
-    -- Main Hub Loader (Updated with Dynamic Token)
+    ----------------------------------------------------------------
+    -- Main Hub Loader (Updated with Dynamic Token & Handshake)
     ----------------------------------------------------------------
     local function fnv1a32(str)
-        -- Compute a 32-bit FNV-1a hash for the given string. This matches the
-        -- implementation in MainHub so that tokens align.
         local hash = 0x811C9DC5
         for i = 1, #str do
             hash = bit.bxor(hash, str:byte(i))
@@ -729,21 +764,52 @@ do
         return hash
     end
 
-    local function buildExpectedToken(keydata)
-        -- Build the auth token in the same way MainHub does. Concatenate the
-        -- secret pepper, the key, hwid hash, role, datePart, and key length,
-        -- then hash with FNV-1a and format as 8‑digit uppercase hex.
-        local SECRET_PEPPER = "BxB.ware-Universal@#$)_%@#^()$@%_)+%(@"
+    -- [UPDATED] ฟังก์ชันสร้าง Token แบบ Dynamic Time-based
+    -- รองรับการรับ timestamp เข้ามาเพื่อแก้ปัญหา 59-minute drift
+    local function buildExpectedToken(keydata, timestamp)
+        -- ใช้เวลาที่ส่งเข้ามา หรือถ้าไม่มีให้ใช้เวลาปัจจุบัน
+        local ts = timestamp or os.time()
+        local d = os.date("*t", ts) -- แปลงเป็น Table วันเวลา
+        
+        -- สูตร: BxB.Ware(Prefix) + เวลา(วัน:วันที่:ชัวโมง:นาที) + วันที่ + วัน + ปี + BxB.Ware(Secret)
+        -- หมายเหตุ: d.wday คือวันในสัปดาห์ (1-7), d.day คือวันที่ (1-31)
+        
+        local prefix = Security.PREFIX
+        local secret = Security.SECRET
+        
+        -- จัดรูปแบบเวลา: วัน:วันที่:ชั่วโมง:นาที (เช่น 1:05:14:59)
+        local timeStr = string.format("%d:%02d:%02d:%02d", d.wday, d.day, d.hour, d.min)
+        
+        -- ประกอบร่าง String ตามสูตร
+        local rawTimePart = prefix .. timeStr .. d.day .. d.wday .. d.year .. secret
+        
+        -- รวมกับข้อมูล Key เพื่อความเป็นเอกลักษณ์
         local k    = tostring(keydata.key or keydata.Key or "")
         local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
         local role = tostring(keydata.role or "user")
-        local datePart = os.date("%Y%m%d")
-        local raw = table.concat({ SECRET_PEPPER, k, hw, role, datePart, tostring(#k) }, "|")
-        local h = fnv1a32(raw)
+        
+        local finalRaw = rawTimePart .. "|" .. k .. "|" .. hw .. "|" .. role
+        
+        -- Hash ด้วย fnv1a32 และแปลงเป็น HEX
+        local h = fnv1a32(finalRaw)
         return ("%08X"):format(h)
     end
 
     local function startMainHub(keydata, Library)
+        -- Dual-Layer Handshake: Create a secret environment flag
+        local secretFlagName = "BxB_Auth_" .. tostring(math.random(10000,99999))
+        if getgenv then
+            getgenv()[secretFlagName] = true
+            -- Pass this flag name to main hub via keydata structure extension
+            keydata._auth_flag = secretFlagName
+        end
+        
+        -- [CRITICAL FIX] Capture Timestamp for Sync
+        -- บันทึกเวลาที่ใช้สร้าง Token เพื่อส่งไปให้ MainHub
+        -- MainHub จะใช้เวลานี้ในการ Validate ทำให้ไม่เกิดปัญหาเมื่อข้ามนาที (59->00)
+        local handshakeTime = os.time()
+        keydata._handshake_ts = handshakeTime
+
         local src = Exec.HttpGet(Config.MAINHUB_URL)
         local chunk, err = loadstring(src)
         if not chunk then
@@ -755,13 +821,15 @@ do
             warn("[Obsidian] MainHub must return a function!")
             return
         end
-        -- Generate an auth token that matches MainHub's expected format
-        local token = buildExpectedToken(keydata)
+        
+        -- สร้าง Token โดยใช้ handshakeTime ที่บันทึกไว้
+        local token = buildExpectedToken(keydata, handshakeTime)
+        
         local success, err2 = pcall(startFn, Exec, keydata, token)
         if not success then
             warn("[Obsidian] Runtime error: " .. tostring(err2))
         end
-        -- Close the UI after starting the hub
+        
         if Library and type(Library.Unload) == "function" then
             Library:Unload()
         end
@@ -1071,7 +1139,15 @@ do
         ----------------------------------------------------------------
         local function addRichLabel(group, text)
             local lbl = group:AddLabel(text, true)
-            if lbl and lbl.TextLabel then lbl.TextLabel.RichText = true end
+            if lbl and lbl.TextLabel then
+                lbl.TextLabel.RichText = true
+                -- [FIX] Prevent overflow and overlapping
+                lbl.TextLabel.TextWrapped = true
+                lbl.TextLabel.AutomaticSize = Enum.AutomaticSize.Y
+                lbl.TextLabel.Size = UDim2.new(1, 0, 0, 0) -- Allow height to grow
+                lbl.TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+                lbl.TextLabel.TextYAlignment = Enum.TextYAlignment.Top
+            end
             return lbl
         end
 
