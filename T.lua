@@ -1913,7 +1913,7 @@ local function MainHub(Exec, keydata, authToken)
     end
 
     ------------------------------------------------
-    -- 4.4 Combat & Aimbot Tab (Interlocked UI)
+    -- 4.4 Combat & Aimbot Tab (OPTIMIZED BY DIABLO)
     ------------------------------------------------
     do
         local CombatTab = Tabs.Combat
@@ -1970,21 +1970,15 @@ local function MainHub(Exec, keydata, authToken)
         local RCSToggle = AimBox:AddToggle("bxw_aim_rcs", { Text = "Recoil Control (RCS)", Default = false })
         local RCSStrength = AimBox:AddSlider("bxw_rcs_strength", { Text = "RCS Strength", Default = 5, Min = 1, Max = 20, Rounding = 0 })
         local StrafeToggle = AimBox:AddToggle("bxw_aim_strafe", { Text = "Target Strafe (Orbit)", Default = false, Tooltip = "Circle around target" })
-        
-        -- [REMOVED] Auto Equip Weapon (Per request)
 
         AimbotToggle:OnChanged(function(state)
             NotifyAction("Aimbot", state)
         end)
 
-
         local TriggerTeamToggle = ExtraBox:AddToggle("bxw_trigger_teamcheck", { Text = "Trigger Team Check", Default = true })
         local TriggerWallToggle = ExtraBox:AddToggle("bxw_trigger_wallcheck", { Text = "Trigger Wall Check", Default = false })
         local TriggerMethodDropdown = ExtraBox:AddDropdown("bxw_trigger_method", { Text = "Trigger Method", Values = { "Always On", "Hold Key" }, Default = "Always On", Multi = false })
         local TriggerFiringDropdown = ExtraBox:AddDropdown("bxw_trigger_firemode", { Text = "Firing Mode", Values = { "Single", "Burst", "Auto" }, Default = "Single", Multi = false })
-        
-        local TriggerFovSlider = ExtraBox:AddSlider("bxw_trigger_fov", { Text = "Trigger FOV Tolerance", Default = 3, Min = 1, Max = 20, Rounding = 1 })
-        
         local TriggerDelaySlider = ExtraBox:AddSlider("bxw_trigger_delay", { Text = "Trigger Delay (s)", Default = 0.05, Min = 0, Max = 1, Rounding = 2 })
         
         TriggerbotToggle:OnChanged(function(state)
@@ -2006,14 +2000,12 @@ local function MainHub(Exec, keydata, authToken)
                     local trans = HitboxTransSlider.Value
                     for _, plr in ipairs(Players:GetPlayers()) do
                         if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-                             -- Simple Team Check for Hitbox
                              local isTeam = false
                              if AimTeamCheck.Value and LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then isTeam = true end
-                             
                              if not isTeam then
                                  local head = plr.Character.Head
                                  if head then
-                                     head.Size = Vector3.new(2 + size, 1 + size, 1 + size) -- Standard Head is approx 2,1,1
+                                     head.Size = Vector3.new(2 + size, 1 + size, 1 + size) 
                                      head.Transparency = trans
                                      head.CanCollide = false
                                  end
@@ -2024,130 +2016,28 @@ local function MainHub(Exec, keydata, authToken)
             end
         end)
 
-
-        ExtraBox:AddDivider()
-        ExtraBox:AddLabel("Hit Chance per Part")
-        local HeadChanceSlider = ExtraBox:AddSlider("bxw_hit_head_chance", { Text = "Head Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
-        local UpTorsoChanceSlider = ExtraBox:AddSlider("bxw_hit_uptorso_chance", { Text = "Upper Torso Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
-        local TorsoChanceSlider = ExtraBox:AddSlider("bxw_hit_torso_chance", { Text = "Torso Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
-        local HandChanceSlider = ExtraBox:AddSlider("bxw_hit_hand_chance", { Text = "Hand/Arm Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
-        local LegChanceSlider = ExtraBox:AddSlider("bxw_hit_leg_chance", { Text = "Leg Hit Chance %", Default = 100, Min = 0, Max = 100, Rounding = 0 })
-
         AimbotFOVCircle = Drawing.new("Circle") AimbotFOVCircle.Transparency = 0.5 AimbotFOVCircle.Filled = false AimbotFOVCircle.Thickness = 1 AimbotFOVCircle.Color = Color3.fromRGB(255, 255, 255)
         AimbotSnapLine = Drawing.new("Line") AimbotSnapLine.Transparency = 0.7 AimbotSnapLine.Visible = false
         local rainbowHue = 0
 
         local function performClick() pcall(function() mouse1click() end) pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton1(Vector2.new()) end) end
 
-        -- INDEPENDENT TRIGGERBOT LOGIC
+        -- [OPTIMIZATION] Shared Target Variable
+        local CurrentAimbotTarget = nil -- { player, part, root, char, hum, screenPos }
+
+        -- [OPTIMIZATION] Target Selector Loop (Runs slower than RenderStepped)
         task.spawn(function()
-            local lastTrigger = 0
             while true do
-                task.wait()
-                if TriggerbotToggle.Value then
-                    local delayTime = (Options.bxw_trigger_delay and Options.bxw_trigger_delay.Value) or 0
-                    if tick() - lastTrigger > delayTime then
-                        
-                        -- Raycast from Center of Camera
-                        local cam = Workspace.CurrentCamera
-                        if cam then
-                            local rayParams = RaycastParams.new()
-                            rayParams.FilterDescendantsInstances = { LocalPlayer.Character, cam }
-                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-                            
-                            -- Use Camera LookVector directly from center
-                            local rayOrigin = cam.CFrame.Position
-                            local rayDirection = cam.CFrame.LookVector * 1000
-                            
-                            local rayResult = Workspace:Raycast(rayOrigin, rayDirection, rayParams)
-                            
-                            if rayResult and rayResult.Instance then
-                                local hitPart = rayResult.Instance
-                                local hitModel = hitPart:FindFirstAncestorOfClass("Model")
-                                
-                                if hitModel then
-                                    local hitPlr = Players:GetPlayerFromCharacter(hitModel)
-                                    if hitPlr and hitPlr ~= LocalPlayer then
-                                        local isEnemy = true
-                                        if TriggerTeamToggle.Value then
-                                            -- Check Team
-                                            if LocalPlayer.Team and hitPlr.Team and LocalPlayer.Team == hitPlr.Team then
-                                                isEnemy = false
-                                            end
-                                             -- Fallback Color Check
-                                            if LocalPlayer.TeamColor and hitPlr.TeamColor and LocalPlayer.TeamColor == hitPlr.TeamColor then
-                                                isEnemy = false
-                                            end
-                                        end
-
-                                        -- Check Health
-                                        local hum = hitModel:FindFirstChildOfClass("Humanoid")
-                                        if hum and hum.Health > 0 and isEnemy then
-                                            -- Fire
-                                            lastTrigger = tick()
-                                            
-                                            local fireMode = (Options.bxw_trigger_firemode and Options.bxw_trigger_firemode.Value) or "Single"
-                                            
-                                            if fireMode == "Single" then
-                                                performClick()
-                                            elseif fireMode == "Burst" then
-                                                for i=1, 3 do performClick() task.wait(0.05) end
-                                            elseif fireMode == "Auto" then
-                                                performClick() 
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end)
-        
-        local strafeAngle = 0
-
-        AddConnection(RunService.RenderStepped:Connect(function(dt)
-            local cam = Workspace.CurrentCamera
-            if not cam then return end
-            local mouseLoc = UserInputService:GetMouseLocation()
-
-            if Toggles.bxw_aim_showfov and Toggles.bxw_aim_showfov.Value and Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
-                AimbotFOVCircle.Visible = true
-                AimbotFOVCircle.Radius = (((Options.bxw_aim_fov and Options.bxw_aim_fov.Value) or 10) * 15)
-                AimbotFOVCircle.Position = mouseLoc
-                if Toggles.bxw_aim_rainbow and Toggles.bxw_aim_rainbow.Value then
-                    rainbowHue = (rainbowHue or 0) + (((Options.bxw_aim_rainbowspeed and Options.bxw_aim_rainbowspeed.Value) or 0) / 360)
-                    if rainbowHue > 1 then rainbowHue = rainbowHue - 1 end
-                    AimbotFOVCircle.Color = Color3.fromHSV(rainbowHue, 1, 1)
-                else
-                    AimbotFOVCircle.Color = (Options.bxw_aim_fovcolor and Options.bxw_aim_fovcolor.Value) or Color3.fromRGB(255,255,255)
-                end
-            else
-                AimbotFOVCircle.Visible = false
-            end
-            AimbotSnapLine.Visible = false
-
-            if Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
-                local activation = (Options.bxw_aim_activation and Options.bxw_aim_activation.Value) or "Hold Right Click"
+                task.wait(0.05) -- Run 20 times per second instead of 60-144
                 
-                -- Mobile Activation Logic
-                local isActive = false
-                if activation == "Always On" then
-                    isActive = true
-                elseif activation == "Hold Right Click" then
-                    if isMobile then
-                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)
-                    else
-                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-                    end
-                end
-                
-                if isActive then
+                if Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
+                    local cam = Workspace.CurrentCamera
+                    local mouseLoc = UserInputService:GetMouseLocation()
+                    local myRoot = getRootPart()
                     local bestPlr = nil
                     local bestScore = math.huge
-                    local myRoot = getRootPart()
-                    if myRoot then
+
+                    if myRoot and cam then
                         for _, plr in ipairs(Players:GetPlayers()) do
                             if plr ~= LocalPlayer then
                                 local char = plr.Character
@@ -2155,10 +2045,13 @@ local function MainHub(Exec, keydata, authToken)
                                 if hum and hum.Health > 0 then
                                     local rootCandidate = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
                                     if rootCandidate then
+                                        -- Team Check
                                         local skip = false
                                         if Toggles.bxw_aim_teamcheck and Toggles.bxw_aim_teamcheck.Value then
                                             if LocalPlayer.Team and plr.Team and LocalPlayer.Team == plr.Team then skip = true end
+                                            if LocalPlayer.TeamColor and plr.TeamColor and LocalPlayer.TeamColor == plr.TeamColor then skip = true end
                                         end
+
                                         if not skip then
                                             local aimPartName = (Options.bxw_aim_part and Options.bxw_aim_part.Value) or "Head"
                                             local selectedPart = nil
@@ -2167,16 +2060,14 @@ local function MainHub(Exec, keydata, authToken)
                                             elseif aimPartName == "Torso" then selectedPart = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
                                             elseif aimPartName == "HumanoidRootPart" then selectedPart = rootCandidate
                                             elseif aimPartName == "Closest" then
-                                                local candidatesClosest = {}
-                                                local function addClosest(name) local p = char:FindFirstChild(name) if p then table.insert(candidatesClosest, p) end end
-                                                addClosest("Head") addClosest("UpperTorso") addClosest("Torso") addClosest("HumanoidRootPart")
-                                                if #candidatesClosest > 0 then
-                                                    local bestDist = math.huge
-                                                    for _, p in ipairs(candidatesClosest) do
+                                                local closestDist = math.huge
+                                                for _, pName in ipairs({"Head", "UpperTorso", "Torso", "HumanoidRootPart"}) do
+                                                    local p = char:FindFirstChild(pName)
+                                                    if p then
                                                         local sp, onScreen = cam:WorldToViewportPoint(p.Position)
                                                         if onScreen then
                                                             local dist = (Vector2.new(sp.X, sp.Y) - mouseLoc).Magnitude
-                                                            if dist < bestDist then bestDist = dist selectedPart = p end
+                                                            if dist < closestDist then closestDist = dist selectedPart = p end
                                                         end
                                                     end
                                                 end
@@ -2191,7 +2082,9 @@ local function MainHub(Exec, keydata, authToken)
                                                 if onScreen then
                                                     local fovLimit = ((Options.bxw_aim_fov and Options.bxw_aim_fov.Value) or 10) * 15
                                                     local screenDist = (Vector2.new(screenPos.X, screenPos.Y) - mouseLoc).Magnitude
+                                                    
                                                     if screenDist <= fovLimit then
+                                                        -- Visibility Check
                                                         local skipVis = false
                                                         if Toggles.bxw_aim_visibility and Toggles.bxw_aim_visibility.Value then
                                                             local rp = RaycastParams.new()
@@ -2204,11 +2097,8 @@ local function MainHub(Exec, keydata, authToken)
 
                                                         if not skipVis then
                                                             local score = screenDist
-                                                            
-                                                            -- Smart Aim Logic Calculation
                                                             if UseSmartAimLogic.Value then
                                                                 local distSelf = (rootCandidate.Position - myRoot.Position).Magnitude
-                                                                -- Formula: MouseDist (Priority) + PlayerDist (Secondary) + LowHP (Tertiary)
                                                                 score = (screenDist * 1.5) + (distSelf * 0.5) + (hum.Health * 0.1)
                                                             else
                                                                 local mode = (Options.bxw_aim_targetmode and Options.bxw_aim_targetmode.Value) or "Closest To Crosshair"
@@ -2233,103 +2123,179 @@ local function MainHub(Exec, keydata, authToken)
                             end
                         end
                     end
+                    CurrentAimbotTarget = bestPlr
+                else
+                    CurrentAimbotTarget = nil
+                end
+            end
+        end)
 
-                    if bestPlr then
-                        -- Deadzone Check
-                        local dist = (Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y) - mouseLoc).Magnitude
-                        if dist < DeadzoneSlider.Value then return end -- In deadzone, don't aim
+        -- Triggerbot Logic (Independent Loop)
+        task.spawn(function()
+            local lastTrigger = 0
+            while true do
+                task.wait()
+                if TriggerbotToggle.Value then
+                    local delayTime = (Options.bxw_trigger_delay and Options.bxw_trigger_delay.Value) or 0
+                    if tick() - lastTrigger > delayTime then
+                        local cam = Workspace.CurrentCamera
+                        if cam then
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterDescendantsInstances = { LocalPlayer.Character, cam }
+                            rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+                            
+                            local rayOrigin = cam.CFrame.Position
+                            local rayDirection = cam.CFrame.LookVector * 1000
+                            local rayResult = Workspace:Raycast(rayOrigin, rayDirection, rayParams)
+                            
+                            if rayResult and rayResult.Instance then
+                                local hitModel = rayResult.Instance:FindFirstAncestorOfClass("Model")
+                                if hitModel then
+                                    local hitPlr = Players:GetPlayerFromCharacter(hitModel)
+                                    if hitPlr and hitPlr ~= LocalPlayer then
+                                        local isEnemy = true
+                                        if TriggerTeamToggle.Value then
+                                            if LocalPlayer.Team and hitPlr.Team and LocalPlayer.Team == hitPlr.Team then isEnemy = false end
+                                            if LocalPlayer.TeamColor and hitPlr.TeamColor and LocalPlayer.TeamColor == hitPlr.TeamColor then isEnemy = false end
+                                        end
 
-                        -- Visibility Indicator
-                        if VisibilityToggle.Value then
-                            local rp = RaycastParams.new()
-                            rp.FilterDescendantsInstances = { bestPlr.char, LocalPlayer.Character }
-                            rp.FilterType = Enum.RaycastFilterType.Blacklist
-                            local hit = Workspace:Raycast(cam.CFrame.Position, bestPlr.part.Position - cam.CFrame.Position, rp)
-                            if hit then AimbotFOVCircle.Color = Color3.new(1,0,0) else AimbotFOVCircle.Color = Color3.new(0,1,0) end
-                        end
-
-                        local globalChance = (Options.bxw_aim_hitchance and Options.bxw_aim_hitchance.Value) or 100
-                        if math.random(0, 100) <= globalChance then
-                            local aimPart = bestPlr.part
-                            local camPos = cam.CFrame.Position
-                            if Toggles.bxw_aim_smart and Toggles.bxw_aim_smart.Value then
-                                local rootPart = bestPlr.root
-                                local headPart = bestPlr.char and bestPlr.char:FindFirstChild("Head")
-                                if rootPart and headPart then
-                                    local rp = RaycastParams.new() rp.FilterDescendantsInstances = { bestPlr.char, LocalPlayer.Character } rp.FilterType = Enum.RaycastFilterType.Blacklist
-                                    local hitRoot = Workspace:Raycast(camPos, rootPart.Position - camPos, rp)
-                                    local hitHead = Workspace:Raycast(camPos, headPart.Position - camPos, rp)
-                                    if hitRoot and not hitHead then aimPart = headPart end
+                                        local hum = hitModel:FindFirstChildOfClass("Humanoid")
+                                        if hum and hum.Health > 0 and isEnemy then
+                                            lastTrigger = tick()
+                                            local fireMode = (Options.bxw_trigger_firemode and Options.bxw_trigger_firemode.Value) or "Single"
+                                            if fireMode == "Single" then performClick()
+                                            elseif fireMode == "Burst" then for i=1, 3 do performClick() task.wait(0.05) end
+                                            elseif fireMode == "Auto" then performClick() end
+                                        end
+                                    end
                                 end
-                            end
-                            local predictedPos = aimPart.Position
-                            
-                            -- [FIXED] Prediction Logic
-                            if Toggles.bxw_aim_pred and Toggles.bxw_aim_pred.Value then
-                                local velocity = bestPlr.root.AssemblyLinearVelocity
-                                if velocity.Magnitude > 0.1 then -- Only predict if moving
-                                    local factor = (Options.bxw_aim_predfactor and Options.bxw_aim_predfactor.Value) or 0.1
-                                    predictedPos = predictedPos + (velocity * factor)
-                                end
-                            end
-                            
-                            local aimDir = (predictedPos - camPos).Unit
-                            
-                            -- RCS Logic
-                            if RCSToggle.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                                local rcsY = RCSStrength.Value
-                                mousemoverel(0, rcsY * 0.1)
-                            end
-                            
-                            -- Target Strafe
-                            if StrafeToggle.Value then
-                                strafeAngle = strafeAngle + dt * 2
-                                local radius = 5
-                                local targetRoot = bestPlr.root
-                                local myRoot = getRootPart()
-                                if targetRoot and myRoot then
-                                    local offset = Vector3.new(math.sin(strafeAngle)*radius, 0, math.cos(strafeAngle)*radius)
-                                    myRoot.CFrame = CFrame.new(targetRoot.Position + offset, targetRoot.Position)
-                                end
-                            end
-
-                            if Options.bxw_aim_method and Options.bxw_aim_method.Value == "MouseDelta" then
-                                local pos, vis = cam:WorldToViewportPoint(predictedPos)
-                                if vis then
-                                    local delta = (Vector2.new(pos.X, pos.Y) - mouseLoc)
-                                    local smooth = (Options.bxw_aim_smooth and Options.bxw_aim_smooth.Value) or 0.5
-                                    -- Adjusted smoothness formula for 0-5
-                                    local factor = 1
-                                    if smooth > 0 then factor = smooth end
-                                    delta = delta / factor
-                                    pcall(function() mousemoverel(delta.X, delta.Y) end)
-                                end
-                            else
-                                local newCFrame = CFrame.new(camPos, predictedPos)
-                                local smooth = (Options.bxw_aim_smooth and Options.bxw_aim_smooth.Value) or 0.5
-                                -- Adjusted smoothness: 0 = Instant, 5 = Very Slow
-                                local alpha = 1
-                                if smooth > 0 then
-                                    alpha = 0.1 / smooth -- Inverse logic for Lerp
-                                end
-                                if alpha > 1 then alpha = 1 end
-                                
-                                cam.CFrame = cam.CFrame:Lerp(newCFrame, alpha)
-                            end
-                            if Toggles.bxw_aim_snapline and Toggles.bxw_aim_snapline.Value then
-                                AimbotSnapLine.Visible = true
-                                AimbotSnapLine.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
-                                AimbotSnapLine.To = Vector2.new(bestPlr.screenPos.X, bestPlr.screenPos.Y)
-                                AimbotSnapLine.Color = (Options.bxw_aim_snapcolor and Options.bxw_aim_snapcolor.Value) or Color3.fromRGB(255,0,0)
-                                AimbotSnapLine.Thickness = (Options.bxw_aim_snapthick and Options.bxw_aim_snapthick.Value) or 1
                             end
                         end
                     end
                 end
             end
+        end)
+        
+        local strafeAngle = 0
+
+        -- [OPTIMIZED] RenderStepped Loop - Handles only Visuals & Camera Movement
+        AddConnection(RunService.RenderStepped:Connect(function(dt)
+            local cam = Workspace.CurrentCamera
+            if not cam then return end
+            local mouseLoc = UserInputService:GetMouseLocation()
+
+            -- Draw FOV Circle
+            if Toggles.bxw_aim_showfov and Toggles.bxw_aim_showfov.Value and Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value then
+                AimbotFOVCircle.Visible = true
+                AimbotFOVCircle.Radius = (((Options.bxw_aim_fov and Options.bxw_aim_fov.Value) or 10) * 15)
+                AimbotFOVCircle.Position = mouseLoc
+                if Toggles.bxw_aim_rainbow and Toggles.bxw_aim_rainbow.Value then
+                    rainbowHue = (rainbowHue or 0) + (((Options.bxw_aim_rainbowspeed and Options.bxw_aim_rainbowspeed.Value) or 0) / 360)
+                    if rainbowHue > 1 then rainbowHue = rainbowHue - 1 end
+                    AimbotFOVCircle.Color = Color3.fromHSV(rainbowHue, 1, 1)
+                else
+                    AimbotFOVCircle.Color = (Options.bxw_aim_fovcolor and Options.bxw_aim_fovcolor.Value) or Color3.fromRGB(255,255,255)
+                end
+            else
+                AimbotFOVCircle.Visible = false
+            end
+            AimbotSnapLine.Visible = false
+
+            -- Aimbot Movement
+            if Toggles.bxw_aimbot_enable and Toggles.bxw_aimbot_enable.Value and CurrentAimbotTarget then
+                local activation = (Options.bxw_aim_activation and Options.bxw_aim_activation.Value) or "Hold Right Click"
+                local isActive = false
+                
+                if activation == "Always On" then
+                    isActive = true
+                elseif activation == "Hold Right Click" then
+                    if isMobile then
+                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)
+                    else
+                        isActive = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                    end
+                end
+                
+                if isActive then
+                    local bestPlr = CurrentAimbotTarget
+                    local aimPart = bestPlr.part
+
+                    -- Smart BodyAim Override Check (Real-time)
+                    if Toggles.bxw_aim_smart and Toggles.bxw_aim_smart.Value then
+                        local camPos = cam.CFrame.Position
+                        local rp = RaycastParams.new() 
+                        rp.FilterDescendantsInstances = { bestPlr.char, LocalPlayer.Character } 
+                        rp.FilterType = Enum.RaycastFilterType.Blacklist
+                        
+                        local hitRoot = Workspace:Raycast(camPos, bestPlr.root.Position - camPos, rp)
+                        local headP = bestPlr.char:FindFirstChild("Head")
+                        local hitHead = headP and Workspace:Raycast(camPos, headP.Position - camPos, rp)
+                        
+                        if hitRoot and not hitHead then aimPart = headP or aimPart end
+                    end
+
+                    local predictedPos = aimPart.Position
+                    
+                    -- Prediction
+                    if Toggles.bxw_aim_pred and Toggles.bxw_aim_pred.Value then
+                        local velocity = bestPlr.root.AssemblyLinearVelocity
+                        if velocity.Magnitude > 0.1 then
+                            local factor = (Options.bxw_aim_predfactor and Options.bxw_aim_predfactor.Value) or 0.1
+                            predictedPos = predictedPos + (velocity * factor)
+                        end
+                    end
+                    
+                    -- RCS
+                    if RCSToggle.Value and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                        local rcsY = RCSStrength.Value
+                        mousemoverel(0, rcsY * 0.1)
+                    end
+                    
+                    -- Strafe
+                    if StrafeToggle.Value then
+                        strafeAngle = strafeAngle + dt * 2
+                        local radius = 5
+                        local targetRoot = bestPlr.root
+                        local myRoot = getRootPart()
+                        if targetRoot and myRoot then
+                            local offset = Vector3.new(math.sin(strafeAngle)*radius, 0, math.cos(strafeAngle)*radius)
+                            myRoot.CFrame = CFrame.new(targetRoot.Position + offset, targetRoot.Position)
+                        end
+                    end
+
+                    -- Apply Camera Move
+                    if Options.bxw_aim_method and Options.bxw_aim_method.Value == "MouseDelta" then
+                        local pos, vis = cam:WorldToViewportPoint(predictedPos)
+                        if vis then
+                            local delta = (Vector2.new(pos.X, pos.Y) - mouseLoc)
+                            local smooth = (Options.bxw_aim_smooth and Options.bxw_aim_smooth.Value) or 0.5
+                            local factor = (smooth > 0) and smooth or 1
+                            delta = delta / factor
+                            pcall(function() mousemoverel(delta.X, delta.Y) end)
+                        end
+                    else
+                        local newCFrame = CFrame.new(cam.CFrame.Position, predictedPos)
+                        local smooth = (Options.bxw_aim_smooth and Options.bxw_aim_smooth.Value) or 0.5
+                        local alpha = (smooth > 0) and (0.1 / smooth) or 1
+                        if alpha > 1 then alpha = 1 end
+                        cam.CFrame = cam.CFrame:Lerp(newCFrame, alpha)
+                    end
+
+                    -- Draw Snapline
+                    if Toggles.bxw_aim_snapline and Toggles.bxw_aim_snapline.Value then
+                        AimbotSnapLine.Visible = true
+                        AimbotSnapLine.From = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+                        -- Update screen pos for visual accuracy
+                        local sp, _ = cam:WorldToViewportPoint(bestPlr.part.Position) 
+                        AimbotSnapLine.To = Vector2.new(sp.X, sp.Y)
+                        AimbotSnapLine.Color = (Options.bxw_aim_snapcolor and Options.bxw_aim_snapcolor.Value) or Color3.fromRGB(255,0,0)
+                        AimbotSnapLine.Thickness = (Options.bxw_aim_snapthick and Options.bxw_aim_snapthick.Value) or 1
+                    end
+                end
+            end
         end))
     end
-
+    
     ------------------------------------------------
     -- Server Tab
     ------------------------------------------------
