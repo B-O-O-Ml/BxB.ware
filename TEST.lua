@@ -16,20 +16,17 @@ do
     local LocalPlayer = Players.LocalPlayer
 
     ----------------------------------------------------------------
-    -- Security Module (NEW & UPGRADED)
+    -- Security Module (UPGRADED)
     ----------------------------------------------------------------
     local Security = {}
     
-    -- [UPDATED] Prefix และ Secret สำหรับ Token
+    -- [SEC-FIX] Locked Prefix & Salt
+    -- บังคับใช้ Prefix BxB.Ware ตามคำสั่ง เพื่อความปลอดภัยและเป็นมาตรฐานเดียว
     Security.PREFIX = "BxB.Ware"
-    Security.SECRET = "BxB.Ware" 
     
-    -- Obfuscated Pepper (คงเดิมไว้เพื่อความปลอดภัยของ Hash Function)
-    local _s1 = "BxB.ware"
-    local _s2 = "-Universal"
-    local _s3 = "@#$)_%@#^"
-    local _s4 = "()$@%_)+%(@"
-    Security.PEPPER = _s1 .. _s2 .. _s3 .. _s4
+    -- สร้าง Salt ที่ซับซ้อนขึ้นโดยผูกกับ Prefix
+    -- การใช้ Salt แบบนี้ทำให้แม้ยิง Handshake ซ้ำก็จะไม่ผ่านถ้า Algorithm ฝั่ง Hub เปลี่ยน
+    Security.SALT = Security.PREFIX .. "_{SECURE}_" .. "9981-Universal-V2"
 
     -- Anti-Tamper: ตรวจสอบว่าฟังก์ชันถูก Hook หรือไม่
     function Security.AntiTamper()
@@ -54,15 +51,23 @@ do
         end
     end
 
-    -- [UPDATED] Generate High Security HWID (Client ID based)
+    -- Generate Strong HWID
     function Security.GetStrongHWID()
         local clientId = "unknown"
-        -- ใช้ ClientId เป็นแกนหลักเพราะเปลี่ยนยากกว่า
         pcall(function() clientId = AnalyticsService:GetClientId() end)
         
-        -- ตามสูตร: Client ID / BxB.ware(prefix)
-        -- เรา concat กันก่อนแล้วค่อยส่งไป Hash เพื่อความปลอดภัยสูงสุด
-        local raw = tostring(clientId) .. "/" .. Security.PREFIX
+        local platform = "PC"
+        if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+            platform = "Mobile"
+        end
+        
+        -- ผสมข้อมูลหลายอย่างเพื่อให้ Spoof ยากขึ้น
+        local raw = table.concat({
+            clientId,
+            tostring(LocalPlayer.UserId),
+            platform,
+            tostring(game.PlaceId) -- ผูกกับแมพด้วยก็ได้ถ้าต้องการ แต่เอาออกได้ถ้าอยากได้ Global HWID
+        }, "||")
         
         return raw -- จะถูก Hash ต่อในฟังก์ชัน secureHWIDHash
     end
@@ -211,7 +216,7 @@ do
         KEYDATA_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/data.json",
         SCRIPTINFO_URL  = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json",
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
-        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", 
+        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", -- แก้ชื่อไฟล์ให้ตรงกับที่อัพโหลด
 
         KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json"
     }
@@ -220,7 +225,9 @@ do
     ----------------------------------------------------------------
     local bit = bit32
     if not bit then
-        error("[HWID] bit32 library is required for secure HWID hash")
+        -- Fallback for older executors
+        bit = require(game:GetService("ReplicatedStorage"):FindFirstChild("bit") or script)
+        if not bit then error("[HWID] bit32 library is required for secure HWID hash") end
     end
 
     local function rotl32(x, n)
@@ -232,7 +239,8 @@ do
     end
 
     local function secureHWIDHash(str)
-        local salt = Security.PEPPER -- Use Obfuscated Pepper for Encryption
+        -- [SEC-FIX] Use New Salt logic
+        local salt = Security.SALT 
         local s = salt .. "\0" .. str .. "\0" .. tostring(#str)
 
         local h1 = 0x6A09E667
@@ -273,7 +281,6 @@ do
     end
 
     local function getHWIDHash()
-        -- เรียกใช้ GetStrongHWID แบบใหม่ (Client ID/Prefix) แล้ว Hash เพื่อความปลอดภัยสูงสุด
         return secureHWIDHash(Security.GetStrongHWID())
     end
 
@@ -346,6 +353,7 @@ do
             end
         end
 
+        -- ใช้ UTC เพื่อความเป็นสากล
         local ok, dt = pcall(function()
             return DateTime.fromUniversalTime(year, month, day, hour, min, sec)
         end)
@@ -764,34 +772,31 @@ do
         return hash
     end
 
-    -- [UPDATED] ฟังก์ชันสร้าง Token แบบ Dynamic Time-based
-    -- รองรับการรับ timestamp เข้ามาเพื่อแก้ปัญหา 59-minute drift
-    local function buildExpectedToken(keydata, timestamp)
-        -- ใช้เวลาที่ส่งเข้ามา หรือถ้าไม่มีให้ใช้เวลาปัจจุบัน
-        local ts = timestamp or os.time()
-        local d = os.date("*t", ts) -- แปลงเป็น Table วันเวลา
+    local function buildExpectedToken(keydata)
+        -- [SEC-FIX] Use Locked Prefix and Salt
+        local PFX = Security.PREFIX
+        local SALT = Security.SALT
         
-        -- สูตร: BxB.Ware(Prefix) + เวลา(วัน:วันที่:ชัวโมง:นาที) + วันที่ + วัน + ปี + BxB.Ware(Secret)
-        -- หมายเหตุ: d.wday คือวันในสัปดาห์ (1-7), d.day คือวันที่ (1-31)
-        
-        local prefix = Security.PREFIX
-        local secret = Security.SECRET
-        
-        -- จัดรูปแบบเวลา: วัน:วันที่:ชั่วโมง:นาที (เช่น 1:05:14:59)
-        local timeStr = string.format("%d:%02d:%02d:%02d", d.wday, d.day, d.hour, d.min)
-        
-        -- ประกอบร่าง String ตามสูตร
-        local rawTimePart = prefix .. timeStr .. d.day .. d.wday .. d.year .. secret
-        
-        -- รวมกับข้อมูล Key เพื่อความเป็นเอกลักษณ์
         local k    = tostring(keydata.key or keydata.Key or "")
         local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
         local role = tostring(keydata.role or "user")
         
-        local finalRaw = rawTimePart .. "|" .. k .. "|" .. hw .. "|" .. role
+        -- [SEC-FIX] Use UTC Date !%Y%m%d
+        -- This prevents Invalid Handshake due to client timezone differences
+        local datePart = os.date("!%Y%m%d") 
         
-        -- Hash ด้วย fnv1a32 และแปลงเป็น HEX
-        local h = fnv1a32(finalRaw)
+        -- Enhanced Delimiter and Structure
+        local raw = table.concat({
+            PFX,
+            SALT,
+            k,
+            hw,
+            role,
+            datePart,
+            tostring(#k),
+        }, "||")
+
+        local h = fnv1a32(raw)
         return ("%08X"):format(h)
     end
 
@@ -803,12 +808,6 @@ do
             -- Pass this flag name to main hub via keydata structure extension
             keydata._auth_flag = secretFlagName
         end
-        
-        -- [CRITICAL FIX] Capture Timestamp for Sync
-        -- บันทึกเวลาที่ใช้สร้าง Token เพื่อส่งไปให้ MainHub
-        -- MainHub จะใช้เวลานี้ในการ Validate ทำให้ไม่เกิดปัญหาเมื่อข้ามนาที (59->00)
-        local handshakeTime = os.time()
-        keydata._handshake_ts = handshakeTime
 
         local src = Exec.HttpGet(Config.MAINHUB_URL)
         local chunk, err = loadstring(src)
@@ -822,9 +821,7 @@ do
             return
         end
         
-        -- สร้าง Token โดยใช้ handshakeTime ที่บันทึกไว้
-        local token = buildExpectedToken(keydata, handshakeTime)
-        
+        local token = buildExpectedToken(keydata)
         local success, err2 = pcall(startFn, Exec, keydata, token)
         if not success then
             warn("[Obsidian] Runtime error: " .. tostring(err2))
