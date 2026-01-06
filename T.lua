@@ -133,12 +133,22 @@ end
 
 -- Anti-Tamper: Basic Integrity Check
 local function IntegrityCheck()
+    -- เช็คก่อนว่าฟังก์ชัน iscclosure มีอยู่จริงไหม ค่อยเรียกใช้
+    if iscclosure then 
+        if not iscclosure(game.HttpGet) then
+            return false
+        end
+    end
+    return true
+end
+--[[
+local function IntegrityCheck()
     if iscclosure and not iscclosure(game.HttpGet) then
         return false -- HttpGet was hooked
     end
     return true
-end
-
+end 
+]]
 --====================================================
 -- 2. Role System & RichText Helpers
 --====================================================
