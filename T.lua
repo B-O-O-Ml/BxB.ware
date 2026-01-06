@@ -91,12 +91,9 @@ end
 -- 1. Secret + Token Verify (SECURITY UPGRADED)
 --====================================================
 
--- Obfuscated Secret Construction (ตรงกับ KeyMain)
-local _s1 = "BxB.ware"
-local _s2 = "-Universal"
-local _s3 = "@#$)_%@#^"
-local _s4 = "()$@%_)+%(@"
-local SECRET_PEPPER = _s1 .. _s2 .. _s3 .. _s4
+-- [SEC-SYNC] Updated to match KeyMain.lua 100%
+local SECURITY_PREFIX = "BxB.Ware"
+local SECURITY_SALT   = SECURITY_PREFIX .. "_{SECURE}_" .. "9981-Universal-V2"
 
 local bit = bit32 or bit
 
@@ -115,16 +112,20 @@ local function buildExpectedToken(keydata)
     local k    = tostring(keydata.key or keydata.Key or "")
     local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
     local role = tostring(keydata.role or "user")
-    local datePart = os.date("%Y%m%d") -- ต้องใช้ format เดียวกับฝั่ง KeyUI
+    
+    -- [SEC-FIX] Use UTC Date (!%Y%m%d) to match KeyMain logic strictly
+    -- This fixes "Invalid Handshake" caused by timezone diffs
+    local datePart = os.date("!%Y%m%d") 
 
     local raw = table.concat({
-        SECRET_PEPPER,
+        SECURITY_PREFIX,
+        SECURITY_SALT,
         k,
         hw,
         role,
         datePart,
         tostring(#k),
-    }, "|")
+    }, "||") -- [SEC-FIX] Delimiter changed to || match KeyMain
 
     local h = fnv1a32(raw)
     return ("%08X"):format(h)
