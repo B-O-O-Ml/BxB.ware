@@ -1438,7 +1438,7 @@ local function MainHub(Exec, keydata, authToken)
         ESPEnabledToggle:OnChanged(function(state) 
             NotifyAction("Global ESP", state) 
         end)
-        
+        --[[
         -- [FIXED] Radar Settings (Visuals)
         local RadarToggle = ExtraVisualBox:AddToggle("bxw_radar_enable", { Text = "Enable 2D Radar", Default = false })
         local RadarRangeSlider = ExtraVisualBox:AddSlider("bxw_radar_range", { Text = "Radar Range", Default = 200, Min = 50, Max = 1000, Rounding = 0 })
@@ -1453,7 +1453,123 @@ local function MainHub(Exec, keydata, authToken)
                 radarDrawings.points = {}
             end
         end)
+]]--
+        -- [PHASE 1] Radar V2 & Visuals
+        ExtraVisualBox:AddDivider()
+        ExtraVisualBox:AddLabel("Radar V2 (GUI)")
+        local RadarV2Toggle = ExtraVisualBox:AddToggle("bxw_radar_v2", { Text = "Enable GUI Radar", Default = false })
+        local RadarZoom = ExtraVisualBox:AddSlider("bxw_radar_zoom", { Text = "Zoom", Default = 1, Min = 0.5, Max = 3, Rounding = 1 })
+        
+        -- Radar V2 Logic (Basic Frame)
+        local RadFrame = Instance.new("Frame", CoreGui)
+        RadFrame.Size = UDim2.fromOffset(150, 150)
+        RadFrame.Position = UDim2.fromScale(0.85, 0.05)
+        RadFrame.BackgroundColor3 = Color3.new(0,0,0)
+        RadFrame.BackgroundTransparency = 0.5
+        RadFrame.Visible = false
+        RadFrame.BorderSizePixel = 2
+        RadFrame.BorderColor3 = Color3.new(1,1,1)
+        
+        RadarV2Toggle:OnChanged(function(state) RadFrame.Visible = state end)
+        
+        AddConnection(RunService.RenderStepped:Connect(function()
+            if not RadarV2Toggle.Value then return end
+            RadFrame:ClearAllChildren() -- Clear old dots (Optimization needed later)
+            local center = Vector2.new(75, 75)
+            local cam = workspace.CurrentCamera
+            local myRoot = getRootPart()
+            if not myRoot or not cam then return end
+            
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local pRoot = p.Character.HumanoidRootPart
+                    local dist = (pRoot.Position - myRoot.Position)
+                    local scale = 10 * RadarZoom.Value
+                    
+                    -- Rotate relative to camera
+                    local look = cam.CFrame.LookVector
+                    local angle = math.atan2(look.Z, look.X) - math.atan2(dist.Z, dist.X)
+                    local mag = dist.Magnitude / scale
+                    
+                    if mag < 75 then
+                        local dx = math.sin(angle) * mag
+                        local dy = math.cos(angle) * mag
+                        
+                        local dot = Instance.new("Frame", RadFrame)
+                        dot.Size = UDim2.fromOffset(4, 4)
+                        dot.Position = UDim2.fromOffset(center.X + dy, center.Y + dx)
+                        dot.BackgroundColor3 = p.TeamColor.Color
+                        dot.BorderSizePixel = 0
+                    end
+                end
+            end
+        end))
 
+        ExtraVisualBox:AddDivider()
+        ExtraVisualBox:AddLabel("Damage Indicator")
+        ExtraVisualBox:AddToggle("bxw_dmg_ind", { Text = "Show Damage Text", Default = true })
+        -- Hook to DamageSystem.Show in loop is not needed, logic handled below
+        
+        -- Damage Detection Logic
+        local prevHealths = {}
+        AddConnection(RunService.Stepped:Connect(function()
+            if Toggles.bxw_dmg_ind and Toggles.bxw_dmg_ind.Value then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character then
+                        local hum = p.Character:FindFirstChild("Humanoid")
+                        if hum then
+                            local old = prevHealths[p] or hum.Health
+                            if hum.Health < old then
+                                local dmg = old - hum.Health
+                                DamageSystem.Show(p.Character:FindFirstChild("Head"), dmg, dmg > 30)
+                            end
+                            prevHealths[p] = hum.Health
+                        end
+                    end
+                end
+            end
+        end))
+
+        ExtraVisualBox:AddDivider()
+        local ObjectBox = ESPTab:AddLeftGroupbox("Object ESP", "search")
+        ObjectBox:AddInput("bxw_obj_search", { Default = "", Placeholder = "Part Name...", Text = "Object Name" })
+        ObjectBox:AddToggle("bxw_obj_esp", { Text = "Enable Search", Default = false })
+        ObjectBox:AddColorPicker("bxw_obj_color", { Default = Color3.new(1, 0, 1) })
+        
+        -- Object ESP Logic
+        local objDrawings = {}
+        AddConnection(RunService.RenderStepped:Connect(function()
+            -- Cleanup
+            for _, d in pairs(objDrawings) do d:Remove() end
+            objDrawings = {}
+            
+            if Toggles.bxw_obj_esp.Value and Options.bxw_obj_search.Value ~= "" then
+                local search = Options.bxw_obj_search.Value:lower()
+                for _, v in ipairs(workspace:GetDescendants()) do
+                    if v:IsA("BasePart") and v.Name:lower():find(search) then
+                        local pos, vis = workspace.CurrentCamera:WorldToViewportPoint(v.Position)
+                        if vis then
+                            local txt = Drawing.new("Text")
+                            txt.Visible = true
+                            txt.Text = v.Name
+                            txt.Color = Options.bxw_obj_color.Value
+                            txt.Position = Vector2.new(pos.X, pos.Y)
+                            txt.Size = 16
+                            txt.Center = true
+                            table.insert(objDrawings, txt)
+                        end
+                    end
+                end
+            end
+        end))
+        
+        -- Custom Crosshair Upgrade (Replace old CrosshairToggle logic if desired or Add parallel)
+        local CrossBox = ESPSettingBox -- Use existing box
+        CrossBox:AddDivider()
+        CrossBox:AddLabel("Custom Crosshair V2")
+        CrossBox:AddToggle("bxw_cross_dynamic", { Text = "Dynamic Spread", Default = false })
+        -- Dynamic logic modifies crosshairLines positions based on Character velocity (Add inside existing RenderStepped)
+        
         local function getPlayerNames()
             local names = {}
             for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LocalPlayer then table.insert(names, plr.Name) end end
@@ -2533,7 +2649,48 @@ local function MainHub(Exec, keydata, authToken)
             end
         end))
 
-
+ServerLeft:AddDivider()
+        ServerLeft:AddButton("Open Server Browser", function()
+            -- Simple Browser GUI
+            local sg = Instance.new("ScreenGui", CoreGui)
+            local frame = Instance.new("ScrollingFrame", sg)
+            frame.Size = UDim2.fromOffset(300, 400)
+            frame.Position = UDim2.fromScale(0.5, 0.5)
+            frame.AnchorPoint = Vector2.new(0.5, 0.5)
+            frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+            
+            local close = Instance.new("TextButton", frame)
+            close.Size = UDim2.fromOffset(20, 20)
+            close.Text = "X"
+            close.MouseButton1Click:Connect(function() sg:Destroy() end)
+            
+            -- Fetch Servers
+            task.spawn(function()
+                local url = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=50"
+                local ok, res = pcall(function() return HttpService:JSONDecode(game:HttpGet(url)) end)
+                if ok and res.data then
+                    local y = 0
+                    for _, s in ipairs(res.data) do
+                        if s.playing < s.maxPlayers then
+                            local btn = Instance.new("TextButton", frame)
+                            btn.Size = UDim2.new(1, -10, 0, 30)
+                            btn.Position = UDim2.new(0, 0, 0, y)
+                            btn.Text = string.format("%d/%d | Ping: %d", s.playing, s.maxPlayers, s.ping or 0)
+                            btn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+                            btn.TextColor3 = Color3.new(1,1,1)
+                            btn.MouseButton1Click:Connect(function()
+                                TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id)
+                            end)
+                            y = y + 35
+                        end
+                    end
+                    frame.CanvasSize = UDim2.new(0, 0, 0, y)
+                else
+                    Library:Notify("Failed to fetch servers", 3)
+                end
+            end)
+        end)
+    
         ServerRight:AddDivider()
         
         ServerRight:AddButton("Copy Job ID", function()
@@ -2690,9 +2847,41 @@ local function MainHub(Exec, keydata, authToken)
                  track:Play()
              end
         end)
+MiscLeft:AddDivider()
+        MiscLeft:AddLabel("Universal Chat Spam")
+        MiscLeft:AddInput("bxw_spam_msg", { Default = "BxB on Top!", Placeholder = "Message..." })
+        MiscLeft:AddSlider("bxw_spam_delay", { Text = "Spam Delay", Default = 2, Min = 0.1, Max = 10, Rounding = 1 })
+        MiscLeft:AddToggle("bxw_spam_active", { Text = "Start Spamming", Default = false })
+        
+        task.spawn(function()
+            while true do
+                task.wait(Options.bxw_spam_delay.Value)
+                if Toggles.bxw_spam_active.Value then
+                    local msg = Options.bxw_spam_msg.Value
+                    if TextChatService.ChatInputBarConfiguration.TargetTextChannel then
+                        TextChatService.ChatInputBarConfiguration.TargetTextChannel:SendAsync(msg)
+                    else
+                        ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents").SayMessageRequest:FireServer(msg, "All")
+                    end
+                end
+            end
+        end)
 
         MiscLeft:AddDivider()
-
+        MiscLeft:AddLabel("Notification Logger")
+        MiscLeft:AddToggle("bxw_log_admin", { Text = "Log Admin Join", Default = true })
+        MiscLeft:AddButton("Export Logs (.txt)", function() LogSystem.Export() end)
+        
+        AddConnection(Players.PlayerAdded:Connect(function(p)
+            if Toggles.bxw_log_admin.Value then -- Simple ID/Group check mockup
+                LogSystem.Add("Player Joined: " .. p.Name, "JOIN")
+                if p:GetRankInGroup(1200769) > 0 then -- Example Admin Group
+                    Library:Notify("ADMIN JOINED: " .. p.Name, 5)
+                    LogSystem.Add("ADMIN JOINED: " .. p.Name, "ALERT")
+                end
+            end
+        end))
+        
         -- [FEATURE] Graphics & Visuals Section
         local GfxBox = MiscTab:AddRightGroupbox("Graphics & Visuals", "monitor")
         
@@ -2929,7 +3118,11 @@ local function MainHub(Exec, keydata, authToken)
         local MenuGroup = SettingsTab:AddLeftGroupbox("Menu", "wrench")
         
         MenuGroup:AddToggle("ForceNotify", { Text = "Force Notification", Default = true, Tooltip = "Notify when features are toggled" })
-
+MenuGroup:AddDivider()
+        MenuGroup:AddLabel("Config Cloud Sync")
+        MenuGroup:AddButton("Export Config (Clipboard)", function() CloudSystem.ExportConfig() end)
+        MenuGroup:AddInput("bxw_cfg_import", { Default = "", Placeholder = "Paste Config Here..." })
+        MenuGroup:AddButton("Import Config", function() CloudSystem.ImportConfig(Options.bxw_cfg_import.Value) end)
         MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(value) Library.KeybindFrame.Visible = value end })
         MenuGroup:AddToggle("ShowCustomCursor", { Text = FormatFeatureName("Custom Cursor", "Mouse"), Default = true, Callback = function(Value) Library.ShowCustomCursor = Value end })
         MenuGroup:AddDropdown("NotificationSide", { Values = { "Left", "Right" }, Default = "Right", Text = "Notification Side", Callback = function(Value) Library:SetNotifySide(Value) end })
