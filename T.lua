@@ -313,6 +313,83 @@ end
 --====================================================
 
 local function MainHub(Exec, keydata, authToken)
+
+    ----------------------------------------------------------------
+    -- [PHASE 1] LOGIC MODULES (DIABLO SYSTEMS)
+    ----------------------------------------------------------------
+    
+    -- 1. Damage Indicator Logic
+    local DamageSystem = {}
+    do
+        local DmgFolder = Instance.new("Folder", CoreGui) DmgFolder.Name = "BxB_DmgInd"
+        function DamageSystem.Show(targetPart, amount, crit)
+            if not targetPart then return end
+            local bill = Instance.new("BillboardGui", DmgFolder)
+            bill.Adornee = targetPart
+            bill.Size = UDim2.fromOffset(200, 50)
+            bill.StudsOffset = Vector3.new(math.random(-2,2)*0.5, 3, math.random(-2,2)*0.5)
+            bill.AlwaysOnTop = true
+            
+            local lbl = Instance.new("TextLabel", bill)
+            lbl.BackgroundTransparency = 1
+            lbl.Size = UDim2.fromScale(1, 1)
+            lbl.Text = "-" .. tostring(math.floor(amount))
+            lbl.TextColor3 = crit and Color3.new(1, 0.8, 0) or Color3.new(1, 1, 1)
+            lbl.TextStrokeTransparency = 0
+            lbl.Font = Enum.Font.GothamBlack
+            lbl.TextSize = crit and 26 or 18
+            
+            TweenService:Create(bill, TweenInfo.new(1), {StudsOffset = bill.StudsOffset + Vector3.new(0, 4, 0)}):Play()
+            local fade = TweenService:Create(lbl, TweenInfo.new(1), {TextTransparency = 1, TextStrokeTransparency = 1})
+            fade:Play()
+            fade.Completed:Connect(function() bill:Destroy() end)
+        end
+    end
+
+    -- 2. Notification Logger Logic
+    local LogSystem = { Logs = {} }
+    function LogSystem.Add(msg, type)
+        local timeStamp = os.date("%H:%M:%S")
+        local entry = string.format("[%s] [%s] %s", timeStamp, type or "INFO", msg)
+        table.insert(LogSystem.Logs, 1, entry) -- Add to top
+        if #LogSystem.Logs > 100 then table.remove(LogSystem.Logs) end -- Limit 100
+        return entry
+    end
+    function LogSystem.Export()
+        if writefile then
+            writefile("BxB_Logs_"..os.time()..".txt", table.concat(LogSystem.Logs, "\n"))
+            Library:Notify("Logs Exported to Workspace", 3)
+        end
+    end
+
+    -- 3. Config Cloud Sync Logic (Clipboard Based)
+    local CloudSystem = {}
+    function CloudSystem.ExportConfig()
+        local data = {}
+        for idx, obj in pairs(Library.Options) do
+            if obj.Value ~= nil then data[idx] = obj.Value end
+        end
+        for idx, obj in pairs(Library.Toggles) do
+            if obj.Value ~= nil then data[idx] = obj.Value end
+        end
+        local json = HttpService:JSONEncode(data)
+        -- Simple Base64 Encode (Simulated for brevity)
+        if setclipboard then setclipboard("BXB_CFG::" .. json) Library:Notify("Config copied to clipboard!", 3) end
+    end
+    function CloudSystem.ImportConfig(str)
+        if not str or str:sub(1,9) ~= "BXB_CFG::" then Library:Notify("Invalid Config String", 3) return end
+        local json = str:sub(10)
+        local ok, data = pcall(function() return HttpService:JSONDecode(json) end)
+        if ok and data then
+            for idx, val in pairs(data) do
+                if Library.Options[idx] then Library.Options[idx]:SetValue(val) end
+                if Library.Toggles[idx] then Library.Toggles[idx]:SetValue(val) end
+            end
+            Library:Notify("Config Imported!", 3)
+        else
+            Library:Notify("Decode Failed", 3)
+        end
+    end
     ---------------------------------------------
     -- 4.1 ตรวจ Security: Exec + keydata + token + Flag
     ---------------------------------------------
@@ -1979,8 +2056,18 @@ local function MainHub(Exec, keydata, authToken)
         -- RCS & Strafe
         local RCSToggle = AimBox:AddToggle("bxw_aim_rcs", { Text = "Recoil Control (RCS)", Default = false })
         local RCSStrength = AimBox:AddSlider("bxw_rcs_strength", { Text = "RCS Strength", Default = 5, Min = 1, Max = 20, Rounding = 0 })
-        local StrafeToggle = AimBox:AddToggle("bxw_aim_strafe", { Text = "Target Strafe (Orbit)", Default = false, Tooltip = "Circle around target" })
+    --  local StrafeToggle = AimBox:AddToggle("bxw_aim_strafe", { Text = "Target Strafe (Orbit)", Default = false, Tooltip = "Circle around target" })
+        -- [PHASE 1] Target Strafe V2
+        local StrafeToggle = AimBox:AddToggle("bxw_aim_strafe", { Text = "Target Strafe", Default = false })
+        local StrafeJump = AimBox:AddToggle("bxw_strafe_jump", { Text = "Auto Jump", Default = false })
+        local StrafeSpeed = AimBox:AddSlider("bxw_strafe_speed", { Text = "Strafe Speed", Default = 5, Min = 1, Max = 20, Rounding = 1 })
+        local StrafeRadius = AimBox:AddSlider("bxw_strafe_radius", { Text = "Strafe Radius", Default = 5, Min = 2, Max = 20, Rounding = 1 })
+        
+        -- Strafe Logic Update (Put this INSIDE RenderStepped loop where strafe was)
+        -- *NOTE: Replace the old strafe logic in RenderStepped with this:*
 
+
+        
         AimbotToggle:OnChanged(function(state)
             NotifyAction("Aimbot", state)
         end)
@@ -2261,18 +2348,27 @@ local function MainHub(Exec, keydata, authToken)
                         mousemoverel(0, rcsY * 0.1)
                     end
                     
-                    -- Strafe
-                    if StrafeToggle.Value then
-                        strafeAngle = strafeAngle + dt * 2
-                        local radius = 5
-                        local targetRoot = bestPlr.root
-                        local myRoot = getRootPart()
-                        if targetRoot and myRoot then
-                            local offset = Vector3.new(math.sin(strafeAngle)*radius, 0, math.cos(strafeAngle)*radius)
-                            myRoot.CFrame = CFrame.new(targetRoot.Position + offset, targetRoot.Position)
-                        end
-                    end
+                    -- Strafe        
 
+         if StrafeToggle.Value then
+             strafeAngle = strafeAngle + dt * (StrafeSpeed.Value)
+             local radius = StrafeRadius.Value
+             local targetRoot = bestPlr.root
+             local myRoot = getRootPart()
+             if targetRoot and myRoot then
+                 -- Wall Check Logic (Simple)
+                 local offset = Vector3.new(math.sin(strafeAngle)*radius, 0, math.cos(strafeAngle)*radius)
+                 local dest = targetRoot.Position + offset
+                 local ray = Workspace:Raycast(targetRoot.Position, dest - targetRoot.Position, RaycastParams.new())
+                 if ray then strafeAngle = strafeAngle + math.pi end -- Reverse if hit wall
+                 
+                 myRoot.CFrame = CFrame.new(dest, targetRoot.Position)
+                 if StrafeJump.Value then 
+                     local hum = getHumanoid() 
+                     if hum and (tick()%1 < 0.1) then hum.Jump = true end 
+                 end
+             end
+         end
                     -- Apply Camera Move
                     if Options.bxw_aim_method and Options.bxw_aim_method.Value == "MouseDelta" then
                         local pos, vis = cam:WorldToViewportPoint(predictedPos)
