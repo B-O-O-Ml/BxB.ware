@@ -31,17 +31,17 @@
       "bind_hwid": false,
       "hwid_hash": "",
       "timestamp": 1733383200,
-      "expire": "1/05/26 00:00:00",
-      "note": "Normal user key (unix timestamp)"
+      "expire": "1/01/30 00:00:00",
+      "note": "Owner Key access"
     },
     {
-      "key": "USER-BASIC-1234",
+      "key": "USER",
       "role": "owner",
       "status": "banned",
       "bind_hwid": false,
       "hwid_hash": "",
       "timestamp": 1733383200,
-      "expire": "1/05/26 00:00:00",
+      "expire": "",
       "note": "Normal user key (unix timestamp)"
     },
     {
