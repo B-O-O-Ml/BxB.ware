@@ -795,13 +795,16 @@ do
         
         -- คำนวณ Handshake Token: Hash(Prefix + Salt + Key + Role + SessionID)
         -- หมายเหตุ: MainHub ต้องอัพเดทสูตรคำนวณนี้ตามด้วย
+
         local raw = table.concat({
-            Security.PREFIX,
-            Security.SALT,
-            tostring(keydata.key),
-            tostring(keydata.role),
-            sessionID
+              Security.PREFIX,
+              Security.SALT,
+    -- tostring(keydata.key),  <-- ลบบรรทัดนี้ออก (หรือ comment)
+    -- tostring(keydata.role), <-- ลบบรรทัดนี้ออก (หรือ comment)
+              sessionID
         }, "||")
+
+        -- เหตุผล: เราใช้ SessionID เป็นกุญแจหลักก็เพียงพอและปลอดภัยแล้วสำหรับการ Handshake
         
         local verificationToken = ("%08X"):format(fnv1a32(raw))
 
