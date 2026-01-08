@@ -307,14 +307,14 @@ local function parseChangelogBody(body, HttpService)
     return status, table.concat(lines, "\n")
 end
 
---====================================================
--- 4. ฟังก์ชันหลักของ MainHub
---     (เรียกจาก KeyUI: startFn(Exec, keydata, authToken))
---====================================================
+    --====================================================
+    -- 4. ฟังก์ชันหลักของ MainHub
+    --     (เรียกจาก KeyUI: startFn(Exec, DataGuard, sessionID))
+    --====================================================
 
-local function MainHub(Exec, keydata, authToken)
+    local function MainHub(Exec, DataGuard, sessionID)
     ---------------------------------------------
-    -- 4.1 ตรวจ Security: Exec + keydata + token + Flag
+    -- 4.1 ตรวจ Security: DSH Handshake
     ---------------------------------------------
     
     -- 1. Anti-Tamper Check
@@ -328,29 +328,30 @@ local function MainHub(Exec, keydata, authToken)
         return
     end
 
-    if type(keydata) ~= "table" or type(keydata.key) ~= "string" then
-        warn("[MainHub] keydata invalid")
+    -- 2. Handshake & Unlock Data
+    -- ตรวจสอบว่ามี DataGuard (Closure) และ SessionID ส่งมาหรือไม่
+    if type(DataGuard) ~= "function" or type(sessionID) ~= "string" then
+        warn("[MainHub] Missing Handshake Arguments.")
+        LocalPlayer:Kick("Security Error: Direct Execution Prevented.")
         return
     end
 
-    -- 2. Token Check
-    local expected = buildExpectedToken(keydata)
-    if authToken ~= expected then
-        warn("[MainHub] Invalid auth token, abort")
-        LocalPlayer:Kick("Security Error: Invalid Handshake.")
+    -- สร้าง Token จาก SessionID ที่ได้รับ แล้วลองไข DataGuard
+    local unlockToken = generateUnlockToken(sessionID)
+    local keydata = DataGuard(unlockToken)
+
+    -- ถ้า keydata เป็น nil แปลว่า Token ไม่ตรง (SessionID ปลอม หรือ Salt ไม่ตรง)
+    if type(keydata) ~= "table" then
+        warn("[MainHub] Handshake Failed: Invalid Token.")
+        LocalPlayer:Kick("Security Error: Invalid Session Handshake.")
         return
     end
-
-    -- 3. Environment Flag Check (Dual-Layer Handshake)
-    if getgenv then
-        local flagName = keydata._auth_flag
-        if not flagName or not getgenv()[flagName] then
-            warn("[MainHub] Missing auth flag. Direct execution detected.")
-            LocalPlayer:Kick("Security Error: Direct execution is not allowed. Use KeyUI.")
-            return
-        end
-        -- Clear the flag to prevent reuse (One-time handshake)
-        getgenv()[flagName] = nil
+    
+    -- 3. Verify Keydata Integrity
+    if not keydata.key or not keydata.role then
+        warn("[MainHub] Handshake Success but Data Corrupted.")
+        LocalPlayer:Kick("Security Error: Data Corruption.")
+        return
     end
 
     -- Crosshair & Aimbot Drawings storage (Defined here for cleanup access)
