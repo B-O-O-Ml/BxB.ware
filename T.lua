@@ -88,44 +88,41 @@ local function getRootPart()
 end
 
 --====================================================
--- 1. Secret + Token Verify (SECURITY UPGRADED)
+-- 1. Secret + Token Verify (SECURITY UPGRADED: DSH)
 --====================================================
 
--- [SEC-SYNC] Updated to match KeyMain.lua 100%
+-- [SEC-SYNC] Updated to match KeyMain DSH
 local SECURITY_PREFIX = "BxB.Ware"
 local SECURITY_SALT   = SECURITY_PREFIX .. "_{SECURE}_" .. "9981-Universal-V2"
 
-local bit = bit32 or bit
+-- [FIX] โหลด bit library ให้ปลอดภัยเหมือน KeyMain
+local bit = bit32
+if not bit then
+    local success, res = pcall(function() return require(game:GetService("ReplicatedStorage"):FindFirstChild("bit") or script) end)
+    if success and res then bit = res else bit = _G.bit or {} end
+end
 
 local function fnv1a32(str)
     local hash = 0x811C9DC5
-
+    -- Safety check for bit lib
+    if not bit or not bit.bxor then return 0 end 
+    
     for i = 1, #str do
         hash = bit.bxor(hash, str:byte(i))
         hash = (hash * 0x01000193) % 0x100000000
     end
-
     return hash
 end
 
-local function buildExpectedToken(keydata)
-    local k    = tostring(keydata.key or keydata.Key or "")
-    local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
-    local role = tostring(keydata.role or "user")
-    
-    -- [SEC-FIX] Use UTC Date (!%Y%m%d) to match KeyMain logic strictly
-    -- This fixes "Invalid Handshake" caused by timezone diffs
-    local datePart = os.date("!%Y%m%d") 
-
+-- [NEW] ฟังก์ชันใหม่สำหรับไขรหัส DSH (ต้องมีอันนี้!)
+local function generateUnlockToken(sessionID)
+    -- สูตรคำนวณ Hash ต้องตรงกับ KeyMain (ที่ท่านแก้ Comment ออกแล้ว)
+    -- คือ: Prefix + Salt + SessionID
     local raw = table.concat({
         SECURITY_PREFIX,
         SECURITY_SALT,
-        k,
-        hw,
-        role,
-        datePart,
-        tostring(#k),
-    }, "||") -- [SEC-FIX] Delimiter changed to || match KeyMain
+        sessionID
+    }, "||")
 
     local h = fnv1a32(raw)
     return ("%08X"):format(h)
@@ -133,7 +130,6 @@ end
 
 -- Anti-Tamper: Basic Integrity Check
 local function IntegrityCheck()
-    -- เช็คก่อนว่าฟังก์ชัน iscclosure มีอยู่จริงไหม ค่อยเรียกใช้
     if iscclosure then 
         if not iscclosure(game.HttpGet) then
             return false
@@ -141,14 +137,6 @@ local function IntegrityCheck()
     end
     return true
 end
---[[
-local function IntegrityCheck()
-    if iscclosure and not iscclosure(game.HttpGet) then
-        return false -- HttpGet was hooked
-    end
-    return true
-end 
-]]
 --====================================================
 -- 2. Role System & RichText Helpers
 --====================================================
