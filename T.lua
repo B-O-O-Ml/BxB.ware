@@ -2913,8 +2913,9 @@ end
 --====================================================
 -- 5. Return function
 --====================================================
-return function(Exec, keydata, authToken)
-    local ok, err = pcall(MainHub, Exec, keydata, authToken)
+return function(Exec, DataGuard, sessionID)
+    -- รับ DataGuard และ SessionID แทน keydata/authToken แบบเก่า
+    local ok, err = pcall(MainHub, Exec, DataGuard, sessionID)
     if not ok then
         warn("[MainHub] Fatal error:", err)
     end
