@@ -1,5 +1,5 @@
--- Key_Loaded.lua
--- ใช้เป็น Loader + Key UI + Status + Auto-login
+-- Key_Loaded.lua (DSH UPGRADED EDITION)
+-- ใช้เป็น Loader + Key UI + Status + Auto-login + Dynamic Session Handshake
 -- เรียกจาก executor:
 -- loadstring(game:HttpGet("https://raw.githubusercontent.com/you/yourrepo/main/Key_Loaded.lua"))()
 
@@ -12,11 +12,12 @@ do
     local AnalyticsService = game:GetService("RbxAnalyticsService")
     local UserInputService = game:GetService("UserInputService") -- Added for platform check
     local RunService = game:GetService("RunService")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
     local LocalPlayer = Players.LocalPlayer
 
     ----------------------------------------------------------------
-    -- Security Module (UPGRADED)
+    -- Security Module (UPGRADED: DSH System)
     ----------------------------------------------------------------
     local Security = {}
     
@@ -25,7 +26,6 @@ do
     Security.PREFIX = "BxB.Ware"
     
     -- สร้าง Salt ที่ซับซ้อนขึ้นโดยผูกกับ Prefix
-    -- การใช้ Salt แบบนี้ทำให้แม้ยิง Handshake ซ้ำก็จะไม่ผ่านถ้า Algorithm ฝั่ง Hub เปลี่ยน
     Security.SALT = Security.PREFIX .. "_{SECURE}_" .. "9981-Universal-V2"
 
     -- Anti-Tamper: ตรวจสอบว่าฟังก์ชันถูก Hook หรือไม่
@@ -39,7 +39,9 @@ do
         local checks = {
             game.HttpGet,
             HttpService.JSONDecode,
-            getgenv
+            getgenv,
+            tostring,
+            string.format
         }
         
         for _, f in pairs(checks) do
@@ -49,6 +51,16 @@ do
                 while true do end
             end
         end
+    end
+
+    -- [NEW] Generate Random Session ID (Nonce)
+    -- ใช้สำหรับสร้าง Session Key แบบสุ่มทุกครั้งที่รัน เพื่อกัน Replay Attack
+    function Security.GenerateNonce()
+        local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
+        return string.gsub(template, "[xy]", function(c)
+            local v = (c == "x") and math.random(0, 0xf) or math.random(8, 0xb)
+            return string.format("%x", v)
+        end)
     end
 
     -- Generate Strong HWID
@@ -226,7 +238,7 @@ do
     local bit = bit32
     if not bit then
         -- Fallback for older executors
-        bit = require(game:GetService("ReplicatedStorage"):FindFirstChild("bit") or script)
+        bit = require(ReplicatedStorage:FindFirstChild("bit") or script)
         if not bit then error("[HWID] bit32 library is required for secure HWID hash") end
     end
 
@@ -761,7 +773,7 @@ do
 
 
     ----------------------------------------------------------------
-    -- Main Hub Loader (Updated with Dynamic Token & Handshake)
+    -- Main Hub Loader (UPGRADED: Dynamic Session Handshake)
     ----------------------------------------------------------------
     local function fnv1a32(str)
         local hash = 0x811C9DC5
@@ -772,41 +784,35 @@ do
         return hash
     end
 
-    local function buildExpectedToken(keydata)
-        -- [SEC-FIX] Use Locked Prefix and Salt
-        local PFX = Security.PREFIX
-        local SALT = Security.SALT
-        
-        local k    = tostring(keydata.key or keydata.Key or "")
-        local hw   = tostring(keydata.hwid_hash or keydata.HWID or "no-hwid")
-        local role = tostring(keydata.role or "user")
-        
-        -- [SEC-FIX] Use UTC Date !%Y%m%d
-        -- This prevents Invalid Handshake due to client timezone differences
-        local datePart = os.date("!%Y%m%d") 
-        
-        -- Enhanced Delimiter and Structure
-        local raw = table.concat({
-            PFX,
-            SALT,
-            k,
-            hw,
-            role,
-            datePart,
-            tostring(#k),
-        }, "||")
-
-        local h = fnv1a32(raw)
-        return ("%08X"):format(h)
-    end
-
     local function startMainHub(keydata, Library)
-        -- Dual-Layer Handshake: Create a secret environment flag
-        local secretFlagName = "BxB_Auth_" .. tostring(math.random(10000,99999))
-        if getgenv then
-            getgenv()[secretFlagName] = true
-            -- Pass this flag name to main hub via keydata structure extension
-            keydata._auth_flag = secretFlagName
+        -- [UPGRADE] Phase 1: สร้าง Session ID (Nonce)
+        -- ไม่ใช้เวลาเป็นตัวแปรหลักอีกต่อไป เพื่อแก้ปัญหา Timezone
+        local sessionID = Security.GenerateNonce()
+        
+        -- [UPGRADE] Phase 2: Memory Cloaking (Closure Data)
+        -- แทนที่จะส่ง table 'keydata' โดยตรง เราจะส่งฟังก์ชันที่ซ่อนค่าไว้ (Closure)
+        -- MainHub ต้องรู้ Token ที่ถูกต้องถึงจะดึงค่าได้
+        
+        -- คำนวณ Handshake Token: Hash(Prefix + Salt + Key + Role + SessionID)
+        -- หมายเหตุ: MainHub ต้องอัพเดทสูตรคำนวณนี้ตามด้วย
+        local raw = table.concat({
+            Security.PREFIX,
+            Security.SALT,
+            tostring(keydata.key),
+            tostring(keydata.role),
+            sessionID
+        }, "||")
+        
+        local verificationToken = ("%08X"):format(fnv1a32(raw))
+
+        -- สร้าง Data Guard Closure (กล่องนิรภัย)
+        local function DataGuard(proof)
+            if proof == verificationToken then
+                return keydata -- คืนค่า Keydata เฉพาะเมื่อ Proof ถูกต้อง
+            else
+                -- ถ้า Proof ผิด ให้ Crash หรือคืนค่าหลอกๆ
+                return nil
+            end
         end
 
         local src = Exec.HttpGet(Config.MAINHUB_URL)
@@ -821,16 +827,22 @@ do
             return
         end
         
-        local token = buildExpectedToken(keydata)
-        local success, err2 = pcall(startFn, Exec, keydata, token)
+        -- [IMPORTANT] ส่งค่าแบบใหม่: (Exec, DataGuard, SessionID)
+        -- MainHub เก่าอาจจะรับค่าเป็น (Exec, keydata, authToken) ซึ่งอาจ Error ได้
+        -- ดังนั้น MainHub ต้องถูกอัพเกรดให้รองรับ DataGuard ด้วย
+        local success, err2 = pcall(startFn, Exec, DataGuard, sessionID)
         if not success then
             warn("[Obsidian] Runtime error: " .. tostring(err2))
+            if Library and Library.Notify then
+                Library:Notify("Failed to start MainHub (Handshake Mismatch?)", 5)
+            end
         end
         
         if Library and type(Library.Unload) == "function" then
             Library:Unload()
         end
     end
+
     ----------------------------------------------------------------
     -- Key UI (Obsidian)
     ----------------------------------------------------------------
