@@ -1610,37 +1610,40 @@ end
                             if not data then data = {} espDrawings[plr] = data end
                             
                             -- [NEW] Radar 2.0 (Modern & Correct Rotation)
-    if RadarToggle.Value and plr ~= LocalPlayer then
-        -- คำนวณตำแหน่งสัมพัทธ์กับกล้อง
-        local relativePos = cam.CFrame:PointToObjectSpace(root.Position)
-        local range = RadarRangeSlider.Value
-        local size = RadarSizeSlider.Value
-        local center = Vector2.new(rX + size/2, rY + size/2)
-        
-        -- แปลงเป็น 2D (ตัดแกน Y ออก ใช้ X และ Z)
-        -- ใน ObjectSpace: -Z คือข้างหน้า, X คือขวา
-        local posX = relativePos.X
-        local posY = relativePos.Z 
-        
-        local dist = math.sqrt(posX*posX + posY*posY)
-        local scale = math.min(dist, range) / range
-        
-        -- คำนวณมุม
-        local angle = math.atan2(posY, posX)
-        
-        -- วาดจุด
-        local dotX = center.X + (math.cos(angle) * scale * (size/2))
-        local dotY = center.Y + (math.sin(angle) * scale * (size/2))
-        
-        -- Update Drawing
-        if not radarDrawings.points[plr] then
-             -- (Create logic เดิม)
-        end
-        radarDrawings.points[plr].Position = Vector2.new(dotX, dotY)
-        
-        -- ดีไซน์ Radar Background ให้สวยขึ้น (ทำนอก Loop)
-        -- ใส่ Cross Line, ใส่ Circle Outline แทน Square
-    end
+ -- [FIXED] Radar 2.0 Logic (ใส่โค้ดสร้าง Drawing กลับเข้าไป)
+                            if RadarToggle.Value and plr ~= LocalPlayer then
+                                local relativePos = cam.CFrame:PointToObjectSpace(root.Position)
+                                local range = RadarRangeSlider.Value
+                                local size = RadarSizeSlider.Value
+                                local rX = workspace.CurrentCamera.ViewportSize.X - size - 20
+                                local rY = workspace.CurrentCamera.ViewportSize.Y - size - 20
+                                local center = Vector2.new(rX + size/2, rY + size/2)
+                                
+                                local posX = relativePos.X
+                                local posY = relativePos.Z 
+                                
+                                local dist = math.sqrt(posX*posX + posY*posY)
+                                local scale = math.min(dist, range) / range
+                                
+                                local angle = math.atan2(posY, posX)
+                                
+                                local dotX = center.X + (math.cos(angle) * scale * (size/2))
+                                local dotY = center.Y + (math.sin(angle) * scale * (size/2))
+                                
+                                -- จุดที่ท่านลืมใส่ในไฟล์ Fixed --
+                                if not radarDrawings.points[plr] then
+                                     local d = Drawing.new("Circle")
+                                     d.Filled = true
+                                     d.Radius = 3
+                                     d.Color = Color3.new(1, 0, 0)
+                                     d.Visible = true
+                                     d.ZIndex = 2
+                                     radarDrawings.points[plr] = d
+                                end
+                                
+                                radarDrawings.points[plr].Position = Vector2.new(dotX, dotY)
+                                radarDrawings.points[plr].Visible = true
+                            end
 
                             local boxCFrame = root.CFrame
                             local cornersWorld = {
@@ -2606,10 +2609,11 @@ end
         end
     end
 -- [NEW] Server Browser
-    local ServerBrowserBox = ServerTab:AddRightGroupbox("Server Browser", "globe")
+-- [UPDATED] Server Browser (Fixed Groupbox Error & Join Button Logic)
+    local ServerBrowserBox = safeAddRightGroupbox(ServerTab, "Server Browser", "globe") -- แก้ Error ตรงนี้แล้ว
     
     local serverList = {}
-    local serverObjs = {} -- เก็บ object จริง
+    local serverObjs = {} 
     
     local ServerDropdown = ServerBrowserBox:AddDropdown("bxw_server_list", { Text = "Server List", Values = {}, Default = "", Multi = false })
     local SortMethod = ServerBrowserBox:AddDropdown("bxw_server_sort", { Text = "Sort By", Values = {"Lowest Ping", "Lowest Players", "Highest Players"}, Default = "Lowest Ping" })
@@ -2631,7 +2635,6 @@ end
                         end
                     end
                     
-                    -- Sorting Logic
                     local sort = SortMethod.Value
                     table.sort(serverObjs, function(a, b)
                         if sort == "Lowest Players" then return a.playing < b.playing end
@@ -2640,9 +2643,8 @@ end
                         return a.playing < b.playing
                     end)
                     
-                    -- Populate Dropdown
                     for i, s in ipairs(serverObjs) do
-                        local str = string.format("[%d/%d] Ping: %s | ID: %s...", s.playing, s.maxPlayers, tostring(s.ping), s.id:sub(1,5))
+                        local str = string.format("[%d/%d] Ping: %s", s.playing, s.maxPlayers, tostring(s.ping))
                         table.insert(serverList, str)
                     end
                     ServerDropdown:SetValues(serverList)
@@ -2656,9 +2658,8 @@ end
         end)
     end)
     
+    -- [FIXED] Join Button Logic (ลบ GetIdx ที่ Error ออก)
     ServerBrowserBox:AddButton("Join Selected", function()
-        local idx = ServerDropdown:GetIdx() -- ต้องแก้ Library ให้รองรับการหา Index หรือ Search จาก string
-        -- หรือใช้วิธี search string เอา
         local val = ServerDropdown.Value
         for i, str in ipairs(serverList) do
             if str == val then
