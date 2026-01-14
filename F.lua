@@ -2608,9 +2608,9 @@ end
             end))
         end
     end
--- [NEW] Server Browser
--- [UPDATED] Server Browser (Fixed Groupbox Error & Join Button Logic)
-    local ServerBrowserBox = safeAddRightGroupbox(ServerTab, "Server Browser", "globe") -- แก้ Error ตรงนี้แล้ว
+-- [UPDATED] Server Browser (Fix: Scope Error & Logic)
+    -- ใช้ Tabs.Server แทน ServerTab เพื่อป้องกัน Error หาตัวแปรไม่เจอ
+    local ServerBrowserBox = safeAddRightGroupbox(Tabs.Server, "Server Browser", "globe")
     
     local serverList = {}
     local serverObjs = {} 
@@ -2635,6 +2635,7 @@ end
                         end
                     end
                     
+                    -- Sorting Logic
                     local sort = SortMethod.Value
                     table.sort(serverObjs, function(a, b)
                         if sort == "Lowest Players" then return a.playing < b.playing end
@@ -2643,6 +2644,7 @@ end
                         return a.playing < b.playing
                     end)
                     
+                    -- Populate Dropdown
                     for i, s in ipairs(serverObjs) do
                         local str = string.format("[%d/%d] Ping: %s", s.playing, s.maxPlayers, tostring(s.ping))
                         table.insert(serverList, str)
@@ -2658,7 +2660,7 @@ end
         end)
     end)
     
-    -- [FIXED] Join Button Logic (ลบ GetIdx ที่ Error ออก)
+    -- [FIXED] Join Button Logic (แก้ Error ปุ่ม Join ให้แล้ว)
     ServerBrowserBox:AddButton("Join Selected", function()
         local val = ServerDropdown.Value
         for i, str in ipairs(serverList) do
