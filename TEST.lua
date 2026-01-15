@@ -28,30 +28,31 @@ do
     -- สร้าง Salt ที่ซับซ้อนขึ้นโดยผูกกับ Prefix
     Security.SALT = Security.PREFIX .. "_{SECURE}_" .. "9981-Universal-V2"
 
-    -- Anti-Tamper: ตรวจสอบว่าฟังก์ชันถูก Hook หรือไม่
-    function Security.AntiTamper()
-        local function isCClosure(func)
-            if iscclosure and not iscclosure(func) then return false end
-            return true
-        end
-        
-        -- ตรวจสอบฟังก์ชันสำคัญว่าเป็น Native C Closure หรือไม่
-        local checks = {
-            game.HttpGet,
-            HttpService.JSONDecode,
-            getgenv,
-            tostring,
-            string.format
-        }
-        
-        for _, f in pairs(checks) do
-            if not isCClosure(f) then
-                -- ถ้าเจอฟังก์ชันปลอม ให้ทำลาย script หรือเตะ
-                LocalPlayer:Kick("Security Violation: Integrity Check Failed.")
-                while true do end
-            end
+    -- Anti-Tamper: ตรวจสอบว่าฟังก์ชันถูก Hook function Security.AntiTamper()
+    local function isCClosure(func)
+        local ok, result = pcall(iscclosure, func)
+        if not ok or not result then return false end
+        return true
+    end
+    
+    local checks = {
+        game.HttpGet,
+        HttpService.JSONDecode,
+        getgenv,
+        tostring,
+        string.format
+    }
+    
+    for _, f in pairs(checks) do
+        local ok, res = pcall(isCClosure, f)
+        if not ok or not res then
+            warn("[Security] Tamper check failed: " .. tostring(res))
+            LocalPlayer:Kick("Security Violation: Integrity Check Failed.")
+            return false
         end
     end
+    return true
+end
 
     -- [NEW] Generate Random Session ID (Nonce)
     -- ใช้สำหรับสร้าง Session Key แบบสุ่มทุกครั้งที่รัน เพื่อกัน Replay Attack
@@ -114,28 +115,34 @@ do
             error("[Exec.HttpGet] game:HttpGet failed: " .. tostring(result))
         end
 
-        function Exec.HttpGet(url)
-            assert(type(url) == "string", "[Exec.HttpGet] url must be string")
-            
-            -- Security Check before request
-            Security.AntiTamper()
+    function Exec.HttpGet(url)
+    assert(type(url) == "string", "[Exec.HttpGet] url must be string")
+    
+    -- Security Check before request
+    if not Security.AntiTamper() then return nil, "Tamper detected" end
 
-            if httpRequest then
-                local ok, response = pcall(httpRequest, {
-                    Url = url,
-                    Method = "GET"
-                })
-
-                if ok and response then
-                    local body = response.Body or response.body
-                    if type(body) == "string" then
-                        return body
-                    end
-                end
+    if httpRequest then
+        local ok, response = pcall(httpRequest, {
+            Url = url,
+            Method = "GET"
+        })
+        if ok and response then
+            local body = response.Body or response.body
+            if type(body) == "string" then
+                return body
             end
-
-            return fallbackHttpGet(url)
         end
+        warn("[Exec.HttpGet] httpRequest failed for: " .. url)
+    end
+
+    local ok, result = pcall(game.HttpGet, game, url)
+    if ok and type(result) == "string" then
+        return result
+    end
+    
+    warn("[Exec.HttpGet] Fallback failed: " .. tostring(result))
+    return nil, "HttpGet failed"
+end
 
         ----------------------------------------------------------------
         -- Files
@@ -553,28 +560,25 @@ do
     -- Remote keydata helpers
     ----------------------------------------------------------------
     local function fetchRemoteKeyTable()
-        local body
-
-        local ok = pcall(function()
-            body = Exec.HttpGet(Config.KEYDATA_URL)
-        end)
-
-        if not ok or type(body) ~= "string" then
-            return nil
-        end
-
-        local ok2, decoded = pcall(HttpService.JSONDecode, HttpService, body)
-        if not ok2 or type(decoded) ~= "table" then
-            return nil
-        end
-
-        local list = decoded.keys or decoded
-        if type(list) ~= "table" then
-            return nil
-        end
-
-        return list, decoded
+    local ok, body = pcall(Exec.HttpGet, Config.KEYDATA_URL)
+    if not ok or type(body) ~= "string" then
+        warn("[fetchRemoteKeyTable] HttpGet failed: " .. tostring(body))
+        return nil, "Network error"
     end
+
+    local ok2, decoded = pcall(HttpService.JSONDecode, HttpService, body)
+    if not ok2 or type(decoded) ~= "table" then
+        warn("[fetchRemoteKeyTable] JSON decode failed: " .. tostring(decoded))
+        return nil, "Invalid JSON"
+    end
+
+    local list = decoded.keys or decoded
+    if type(list) ~= "table" then
+        return nil, "No key list"
+    end
+
+    return list, decoded
+end
 
     local function findRemoteRecord(list, key)
         if type(list) ~= "table" then
@@ -818,28 +822,32 @@ do
             end
         end
 
-        local src = Exec.HttpGet(Config.MAINHUB_URL)
-        local chunk, err = loadstring(src)
-        if not chunk then
-            warn("[Obsidian] Failed to load MainHub: " .. tostring(err))
-            return
-        end
-        local ok, startFn = pcall(chunk)
-        if not ok or type(startFn) ~= "function" then
-            warn("[Obsidian] MainHub must return a function!")
-            return
-        end
-        
-        -- [IMPORTANT] ส่งค่าแบบใหม่: (Exec, DataGuard, SessionID)
-        -- MainHub เก่าอาจจะรับค่าเป็น (Exec, keydata, authToken) ซึ่งอาจ Error ได้
-        -- ดังนั้น MainHub ต้องถูกอัพเกรดให้รองรับ DataGuard ด้วย
-        local success, err2 = pcall(startFn, Exec, DataGuard, sessionID)
-        if not success then
-            warn("[Obsidian] Runtime error: " .. tostring(err2))
-            if Library and Library.Notify then
-                Library:Notify("Failed to start MainHub (Handshake Mismatch?)", 5)
-            end
-        end
+        local okSrc, src = pcall(Exec.HttpGet, Config.MAINHUB_URL)
+if not okSrc or not src then
+    warn("[startMainHub] Failed to fetch MainHub: " .. tostring(src))
+    if Library and Library.Notify then Library:Notify("Failed to load MainHub script", 5) end
+    return
+end
+
+local okLoad, chunk = pcall(loadstring, src)
+if not okLoad or not chunk then
+    warn("[startMainHub] Loadstring failed: " .. tostring(chunk))
+    if Library then Library:Notify("MainHub script corrupted", 5) end
+    return
+end
+
+local okChunk, startFn = pcall(chunk)
+if not okChunk or type(startFn) ~= "function" then
+    warn("[startMainHub] Chunk execution failed: " .. tostring(startFn))
+    if Library then Library:Notify("Invalid MainHub function", 5) end
+    return
+end
+
+local success, err2 = pcall(startFn, Exec, DataGuard, sessionID)
+if not success then
+    warn("[startMainHub] Runtime error: " .. tostring(err2))
+    if Library then Library:Notify("Failed to start MainHub (Handshake Mismatch?)", 5) end
+end
         
         if Library and type(Library.Unload) == "function" then
             Library:Unload()
