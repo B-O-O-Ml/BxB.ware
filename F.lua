@@ -1473,12 +1473,8 @@ end
             end
         end
 
-        AddConnection(RunService.RenderStepped:Connect(function()
-        if not ESPEnabledToggle.Value then 
-            for plr in pairs(espDrawings) do removePlayerESP(plr) end 
-            return 
-        end
-                
+        AddConnection(Players.PlayerRemoving:Connect(function(plr) removePlayerESP(plr) end))
+
         -- [FIXED] Skeleton Joints R15/R6
         local skeletonJointsR15 = {
             {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"LowerTorso", "HumanoidRootPart"},
@@ -1942,14 +1938,14 @@ end
                                     if data.Skeleton then for _, ln in pairs(data.Skeleton) do ln.Visible = false end end
                                 end
                                 
--- [FIX] Define Whitelist Check Function here
+-- [FIXED] Whitelist Logic
     local function isWhitelisted(plr)
         local wl = WhitelistDropdown.Value
-        if type(wl) ~= "table" then return false end
-        -- Check Key (Multi Dropdown standard format)
-        if wl[plr.Name] == true then return true end
-        -- Check Array (Fallback)
-        for _, v in pairs(wl) do if v == plr.Name then return true end end
+        if type(wl) == "table" then
+            -- Obsidian/Linoria มัก return table แบบ {[Name] = true} หรือ Array
+            if wl[plr.Name] == true then return true end -- แบบ Key
+            for _, v in pairs(wl) do if v == plr.Name then return true end end -- แบบ Array
+        end
         return false
     end
 
@@ -2028,7 +2024,6 @@ end
                 if crosshairLines.v then crosshairLines.v.Visible = false end
             end
         end))
-                end))
     end
 
     ------------------------------------------------
@@ -3040,8 +3035,17 @@ end
     -- [FEATURE] Watermark
     ------------------------------------------------
     pcall(function()
-        Library:SetWatermarkVisibility(true)
-        -- Update Watermark loop - OPTIMIZED
+        -- Old: Library:SetWatermarkVisibility(true) -> Removed
+        -- New: AddDraggableLabel
+        local Watermark = nil
+        if Library.AddDraggableLabel then
+             Watermark = Library:AddDraggableLabel({
+                Visible = true,
+                Text = "BxB.ware | Initializing...",
+                Position = UDim2.new(0, 50, 0, 50), -- Default position
+            })
+        end
+        
         local lastUpdate = 0
         AddConnection(RunService.RenderStepped:Connect(function()
             if tick() - lastUpdate >= 1 then
@@ -3050,7 +3054,13 @@ end
                 pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
                 local fps = math.floor(1 / math.max(RunService.RenderStepped:Wait(), 0.001))
                 local timeStr = os.date("%H:%M:%S")
-                Library:SetWatermark(string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s | %s", fps, ping, timeStr, DeviceType))
+                local text = string.format("BxB.ware | Universal | FPS: %d | Ping: %d ms | %s | %s", fps, ping, timeStr, DeviceType)
+                
+                if Watermark and Watermark.SetText then
+                    Watermark:SetText(text)
+                elseif Library.SetWatermark then -- Fallback if fork supports it
+                     pcall(function() Library:SetWatermark(text) end)
+                end
             end
         end))
     end)
