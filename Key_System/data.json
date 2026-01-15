@@ -34,6 +34,16 @@
       "expire": "1/01/30 00:00:00",
       "note": "Owner Key access"
     },
+        {
+      "key": "OWNER1",
+      "role": "owner",
+      "status": "active",
+      "bind_hwid": false,
+      "hwid_hash": "",
+      "timestamp": 1733383200,
+      "expire": "15/01/2026 23:15:00",
+      "note": "Owner Key access"
+    },
     {
       "key": "USER",
       "role": "owner",
