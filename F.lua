@@ -1473,7 +1473,11 @@ end
             end
         end
 
-        AddConnection(Players.PlayerRemoving:Connect(function(plr) removePlayerESP(plr) end))
+        AddConnection(RunService.RenderStepped:Connect(function()
+        if not ESPEnabledToggle.Value then 
+            for plr in pairs(espDrawings) do removePlayerESP(plr) end 
+            return 
+        end
 
         -- [FIXED] Skeleton Joints R15/R6
         local skeletonJointsR15 = {
@@ -1938,14 +1942,14 @@ end
                                     if data.Skeleton then for _, ln in pairs(data.Skeleton) do ln.Visible = false end end
                                 end
                                 
--- [FIXED] Whitelist Logic
+-- [FIX] Define Whitelist Check Function here
     local function isWhitelisted(plr)
         local wl = WhitelistDropdown.Value
-        if type(wl) == "table" then
-            -- Obsidian/Linoria มัก return table แบบ {[Name] = true} หรือ Array
-            if wl[plr.Name] == true then return true end -- แบบ Key
-            for _, v in pairs(wl) do if v == plr.Name then return true end end -- แบบ Array
-        end
+        if type(wl) ~= "table" then return false end
+        -- Check Key (Multi Dropdown standard format)
+        if wl[plr.Name] == true then return true end
+        -- Check Array (Fallback)
+        for _, v in pairs(wl) do if v == plr.Name then return true end end
         return false
     end
 
