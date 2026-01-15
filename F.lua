@@ -70,21 +70,28 @@ end
 
 local function getCharacter()
     local plr = LocalPlayer
-    if not plr then return end
-    local char = plr.Character or plr.CharacterAdded:Wait()
+    if not plr then return nil end
+    local ok, char = pcall(function() return plr.Character or plr.CharacterAdded:Wait() end)
+    if not ok then warn("[getCharacter] Failed: " .. tostring(char)) return nil end
     return char
 end
 
 local function getHumanoid()
     local char = getCharacter()
-    if not char then return end
-    return char:FindFirstChildOfClass("Humanoid")
+    if not char then return nil end
+    local ok, hum = pcall(function() return char:FindFirstChildOfClass("Humanoid") end)
+    if not ok then warn("[getHumanoid] Failed: " .. tostring(hum)) return nil end
+    return hum
 end
 
 local function getRootPart()
     local char = getCharacter()
-    if not char then return end
-    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    if not char then return nil end
+    local ok, root = pcall(function() 
+        return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") 
+    end)
+    if not ok then warn("[getRootPart] Failed: " .. tostring(root)) return nil end
+    return root
 end
 
 --====================================================
@@ -130,10 +137,11 @@ end
 
 -- Anti-Tamper: Basic Integrity Check
 local function IntegrityCheck()
-    if iscclosure then 
-        if not iscclosure(game.HttpGet) then
-            return false
-        end
+    local ok, hasCClosure = pcall(function() return iscclosure end)
+    if not ok or not hasCClosure then return false end
+    
+    if not iscclosure(game.HttpGet) then
+        return false
     end
     return true
 end
@@ -633,34 +641,45 @@ end
     safeRichLabel(DiagBox, string.format("Websocket: %s", getCheckColor(WebSocket or (syn and syn.websocket))))
 
     -- Real-time Stats Loop
-    task.spawn(function()
-        while true do
-            local elapsed = tick() - startSessionTime
-            local h = math.floor(elapsed / 3600)
-            local m = math.floor((elapsed % 3600) / 60)
-            local s = elapsed % 60
-            if SessionLabel and SessionLabel.TextLabel then
-                SessionLabel.TextLabel.Text = string.format("Session Time: %02d:%02d:%02d", h, m, s)
-            end
-            
-            -- Update Position & Team
-            local root = getRootPart()
-            if root and PositionLabel and PositionLabel.TextLabel then
-                 local p = root.Position
-                 PositionLabel.TextLabel.Text = string.format("Pos: (%.0f, %.0f, %.0f)", p.X, p.Y, p.Z)
-            end
-            
-            if TeamLabel and TeamLabel.TextLabel then
-                 local team = LocalPlayer.Team
-                 local tName = team and team.Name or "Neutral"
-                 local tColor = team and team.TeamColor.Color or Color3.new(1,1,1)
-                 local hex = tColor:ToHex()
-                 TeamLabel.TextLabel.Text = string.format("Team: <font color='#%s'>%s</font>", hex, tName)
-            end
-            
-            task.wait(1)
+task.spawn(function()
+    while true do
+        local elapsed = tick() - startSessionTime
+        local h = math.floor(elapsed / 3600)
+        local m = math.floor((elapsed % 3600) / 60)
+        local s = elapsed % 60
+        if SessionLabel and SessionLabel.TextLabel then
+            local ok = pcall(function() 
+                SessionLabel.TextLabel.Text = string.format("Session Time: %02d:%02d:%02d", h, m, s) 
+            end)
+            if not ok then warn("[Stats Loop] SessionLabel update failed") end
         end
-    end)
+        
+        -- Update Position & Team
+        local root = getRootPart()
+        if root and PositionLabel and PositionLabel.TextLabel then
+            local ok, p = pcall(function() return root.Position end)
+            if ok then
+                PositionLabel.TextLabel.Text = string.format("Pos: (%.0f, %.0f, %.0f)", p.X, p.Y, p.Z)
+            else
+                warn("[Stats Loop] Position update failed: " .. tostring(p))
+            end
+        end
+        
+        if TeamLabel and TeamLabel.TextLabel then
+            local ok, team = pcall(function() return LocalPlayer.Team end)
+            if ok then
+                local tName = team and team.Name or "Neutral"
+                local tColor = team and team.TeamColor.Color or Color3.new(1,1,1)
+                local hex = tColor:ToHex()
+                TeamLabel.TextLabel.Text = string.format("Team: <font color='#%s'>%s</font>", hex, tName)
+            else
+                warn("[Stats Loop] Team update failed: " .. tostring(team))
+            end
+        end
+        
+        task.wait(1)
+    end
+end)
     
     -- Server Region Mockup
     task.spawn(function()
@@ -3069,37 +3088,40 @@ end
     ------------------------------------------------
     -- 4.7 Clean Up
     ------------------------------------------------
-    if Library and type(Library.OnUnload) == "function" then
-        Library:OnUnload(function()
-            -- 1. Disconnect Connections
-            for _, conn in ipairs(Connections) do pcall(function() conn:Disconnect() end) end
-            RunService:UnbindFromRenderStep("BxB_FreeCam")
-            
-            -- 2. Clear Drawings
-            if espDrawings then
-                for _, plrData in pairs(espDrawings) do
-                    for _, item in pairs(plrData) do
-                        if type(item) == "table" then for _, d in pairs(item) do pcall(function() d:Remove() end) end
-                        elseif typeof(item) == "Instance" then pcall(function() item:Destroy() end)
-                        elseif item.Remove then pcall(function() item:Remove() end) end
-                    end
+if Library and type(Library.OnUnload) == "function" then
+    Library:OnUnload(function()
+        -- 1. Disconnect Connections
+        for _, conn in ipairs(Connections) do 
+            pcall(function() conn:Disconnect() end) 
+        end
+        pcall(RunService.UnbindFromRenderStep, RunService, "BxB_FreeCam")
+        
+        -- 2. Clear Drawings
+        if espDrawings then
+            for _, plrData in pairs(espDrawings) do
+                for _, item in pairs(plrData) do
+                    if type(item) == "table" then 
+                        for _, d in pairs(item) do pcall(function() d:Remove() end) end
+                    elseif typeof(item) == "Instance" then pcall(function() item:Destroy() end)
+                    elseif item.Remove then pcall(function() item:Remove() end) end
                 end
             end
-            
-            -- 3. Clear Radar
-            if radarDrawings then
-                if radarDrawings.outline then radarDrawings.outline:Remove() end
-                if radarDrawings.line then radarDrawings.line:Remove() end
-                if radarDrawings.bg then radarDrawings.bg:Remove() end
-                for _, p in pairs(radarDrawings.points) do p:Remove() end
-            end
-            
-            -- 4. Clear Crosshair & FOV
-            if crosshairLines then pcall(function() crosshairLines.h:Remove() crosshairLines.v:Remove() end) end
-            if AimbotFOVCircle then pcall(function() AimbotFOVCircle:Remove() end) end
-            if AimbotSnapLine then pcall(function() AimbotSnapLine:Remove() end) end
-        end)
-    end
+        end
+        
+        -- 3. Clear Radar
+        if radarDrawings then
+            pcall(function() if radarDrawings.outline then radarDrawings.outline:Remove() end end)
+            pcall(function() if radarDrawings.line then radarDrawings.line:Remove() end end)
+            pcall(function() if radarDrawings.bg then radarDrawings.bg:Remove() end end)
+            for _, p in pairs(radarDrawings.points) do pcall(function() p:Remove() end) end
+        end
+        
+        -- 4. Clear Crosshair & FOV
+        if crosshairLines then pcall(function() crosshairLines.h:Remove() crosshairLines.v:Remove() end) end
+        if AimbotFOVCircle then pcall(function() AimbotFOVCircle:Remove() end) end
+        if AimbotSnapLine then pcall(function() AimbotSnapLine:Remove() end) end
+    end)
+end
 end
 
 --====================================================
