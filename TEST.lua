@@ -228,7 +228,7 @@ do
         KEYDATA_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/data.json",
         SCRIPTINFO_URL  = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/scriptinfo.json",
         CHANGELOG_URL   = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/Key_System/changelog.json",
-        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/T.lua", -- แก้ชื่อไฟล์ให้ตรงกับที่อัพโหลด
+        MAINHUB_URL     = "https://raw.githubusercontent.com/B-O-O-Ml/BxB.ware/refs/heads/main/F.lua", -- แก้ชื่อไฟล์ให้ตรงกับที่อัพโหลด
 
         KEYDATA_FILE    = "BxB.ware/obsidian_keydata.json"
     }
