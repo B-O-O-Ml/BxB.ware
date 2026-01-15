@@ -1478,7 +1478,7 @@ end
             for plr in pairs(espDrawings) do removePlayerESP(plr) end 
             return 
         end
-
+                end))
         -- [FIXED] Skeleton Joints R15/R6
         local skeletonJointsR15 = {
             {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"LowerTorso", "HumanoidRootPart"},
